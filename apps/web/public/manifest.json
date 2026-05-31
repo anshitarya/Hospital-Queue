@@ -63,7 +63,7 @@
     {
       "name": "Clinic Login",
       "short_name": "Clinic",
-      "url": "/login/clinic",
+      "url": "/login/choose",
       "description": "Reception / Doctor login",
       "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
     }

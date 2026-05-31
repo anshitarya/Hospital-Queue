@@ -64,16 +64,12 @@ export function LandingNav() {
         <div className="hidden md:flex items-center gap-2">
           <Link
             href="/login/choose"
-            target="_blank"
-            rel="noopener noreferrer"
             className="text-sm text-slate-600 hover:text-slate-900 px-3 py-1.5"
           >
             Sign in
           </Link>
           <Link
             href="/login/choose"
-            target="_blank"
-            rel="noopener noreferrer"
             className="btn-primary text-sm !py-1.5 !px-3.5"
           >
             Get started
@@ -110,8 +106,6 @@ export function LandingNav() {
               <div className="flex gap-2">
                 <Link
                   href="/login/choose"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)}
                   className="btn-secondary flex-1 text-sm"
                 >
@@ -119,8 +113,6 @@ export function LandingNav() {
                 </Link>
                 <Link
                   href="/login/choose"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)}
                   className="btn-primary flex-1 text-sm"
                 >

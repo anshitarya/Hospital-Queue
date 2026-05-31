@@ -55,8 +55,6 @@ export default function HomePage() {
               <div className="flex flex-wrap items-center gap-3">
                 <Link
                   href="/login/choose"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="btn-primary !px-5 !py-3 text-base shadow-md hover:shadow-lg"
                 >
                   Get started
@@ -64,8 +62,6 @@ export default function HomePage() {
                 </Link>
                 <Link
                   href="/login/choose"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="btn-secondary !px-5 !py-3 text-base"
                 >
                   Sign in
@@ -254,8 +250,6 @@ export default function HomePage() {
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <Link
                     href="/login/choose"
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg bg-white text-brand-700 px-5 py-3 text-sm font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
                   >
                     Sign in
@@ -263,8 +257,6 @@ export default function HomePage() {
                   </Link>
                   <Link
                     href="/login/choose"
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 text-white ring-1 ring-white/30 px-5 py-3 text-sm font-semibold transition-colors"
                   >
                     Get started
@@ -315,7 +307,7 @@ export default function HomePage() {
             <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 inline-flex items-center gap-1.5">
               <Icon.Phone className="h-4 w-4" /> {BRAND.contact.phone}
             </a>
-            <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900">Sign in</Link>
+            <Link href="/login/choose" className="hover:text-slate-900">Sign in</Link>
           </div>
         </div>
       </footer>

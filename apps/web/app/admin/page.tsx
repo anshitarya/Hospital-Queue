@@ -59,6 +59,17 @@ export default function AdminPage() {
   // push their response into this single state.
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
 
+  // In-page reset-password confirmation (replaces window.confirm which is
+  // blocked in TWA / Chrome Custom Tabs).
+  type ResetTarget = {
+    userId: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    role: 'doctor' | 'receptionist';
+  };
+  const [confirmReset, setConfirmReset] = useState<ResetTarget | null>(null);
+
   // Overview stats shown in the dashboard header. Loaded on mount + after
   // every mutation so the counts stay in sync.
   interface OverviewStats {
@@ -185,20 +196,16 @@ export default function AdminPage() {
    * password stops working). On success, surface the new creds in the same
    * modal we use for creation.
    */
-  async function resetPassword(opts: {
-    userId: string;
-    name: string;
-    email: string | null;
-    phone: string | null;
-    role: 'doctor' | 'receptionist';
-  }) {
-    if (!selectedClinic) return;
-    const ok = window.confirm(
-      `Reset password for ${opts.name}?\n\n` +
-        `Their current password will stop working immediately. You'll see the new ` +
-        `temporary password on screen — copy it before closing.`,
-    );
-    if (!ok) return;
+  /** Step 1 — show the in-page confirmation modal instead of window.confirm */
+  function requestResetPassword(opts: ResetTarget) {
+    setConfirmReset(opts);
+  }
+
+  /** Step 2 — called when the user confirms inside the modal */
+  async function executeResetPassword() {
+    if (!confirmReset || !selectedClinic) return;
+    const opts = confirmReset;
+    setConfirmReset(null);
     try {
       const result = await api<{ user: { id: string }; tempPassword: string }>(
         `/clinics/${selectedClinic.id}/staff/${opts.userId}/reset-password`,
@@ -739,7 +746,7 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() =>
-                              resetPassword({
+                              requestResetPassword({
                                 userId: r.id,
                                 name: r.name,
                                 email: r.email,
@@ -747,7 +754,7 @@ export default function AdminPage() {
                                 role: 'receptionist',
                               })
                             }
-                            className="btn-secondary !px-2.5 !py-1 text-xs whitespace-nowrap"
+                            className="btn-secondary !px-2.5 !py-2 text-xs whitespace-nowrap"
                             title="Generate a new temporary password"
                           >
                             Reset password
@@ -874,7 +881,7 @@ export default function AdminPage() {
                           <button
                             type="button"
                             onClick={() =>
-                              resetPassword({
+                              requestResetPassword({
                                 userId: d.userId,
                                 name: d.user.name,
                                 email: d.user.email ?? null,
@@ -882,7 +889,7 @@ export default function AdminPage() {
                                 role: 'doctor',
                               })
                             }
-                            className="btn-secondary !px-2.5 !py-1 text-xs whitespace-nowrap"
+                            className="btn-secondary !px-2.5 !py-2 text-xs whitespace-nowrap"
                             title="Generate a new temporary password"
                           >
                             Reset password
@@ -907,6 +914,53 @@ export default function AdminPage() {
         credentials={creds}
         onClose={() => setCreds(null)}
       />
+
+      {/* ── In-page reset-password confirmation modal ─────────────────────
+          window.confirm() is silently suppressed in TWA / Chrome Custom Tabs,
+          so we use a proper modal overlay instead.
+      ─────────────────────────────────────────────────────────────────── */}
+      {confirmReset && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in"
+          onClick={() => setConfirmReset(null)}
+        >
+          <div
+            className="card w-full max-w-sm p-6 space-y-4 shadow-xl animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                ⚠
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">Reset password?</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  This will immediately invalidate{' '}
+                  <span className="font-medium">{confirmReset.name}</span>&apos;s current
+                  password. You&apos;ll see the new temporary password on screen — copy it
+                  before closing.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmReset(null)}
+                className="btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeResetPassword}
+                className="btn-danger"
+              >
+                Yes, reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

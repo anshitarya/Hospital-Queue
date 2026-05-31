@@ -74,7 +74,7 @@ export default function PatientPage() {
             type="button"
             onClick={fetchHistory}
             disabled={refreshing}
-            className="btn-ghost !py-1 !px-2 text-xs"
+            className="btn-ghost !py-2 !px-3 text-xs min-h-[44px]"
             aria-label="Refresh queue"
           >
             <span className={refreshing ? 'inline-block animate-spin' : 'inline-block'}>↻</span>
