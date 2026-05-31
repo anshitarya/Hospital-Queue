@@ -1,0 +1,71 @@
+{
+  "name": "Hospital Queue",
+  "short_name": "HQ",
+  "description": "Live queue management for clinics — real-time token with minute-accurate ETA.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#1d6dff",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/patient-queue.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Patient live queue view"
+    },
+    {
+      "src": "/screenshots/reception-dashboard.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Reception dashboard"
+    }
+  ],
+  "categories": ["health", "medical", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Patient Login",
+      "short_name": "Patient",
+      "url": "/login/patient",
+      "description": "Check your queue position",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    },
+    {
+      "name": "Clinic Login",
+      "short_name": "Clinic",
+      "url": "/login/clinic",
+      "description": "Reception / Doctor login",
+      "icons": [{ "src": "/icons/icon-96.png", "sizes": "96x96" }]
+    }
+  ]
+}
