@@ -1,0 +1,128 @@
+version: "3.9"
+
+# One-command local stack (with hot reload):
+#   cp .env.example .env && docker-compose up --build
+#
+# Services
+#   postgres  primary store (port 5432)
+#   redis     OTP cache, queue snapshots, rate limits (6379)
+#   api       NestJS backend + Socket.IO (4000) — auto-reloads on src/* change
+#   web       Next.js frontend (3000)            — HMR on app/components/lib change
+#
+# Hot reload notes
+# ───────────────────────────────────────────────────────────────────────────────
+# Polling is enabled because Docker Desktop (macOS/Windows) doesn't reliably
+# forward inotify events across the host↔container boundary. Polling is a bit
+# more CPU but is the only thing that makes file watches work consistently.
+#
+# What hot-reloads:
+#   • Anything under apps/api/src or apps/api/prisma  →  NestJS restarts
+#   • Anything under apps/web/{app,components,lib,public}, or top-level
+#     config files (next.config.mjs, tailwind.config.ts, etc.)  →  Next.js HMR
+#
+# What still needs `docker-compose up --build`:
+#   • Changes to package.json (new deps)
+#   • Changes to Dockerfile
+#   • Changes to prisma/schema.prisma → restart is enough; the api re-runs
+#     `prisma db push` on every boot.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - hq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - hq_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      args:
+        INSECURE_SSL: ${INSECURE_SSL:-0}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      # ── Hot reload tuning ──────────────────────────────────────────────────
+      # TS watch uses dynamic-priority polling. Re-checks every 1s.
+      TSC_WATCHFILE: DynamicPriorityPolling
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${API_PORT}:4000"
+    volumes:
+      # Source — these are the files you edit
+      - ./apps/api/src:/app/src
+      - ./apps/api/prisma:/app/prisma
+      # Config files — pick them up if you tweak compiler/lint options
+      - ./apps/api/tsconfig.json:/app/tsconfig.json
+      - ./apps/api/nest-cli.json:/app/nest-cli.json
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        INSECURE_SSL: ${INSECURE_SSL:-0}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT}
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:${API_PORT}
+      # ── Hot reload tuning ──────────────────────────────────────────────────
+      # Next.js / webpack use these to switch from fs.watch (broken in Docker
+      # Desktop) to polling.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT}:3000"
+    volumes:
+      # Source folders
+      - ./apps/web/app:/app/app
+      - ./apps/web/components:/app/components
+      - ./apps/web/lib:/app/lib
+      - ./apps/web/public:/app/public
+      # Config files — so tweaking these doesn't need a rebuild
+      - ./apps/web/next.config.mjs:/app/next.config.mjs
+      - ./apps/web/tailwind.config.ts:/app/tailwind.config.ts
+      - ./apps/web/postcss.config.js:/app/postcss.config.js
+      - ./apps/web/tsconfig.json:/app/tsconfig.json
+
+volumes:
+  hq_pgdata:
+  hq_redisdata:

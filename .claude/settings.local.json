@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/Users/anshit.arya/Documents/Personal-repos/Hospital Queue\" && mkdir -p apps/api/src/common/prisma apps/api/src/common/redis apps/api/src/common/filters apps/api/src/common/guards apps/api/src/common/decorators apps/api/src/common/interceptors apps/api/src/config apps/api/src/modules/auth/dto apps/api/src/modules/auth/strategies apps/api/src/modules/patients/dto apps/api/src/modules/doctors/dto apps/api/src/modules/departments/dto apps/api/src/modules/queue/dto apps/api/src/modules/queue/gateway apps/api/src/modules/notifications apps/api/prisma apps/web/app/login/patient apps/web/app/patient apps/web/app/reception apps/web/app/doctor 'apps/web/app/display/[doctorId]' apps/web/components apps/web/lib apps/web/public && find . -type d | head -30)",
+      "Bash(docker-compose logs *)",
+      "Bash(chmod +x \"/Users/anshit.arya/Documents/Personal-repos/Hospital Queue/scripts/\"*.sh)",
+      "Bash(npx tsc *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(npm install *)",
+      "Bash(npm test *)"
+    ]
+  }
+}

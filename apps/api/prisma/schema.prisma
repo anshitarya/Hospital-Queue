@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  RECEPTIONIST
+  DOCTOR
+  ADMIN
+}
+
+enum DoctorStatus {
+  AVAILABLE
+  BUSY
+  PAUSED
+  AWAY
+}
+
+enum EntryStatus {
+  WAITING
+  IN_CONSULTATION
+  COMPLETED
+  SKIPPED
+  CANCELLED
+}
+
+// A clinic groups receptionists, doctors, and their queues.
+// Each receptionist belongs to exactly one clinic (V1 constraint).
+model Clinic {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+
+  inviteCodes InviteCode[]
+  users       User[]       // receptionists of this clinic
+  doctors     Doctor[]
+}
+
+// One-use, time-limited code that lets a receptionist self-register.
+// Admin generates these; sharing them is done out-of-band (WhatsApp, email, etc.).
+model InviteCode {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  clinicId  String
+  clinic    Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  usedById  String?   @unique
+  usedBy    User?     @relation("InviteUsedBy", fields: [usedById], references: [id])
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([clinicId])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  role         Role
+  name         String
+  phone        String?  @unique
+  email        String?  @unique
+  passwordHash String?
+
+  // Verification flags. Phone is implicitly verified at signup (OTP for
+  // patients, invite-code for staff). Email is always set to false on
+  // change and only flipped true once the user confirms an emailed OTP.
+  emailVerified Boolean  @default(false)
+  phoneVerified Boolean  @default(true)
+
+  // Pending (unverified) email — the address the user *wants* to change to
+  // but hasn't confirmed yet. Used by the verify flow. Null when no change
+  // is in flight.
+  pendingEmail  String?
+
+  // Populated for RECEPTIONIST role — which clinic they belong to.
+  clinicId     String?
+  clinic       Clinic?  @relation(fields: [clinicId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  doctorProfile  Doctor?
+  patientEntries QueueEntry[] @relation("PatientEntries")
+  createdEntries QueueEntry[] @relation("CreatedByStaff")
+  inviteUsed     InviteCode?  @relation("InviteUsedBy")
+
+  @@index([role])
+  @@index([clinicId])
+}
+
+// Departments are global labels (General Medicine, Pediatrics, etc.)
+// shared across all clinics to avoid duplication.
+model Department {
+  id      String   @id @default(cuid())
+  name    String   @unique
+  doctors Doctor[]
+}
+
+model Doctor {
+  id                String       @id @default(cuid())
+  userId            String       @unique
+  user              User         @relation(fields: [userId], references: [id])
+  departmentId      String
+  department        Department   @relation(fields: [departmentId], references: [id])
+  // Which clinic this doctor belongs to. Scopes queue visibility.
+  clinicId          String?
+  clinic            Clinic?      @relation(fields: [clinicId], references: [id])
+  avgConsultMinutes Int          @default(7)
+  status            DoctorStatus @default(AVAILABLE)
+  delayMinutes      Int          @default(0)
+  entries           QueueEntry[]
+  updatedAt         DateTime     @updatedAt
+
+  @@index([departmentId])
+  @@index([clinicId])
+  @@index([status])
+}
+
+model QueueEntry {
+  id          String      @id @default(cuid())
+  doctorId    String
+  doctor      Doctor      @relation(fields: [doctorId], references: [id])
+  patientId   String
+  patient     User        @relation("PatientEntries", fields: [patientId], references: [id])
+  createdById String?
+  createdBy   User?       @relation("CreatedByStaff", fields: [createdById], references: [id])
+  serviceDay  String
+  tokenNumber Int
+  status      EntryStatus @default(WAITING)
+  priority    Int         @default(0)
+  notes       String?
+  version     Int         @default(0)
+  joinedAt    DateTime    @default(now())
+  calledAt    DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@unique([doctorId, serviceDay, tokenNumber])
+  @@index([doctorId, status])
+  @@index([doctorId, serviceDay])
+  @@index([patientId])
+}
+
+model QueueEvent {
+  id        String   @id @default(cuid())
+  doctorId  String
+  entryId   String?
+  type      String
+  payload   Json
+  createdAt DateTime @default(now())
+
+  @@index([doctorId, createdAt])
+  @@index([entryId])
+}

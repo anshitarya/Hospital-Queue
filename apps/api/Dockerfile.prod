@@ -1,0 +1,53 @@
+# ── Stage 1: install all deps + generate Prisma client ───────────────────────
+FROM node:20-slim AS deps
+RUN apt-get update -y \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY package.json ./
+# Install ALL deps (including devDeps) — needed for prisma CLI + ts-node in seed.
+RUN npm ci --no-audit --no-fund
+COPY prisma ./prisma
+# Generate Prisma client for this platform.
+RUN npx prisma generate
+
+# ── Stage 2: compile TypeScript ───────────────────────────────────────────────
+FROM deps AS builder
+COPY tsconfig.json nest-cli.json ./
+COPY src ./src
+RUN npm run build
+
+# ── Stage 3: lean runtime image ───────────────────────────────────────────────
+FROM node:20-slim AS runner
+RUN apt-get update -y \
+ && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Non-root user for defence-in-depth.
+RUN addgroup --system --gid 1001 appgroup \
+ && adduser  --system --uid 1001 --ingroup appgroup appuser
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy compiled app.
+COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+
+# Copy node_modules (includes devDeps for ts-node + Prisma CLI needed by seed).
+# Trade-off: larger image; avoids cross-compiling native modules (argon2).
+COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
+
+# Prisma schema + seed (seed is run on every boot — it's idempotent).
+COPY --chown=appuser:appgroup prisma ./prisma
+COPY --chown=appuser:appgroup package.json ./
+
+USER appuser
+EXPOSE 4000
+
+# db push: syncs schema changes on every deploy (safe for single-instance MVP).
+# Seed: upserts base data (doctors, departments, admin account).
+# Then: start compiled app.
+CMD ["sh", "-c", \
+  "npx prisma db push --skip-generate --accept-data-loss && \
+   npx prisma db seed && \
+   node dist/main.js"]

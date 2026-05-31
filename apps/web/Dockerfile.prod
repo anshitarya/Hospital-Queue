@@ -1,0 +1,51 @@
+# ── Stage 1: install deps ─────────────────────────────────────────────────────
+FROM node:20-slim AS deps
+RUN apt-get update -y \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY package.json ./
+RUN npm ci --no-audit --no-fund
+
+# ── Stage 2: build Next.js ────────────────────────────────────────────────────
+FROM deps AS builder
+WORKDIR /app
+
+# NEXT_PUBLIC_* vars are inlined into the browser bundle at build time.
+# They must be passed as build args so the compiled JS points at the right URLs.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+ENV NEXT_TELEMETRY_DISABLED=1
+
+COPY tsconfig.json next.config.mjs tailwind.config.ts postcss.config.js ./
+COPY app        ./app
+COPY components ./components
+COPY lib        ./lib
+COPY public     ./public
+
+RUN npm run build
+
+# ── Stage 3: minimal runtime ──────────────────────────────────────────────────
+FROM node:20-slim AS runner
+RUN apt-get update -y \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN addgroup --system --gid 1001 appgroup \
+ && adduser  --system --uid 1001 --ingroup appgroup appuser
+
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+# next build --output standalone produces a self-contained server.js.
+COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
+COPY --from=builder --chown=appuser:appgroup /app/.next/static    ./.next/static
+COPY --from=builder --chown=appuser:appgroup /app/public           ./public
+
+USER appuser
+EXPOSE 3000
+CMD ["node", "server.js"]

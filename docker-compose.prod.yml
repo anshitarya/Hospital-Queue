@@ -1,0 +1,124 @@
+version: "3.9"
+
+# Production stack — started on the server with:
+#   docker-compose -f docker-compose.prod.yml up -d --build
+#
+# Services exposed to the internet:
+#   Caddy  :80 (redirect to HTTPS)  :443 (HTTPS + WebSocket)
+#
+# Internal only (no host ports):
+#   api, web, postgres, redis
+
+services:
+
+  # ── Reverse proxy + TLS ──────────────────────────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"    # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # TLS certificates (persist across restarts)
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - api
+      - web
+
+  # ── NestJS API ───────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.prod
+    restart: always
+    environment:
+      NODE_ENV:               production
+      DATABASE_URL:           postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL:              redis://redis:6379
+      JWT_SECRET:             ${JWT_SECRET}
+      JWT_EXPIRES_IN:         ${JWT_EXPIRES_IN}
+      OTP_TTL_SECONDS:        ${OTP_TTL_SECONDS}
+      OTP_DEV_MODE:           ${OTP_DEV_MODE}
+      DEFAULT_AVG_CONSULT_MINUTES: ${DEFAULT_AVG_CONSULT_MINUTES}
+      CORS_ORIGIN:            ${CORS_ORIGIN}
+      API_PORT:               4000
+    # No host port — only reachable through Caddy.
+    expose:
+      - "4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Hits the public /api/health liveness probe — no JWT required, no DB
+      # dependency, just confirms the process is alive.
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # ── Next.js frontend ─────────────────────────────────────────────────────────
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile.prod
+      args:
+        # Baked into the browser bundle at build time — must match DOMAIN.
+        NEXT_PUBLIC_API_URL:    https://${DOMAIN}
+        NEXT_PUBLIC_SOCKET_URL: https://${DOMAIN}
+    restart: always
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+    depends_on:
+      - api
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB:       ${POSTGRES_DB}
+    # No host port — not accessible from outside the server.
+    expose:
+      - "5432"
+    volumes:
+      - hq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    # Persist data across restarts (AOF).
+    command: redis-server --appendonly yes
+    expose:
+      - "6379"
+    volumes:
+      - hq_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  hq_pgdata:
+  hq_redisdata:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

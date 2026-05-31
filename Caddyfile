@@ -1,0 +1,44 @@
+# Caddy automatically obtains and renews TLS certificates from Let's Encrypt.
+# Replace {$DOMAIN} at runtime via the DOMAIN env var.
+#
+# Traffic routing:
+#   /socket.io/* → api:4000  (WebSocket — must come before the /api/* block)
+#   /api/*       → api:4000  (REST)
+#   *            → web:3000  (Next.js frontend)
+
+{$DOMAIN} {
+    # ── WebSocket / Socket.IO ───────────────────────────────────────────────
+    # Caddy upgrades the connection transparently; no extra config needed.
+    handle /socket.io/* {
+        reverse_proxy api:4000
+    }
+
+    # ── REST API ────────────────────────────────────────────────────────────
+    handle /api/* {
+        reverse_proxy api:4000
+    }
+
+    # ── Next.js frontend ────────────────────────────────────────────────────
+    handle {
+        reverse_proxy web:3000
+    }
+
+    # Compress responses.
+    encode gzip
+
+    # Security headers.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 10mb
+            roll_keep 5
+        }
+    }
+}
