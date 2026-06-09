@@ -15,6 +15,7 @@ import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
+import { QueueHistoryTable } from '@/components/QueueHistoryTable';
 
 interface Department { id: string; name: string; }
 
@@ -26,7 +27,7 @@ export default function ReceptionPage() {
   // 'queue' = active waiting list. 'staff' = manage doctors + receptionists.
   // Persisted via `?tab=` so refresh / browser-back keep the user on the same
   // tab instead of snapping back to Queue.
-  const [tab, setTab] = useTabState<'queue' | 'staff'>('queue', ['queue', 'staff']);
+  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history'>('queue', ['queue', 'staff', 'history']);
 
   // Add-patient form
   const [name, setName] = useState('');
@@ -283,6 +284,13 @@ export default function ReceptionPage() {
               ({allDoctors.length} dr · {receptionists.length} rcp)
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => setTab('history')}
+            className={'tab ' + (tab === 'history' ? 'tab-active' : 'tab-inactive')}
+          >
+            History
+          </button>
         </div>
 
         {tab === 'queue' && (
@@ -309,7 +317,7 @@ export default function ReceptionPage() {
                 {allDoctors.length === 0 && (
                   <span className="text-sm text-slate-500">
                     No doctors yet.{' '}
-                    <button type="button" onClick={() => setTab('doctors')} className="underline text-brand-600">
+                    <button type="button" onClick={() => setTab('staff')} className="underline text-brand-600">
                       Add one
                     </button>
                   </span>
@@ -631,6 +639,57 @@ export default function ReceptionPage() {
             </section>
           </div>
 
+          </div>
+        )}
+
+        {/* ── History tab ──────────────────────────────────────────────────── */}
+        {/* Shows completed / skipped / cancelled entries per doctor, date-wise.
+            Receptionist can filter by doctor or view all in the clinic at once. */}
+        {tab === 'history' && (
+          <div className="space-y-4">
+            {/* Doctor filter — "All doctors" or pick one */}
+            {allDoctors.length > 1 && (
+              <div className="card p-4">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs text-slate-500 font-medium mr-1">Filter by doctor:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDoctorId(null)}
+                    className={
+                      'tab !py-1 !px-3 text-xs ' +
+                      (!selectedDoctorId ? 'tab-active' : 'tab-inactive')
+                    }
+                  >
+                    All doctors
+                  </button>
+                  {allDoctors.map((d) => (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => setSelectedDoctorId(d.id)}
+                      className={
+                        'tab !py-1 !px-3 text-xs ' +
+                        (selectedDoctorId === d.id ? 'tab-active' : 'tab-inactive')
+                      }
+                    >
+                      {d.user.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <section className="card p-5">
+              <QueueHistoryTable
+                doctorId={selectedDoctorId ?? undefined}
+                showDoctorColumn={!selectedDoctorId}
+                doctorName={
+                  selectedDoctorId
+                    ? allDoctors.find((d) => d.id === selectedDoctorId)?.user.name
+                    : undefined
+                }
+              />
+            </section>
           </div>
         )}
       </main>

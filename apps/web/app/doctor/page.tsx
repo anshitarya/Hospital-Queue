@@ -8,6 +8,7 @@ import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
 import { Toast, type ToastMessage } from '@/components/Toast';
+import { QueueHistoryTable } from '@/components/QueueHistoryTable';
 import { EntryStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import {
@@ -33,7 +34,7 @@ export default function DoctorPage() {
   // the staff onboarding flow lives behind its own tab so it never clutters
   // the consultation view. Persisted via `?tab=` so refresh keeps the user
   // on whichever tab they were on.
-  const [tab, setTab] = useTabState<'queue' | 'staff'>('queue', ['queue', 'staff']);
+  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history'>('queue', ['queue', 'staff', 'history']);
 
   // ── Add-receptionist state (doctors can onboard their own clinic's reception) ──
   const [recList, setRecList] = useState<ReceptionistRow[]>([]);
@@ -187,6 +188,13 @@ export default function DoctorPage() {
               Reception staff <span className="opacity-60">({recList.length})</span>
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setTab('history')}
+            className={'tab ' + (tab === 'history' ? 'tab-active' : 'tab-inactive')}
+          >
+            History
+          </button>
         </div>
 
         {tab === 'queue' && (
@@ -448,6 +456,15 @@ export default function DoctorPage() {
                 )}
               </div>
             </div>
+          </section>
+        )}
+
+        {/* ── History tab ──────────────────────────────────────────────────── */}
+        {tab === 'history' && (
+          <section className="card p-5">
+            <QueueHistoryTable
+              doctorName={snapshot?.doctor?.user?.name}
+            />
           </section>
         )}
       </main>

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -286,6 +287,127 @@ export class QueueService {
       data: { doctorId, type: 'doctor_resumed', payload: { byUserId } },
     });
     await this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.AVAILABLE });
+  }
+
+  // ---------- history ----------
+
+  /**
+   * Returns completed/skipped/cancelled queue entries for a given service day.
+   *
+   * Access rules:
+   *   DOCTOR      → always sees only their own queue (doctorId param ignored).
+   *   RECEPTIONIST → sees all doctors in their clinic; may filter by doctorId.
+   *   ADMIN        → may pass any doctorId explicitly.
+   *
+   * @param role      - caller's role
+   * @param userId    - caller's user-table id
+   * @param date      - service day in YYYY-MM-DD format (defaults to today)
+   * @param doctorId  - optional filter (RECEPTIONIST / ADMIN only)
+   */
+  async getHistory(
+    role: Role,
+    userId: string,
+    date?: string,
+    filterDoctorId?: string,
+  ) {
+    // Validate / default the date
+    const serviceDay = date ?? todayKey();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDay)) {
+      throw new BadRequestException('date must be YYYY-MM-DD');
+    }
+
+    const TERMINAL: EntryStatus[] = [
+      EntryStatus.COMPLETED,
+      EntryStatus.SKIPPED,
+      EntryStatus.CANCELLED,
+    ];
+
+    // Build the list of doctor IDs we're allowed to query
+    let doctorIds: string[];
+
+    if (role === Role.DOCTOR) {
+      // Doctors can only see their own queue history
+      const doctor = await this.prisma.doctor.findUnique({ where: { userId } });
+      if (!doctor) throw new NotFoundException('Doctor profile not found');
+      doctorIds = [doctor.id];
+    } else if (role === Role.RECEPTIONIST) {
+      // Receptionist sees all doctors in their clinic
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (!user?.clinicId) throw new ForbiddenException('Receptionist has no clinic assigned');
+
+      if (filterDoctorId) {
+        // Validate the requested doctor belongs to this clinic
+        const doc = await this.prisma.doctor.findFirst({
+          where: { id: filterDoctorId, clinicId: user.clinicId },
+        });
+        if (!doc) throw new ForbiddenException('Doctor does not belong to your clinic');
+        doctorIds = [filterDoctorId];
+      } else {
+        const docs = await this.prisma.doctor.findMany({
+          where: { clinicId: user.clinicId },
+          select: { id: true },
+        });
+        doctorIds = docs.map((d) => d.id);
+      }
+    } else {
+      // ADMIN — must supply a doctorId explicitly
+      if (!filterDoctorId) throw new BadRequestException('Admins must supply doctorId');
+      doctorIds = [filterDoctorId];
+    }
+
+    const raw = await this.prisma.queueEntry.findMany({
+      where: {
+        doctorId: { in: doctorIds },
+        serviceDay,
+        status: { in: TERMINAL },
+      },
+      include: {
+        patient: { select: { id: true, name: true, phone: true } },
+        doctor: {
+          include: {
+            user: { select: { id: true, name: true } },
+            department: { select: { id: true, name: true } },
+          },
+        },
+        createdBy: { select: { id: true, name: true } },
+      },
+      orderBy: [{ doctorId: 'asc' }, { tokenNumber: 'asc' }],
+    });
+
+    // Compute derived durations on the server so the frontend is dumb-simple
+    return raw.map((e) => {
+      const waitMs =
+        e.calledAt && e.joinedAt
+          ? e.calledAt.getTime() - e.joinedAt.getTime()
+          : null;
+      const consultMs =
+        e.completedAt && e.calledAt
+          ? e.completedAt.getTime() - e.calledAt.getTime()
+          : null;
+
+      return {
+        id: e.id,
+        tokenNumber: e.tokenNumber,
+        status: e.status,
+        serviceDay: e.serviceDay,
+        priority: e.priority,
+        notes: e.notes,
+        joinedAt: e.joinedAt,
+        calledAt: e.calledAt,
+        startedAt: e.startedAt,
+        completedAt: e.completedAt,
+        // Minutes rounded to nearest integer; null when timestamps are missing
+        waitMinutes: waitMs !== null ? Math.round(waitMs / 60_000) : null,
+        consultMinutes: consultMs !== null ? Math.round(consultMs / 60_000) : null,
+        patient: e.patient,
+        doctor: {
+          id: e.doctor.id,
+          name: e.doctor.user.name,
+          department: e.doctor.department.name,
+        },
+        createdBy: e.createdBy ?? null,
+      };
+    });
   }
 
   // ---------- internals ----------

@@ -7,6 +7,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+
 import { Role } from '@prisma/client';
 import { QueueService } from './queue.service';
 import { JoinQueueDto, PatientJoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
@@ -93,5 +94,28 @@ export class QueueController {
   @Post('doctor/:doctorId/resume')
   resume(@Param('doctorId') doctorId: string, @CurrentUser() user: AuthUser) {
     return this.queue.resumeDoctor(doctorId, user.id);
+  }
+
+  /**
+   * GET /api/queue/history
+   *
+   * Returns completed / skipped / cancelled entries for a given service day.
+   *
+   * Query params:
+   *   date     - YYYY-MM-DD (optional, defaults to today)
+   *   doctorId - optional filter; required for ADMIN, ignored for DOCTOR role
+   *
+   * DOCTOR      → always sees only their own queue.
+   * RECEPTIONIST → sees all doctors in their clinic; may filter by doctorId.
+   * ADMIN        → must supply doctorId.
+   */
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
+  @Get('history')
+  getHistory(
+    @CurrentUser() user: AuthUser,
+    @Query('date') date?: string,
+    @Query('doctorId') doctorId?: string,
+  ) {
+    return this.queue.getHistory(user.role as Role, user.id, date, doctorId);
   }
 }

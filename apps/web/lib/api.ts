@@ -125,3 +125,27 @@ export interface Snapshot {
   entries: QueueEntry[];
   currentToken: number | null;
 }
+
+/**
+ * A single finished entry in the queue history log.
+ * Returned by GET /api/queue/history
+ */
+export interface HistoryEntry {
+  id: string;
+  tokenNumber: number;
+  status: 'COMPLETED' | 'SKIPPED' | 'CANCELLED';
+  serviceDay: string;
+  priority: number;
+  notes: string | null;
+  joinedAt: string;
+  calledAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** calledAt − joinedAt in whole minutes; null when calledAt is missing */
+  waitMinutes: number | null;
+  /** completedAt − calledAt in whole minutes; null when timestamps are missing */
+  consultMinutes: number | null;
+  patient: { id: string; name: string; phone: string | null };
+  doctor: { id: string; name: string; department: string };
+  createdBy: { id: string; name: string } | null;
+}
