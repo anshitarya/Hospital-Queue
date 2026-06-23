@@ -11,12 +11,12 @@
     @apply bg-slate-50 text-slate-900 antialiased;
   }
   body {
-    background-image: radial-gradient(circle at 10% -10%, rgba(56, 132, 255, 0.06), transparent 40%),
-                      radial-gradient(circle at 90% 110%, rgba(56, 132, 255, 0.04), transparent 40%);
+    background-image: radial-gradient(circle at 10% -10%, rgba(34, 197, 94, 0.07), transparent 40%),
+                      radial-gradient(circle at 90% 110%, rgba(22, 163, 74, 0.04), transparent 40%);
     background-attachment: fixed;
   }
   ::selection {
-    background-color: rgba(29, 109, 255, 0.2);
+    background-color: rgba(34, 197, 94, 0.25);
   }
 }
 
