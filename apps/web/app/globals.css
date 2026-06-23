@@ -22,42 +22,61 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all
-           focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500/40 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all
+           focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500/40 disabled:cursor-not-allowed select-none;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:translate-y-px disabled:opacity-50 disabled:hover:bg-brand-600;
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:scale-[0.98] disabled:opacity-50 disabled:hover:bg-brand-600;
   }
   .btn-secondary {
-    @apply btn bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:border-slate-300 active:translate-y-px;
+    @apply btn bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:border-slate-300 active:scale-[0.98];
   }
   .btn-ghost {
-    @apply btn text-slate-600 hover:bg-slate-100;
+    @apply btn text-slate-600 hover:bg-slate-100 active:bg-slate-200;
   }
   .btn-danger {
-    @apply btn bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:translate-y-px;
+    @apply btn bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:scale-[0.98];
+  }
+  .btn-success {
+    @apply btn bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98];
   }
   .input {
-    @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm placeholder:text-slate-400
            transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20;
   }
   .card {
-    @apply rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 transition-shadow;
+    @apply rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/80 transition-shadow;
   }
   .card-hover {
     @apply card hover:shadow-md hover:ring-slate-300;
   }
+  .card-inset {
+    @apply rounded-xl bg-slate-50 ring-1 ring-slate-200/60;
+  }
   .pill {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
   }
+  /* Tab bar container — scrollable on mobile */
+  .tabs-bar {
+    @apply flex gap-1 border-b border-slate-100 pb-1 overflow-x-auto;
+    scrollbar-width: none;
+  }
+  .tabs-bar::-webkit-scrollbar { display: none; }
   .tab {
-    @apply px-4 py-2 text-sm font-medium rounded-lg transition-colors;
+    @apply px-4 py-2 text-sm font-medium rounded-lg transition-colors whitespace-nowrap shrink-0;
   }
   .tab-active {
     @apply bg-brand-600 text-white shadow-sm;
   }
   .tab-inactive {
-    @apply text-slate-600 hover:bg-slate-100;
+    @apply text-slate-500 hover:text-slate-700 hover:bg-slate-100;
+  }
+  /* Section title */
+  .section-title {
+    @apply text-base font-semibold text-slate-900 leading-tight;
+  }
+  .section-sub {
+    @apply text-xs text-slate-500 mt-0.5;
   }
 }
 

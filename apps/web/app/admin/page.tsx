@@ -383,32 +383,16 @@ export default function AdminPage() {
   return (
     <>
       <Header title="Admin" />
-      <main className="mx-auto max-w-6xl p-4 space-y-5 animate-fade-in">
-        {/* Page intro — heading text is driven by the active tab so the
-            page title always reflects what the admin is currently looking at. */}
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {tab === 'overview' ? 'Overview' : 'Manage clinics'}
-            </h1>
-            <p className="text-sm text-slate-500 mt-0.5">
-              {tab === 'overview'
-                ? 'At-a-glance counts across every clinic. Switch to Manage to make changes.'
-                : 'Create new clinics, invite receptionists, and add doctors directly.'}
-            </p>
-          </div>
-        </div>
-
-        {/* Tab bar — Manage clinics is the primary surface and comes first;
-            Overview is a secondary read-only summary. */}
-        <div className="flex gap-1 border-b border-slate-200 pb-2">
+      <main className="mx-auto max-w-6xl px-4 py-5 space-y-5 animate-fade-in">
+        {/* Tab bar */}
+        <div className="tabs-bar">
           <button
             type="button"
             onClick={() => setTab('manage')}
             className={'tab ' + (tab === 'manage' ? 'tab-active' : 'tab-inactive')}
           >
-            Manage clinics{' '}
-            <span className="opacity-60">({clinics.length})</span>
+            Manage clinics
+            <span className="ml-1.5 opacity-70 text-xs">({clinics.length})</span>
           </button>
           <button
             type="button"
@@ -421,40 +405,34 @@ export default function AdminPage() {
 
         {tab === 'overview' && (
           <>
-            {/* ── Overview stats ────────────────────────────────────────── */}
-            {/* Four count cards. Each renders "—" until the stats endpoint
-                responds; the count refreshes after every mutation made on
-                the Manage tab. */}
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard label="Clinics" value={stats?.totals.clinics} icon="🏥" accent="from-brand-500 to-brand-700" />
-              <StatCard label="Doctors" value={stats?.totals.doctors} icon="🩺" accent="from-sky-500 to-sky-700" />
+              <StatCard label="Clinics"       value={stats?.totals.clinics}       icon="🏥" accent="from-brand-500 to-brand-700" />
+              <StatCard label="Doctors"       value={stats?.totals.doctors}       icon="🩺" accent="from-sky-500 to-sky-700" />
               <StatCard label="Receptionists" value={stats?.totals.receptionists} icon="👤" accent="from-emerald-500 to-teal-600" />
-              <StatCard label="Patients" value={stats?.totals.patients} icon="👨‍⚕️" accent="from-violet-500 to-purple-700" />
+              <StatCard label="Patients"      value={stats?.totals.patients}      icon="👨‍⚕️" accent="from-violet-500 to-purple-700" />
             </section>
 
-            {/* Per-clinic breakdown — horizontally scrollable on small screens
-                via overflow-x-auto so the table never breaks the layout. */}
             {stats && stats.perClinic.length > 0 && (
-              <section className="card p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-semibold">Per-clinic breakdown</h2>
-                  <span className="text-xs text-slate-400">{stats.perClinic.length} clinic(s)</span>
+              <section className="card overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <h2 className="section-title">Per-clinic breakdown</h2>
+                  <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{stats.perClinic.length} clinic(s)</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100">
-                        <th className="py-2 pr-4 font-medium">Clinic</th>
-                        <th className="py-2 pr-4 font-medium">Doctors</th>
-                        <th className="py-2 pr-4 font-medium">Receptionists</th>
+                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100 bg-slate-50/50">
+                        <th className="px-5 py-2.5 font-medium">Clinic</th>
+                        <th className="px-5 py-2.5 font-medium">Doctors</th>
+                        <th className="px-5 py-2.5 font-medium">Receptionists</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {stats.perClinic.map((c) => (
-                        <tr key={c.id}>
-                          <td className="py-2 pr-4 font-medium">{c.name}</td>
-                          <td className="py-2 pr-4 text-slate-600">{c.doctors}</td>
-                          <td className="py-2 pr-4 text-slate-600">{c.receptionists}</td>
+                      {stats.perClinic.map((c, idx) => (
+                        <tr key={c.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
+                          <td className="px-5 py-3 font-medium text-slate-800">{c.name}</td>
+                          <td className="px-5 py-3 text-slate-600 tabular-nums">{c.doctors}</td>
+                          <td className="px-5 py-3 text-slate-600 tabular-nums">{c.receptionists}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -467,85 +445,86 @@ export default function AdminPage() {
 
         {tab === 'manage' && (
           <>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
           {/* Create clinic */}
-          <section className="card p-5 space-y-3 h-fit">
-            <h2 className="font-semibold flex items-center gap-2">
-              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs">+</span>
-              New clinic
-            </h2>
-            <form onSubmit={createClinic} className="space-y-2">
-              <input
-                className="input"
-                placeholder="Clinic name"
-                value={clinicName}
-                onChange={(e) => setClinicName(e.target.value)}
-                required
-              />
-              <input
-                className="input"
-                placeholder="Address (optional)"
-                value={clinicAddress}
-                onChange={(e) => setClinicAddress(e.target.value)}
-              />
-              <button type="submit" className="btn-primary w-full" disabled={createBusy}>
-                {createBusy ? 'Creating…' : 'Create clinic'}
-              </button>
-            </form>
+          <section className="card overflow-hidden lg:col-span-2 h-fit">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-100 text-brand-700 text-xs font-bold">+</span>
+              <h2 className="section-title">New clinic</h2>
+            </div>
+            <div className="p-5">
+              <form onSubmit={createClinic} className="space-y-2.5">
+                <input
+                  className="input"
+                  placeholder="Clinic name"
+                  value={clinicName}
+                  onChange={(e) => setClinicName(e.target.value)}
+                  required
+                />
+                <input
+                  className="input"
+                  placeholder="Address (optional)"
+                  value={clinicAddress}
+                  onChange={(e) => setClinicAddress(e.target.value)}
+                />
+                <button type="submit" className="btn-primary w-full" disabled={createBusy}>
+                  {createBusy ? 'Creating…' : 'Create clinic'}
+                </button>
+              </form>
+            </div>
           </section>
 
           {/* Clinic list */}
-          <section className="card p-5 lg:col-span-2 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold">All clinics</h2>
-              <span className="text-xs text-slate-400">{clinics.length} total</span>
+          <section className="card overflow-hidden lg:col-span-3">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <h2 className="section-title">All clinics</h2>
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinics.length}</span>
             </div>
 
             {loadingClinics ? (
               <div className="py-10 text-center text-sm text-slate-500">Loading…</div>
             ) : clinics.length === 0 ? (
-              <div className="py-10 text-center">
+              <div className="py-12 text-center">
                 <div className="text-4xl mb-2">🏥</div>
                 <p className="text-sm text-slate-500">No clinics yet. Create one to get started.</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {clinics.map((c) => {
+                {clinics.map((c, idx) => {
                   const isSelected = selectedClinic?.id === c.id;
                   return (
                     <div
                       key={c.id}
-                      className={
-                        'py-3 flex items-center justify-between gap-3 transition-colors ' +
-                        (isSelected ? '-mx-5 px-5 bg-brand-50/40' : '')
-                      }
+                      className={`flex items-center gap-3 px-5 py-4 transition-colors ${
+                        isSelected ? 'bg-brand-50 border-l-4 border-l-brand-500' : idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/40 hover:bg-slate-50'
+                      }`}
                     >
-                      <div className="min-w-0">
-                        <div className="font-medium flex items-center gap-2">
+                      <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className={`font-semibold truncate ${isSelected ? 'text-brand-800' : 'text-slate-800'}`}>
                           {c.name}
-                          {isSelected && <span className="text-xs text-brand-600">selected</span>}
+                          {isSelected && (
+                            <span className="ml-2 text-[10px] font-medium text-brand-600 bg-brand-100 rounded-full px-1.5 py-0.5 uppercase tracking-wider">
+                              active
+                            </span>
+                          )}
                         </div>
-                        {c.address && <div className="text-xs text-slate-500 truncate">{c.address}</div>}
-                        <div className="text-xs text-slate-400 mt-0.5 flex gap-3">
-                          <span>{c._count?.users ?? 0} receptionist(s)</span>
-                          <span>{c._count?.doctors ?? 0} doctor(s)</span>
+                        {c.address && <div className="text-xs text-slate-500 truncate mt-0.5">{c.address}</div>}
+                        <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                          <span>{c._count?.users ?? 0} rcp</span>
+                          <span>·</span>
+                          <span>{c._count?.doctors ?? 0} dr</span>
                         </div>
                       </div>
-                      <div className="flex gap-2 shrink-0">
-                        {/* One button only — Manage opens the panel that has
-                            both invite codes (for receptionists) and direct
-                            add-doctor / add-receptionist forms. */}
-                        <button
-                          type="button"
-                          onClick={() => selectClinic(c)}
-                          className={
-                            'btn-primary !px-3 !py-1.5 text-xs ' +
-                            (isSelected ? '' : '')
-                          }
-                        >
-                          Manage
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => selectClinic(c)}
+                        className={isSelected ? 'btn-secondary !py-1.5 !px-3 text-xs text-brand-700 border-brand-200 bg-brand-50 hover:bg-brand-100' : 'btn-secondary !py-1.5 !px-3 text-xs'}
+                      >
+                        {isSelected ? 'Managing' : 'Manage'}
+                      </button>
                     </div>
                   );
                 })}
@@ -556,77 +535,51 @@ export default function AdminPage() {
 
         {/* Invite codes for selected clinic */}
         {selectedClinic && (
-          <section className="card p-5 space-y-3 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          <section className="card overflow-hidden animate-fade-in">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="font-semibold">
-                  Invite codes for receptionist —{' '}
-                  <span className="text-brand-700">{selectedClinic.name}</span>
+                <h2 className="section-title">
+                  Invite codes — <span className="text-brand-700">{selectedClinic.name}</span>
                 </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Each code lets one receptionist self-register with a password they choose. Codes
-                  expire in 48h. To skip self-service and create a receptionist directly with a
-                  temporary password, use the form below.
+                <p className="section-sub">
+                  Each code lets one receptionist self-register. Expires in 48h.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => generateCode(selectedClinic.id, selectedClinic.name)}
-                className="btn-primary !px-3 !py-1.5 text-sm"
+                className="btn-primary !px-3 !py-1.5 text-xs shrink-0"
               >
-                Generate new code
+                + Generate code
               </button>
             </div>
 
             {inviteCodes.length === 0 ? (
               <div className="py-10 text-center text-sm text-slate-500">
-                No invite codes yet. Generate one to invite a receptionist.
+                No invite codes yet. Generate one above.
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {inviteCodes.map((ic) => {
+                {inviteCodes.map((ic, idx) => {
                   const expired = new Date(ic.expiresAt) < new Date();
                   const used = !!ic.usedById;
                   const active = !used && !expired;
                   return (
-                    <div key={ic.id} className="py-3 flex items-center justify-between gap-3">
+                    <div key={ic.id} className={`px-5 py-4 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
                       <div className="min-w-0">
-                        <div className={
-                          'font-mono font-semibold text-lg tracking-widest ' +
-                          (active ? 'text-slate-900' : 'text-slate-400 line-through')
-                        }>
+                        <div className={`font-mono font-bold text-lg tracking-widest ${active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
                           {ic.code}
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5 space-x-2">
-                          {used && (
-                            <span className="text-emerald-700">
-                              ✓ Used by {ic.usedBy?.name}
-                              {ic.usedBy?.phone && ` (${ic.usedBy.phone})`}
-                            </span>
-                          )}
+                        <div className="text-xs mt-0.5">
+                          {used && <span className="text-emerald-700">✓ Used by {ic.usedBy?.name}{ic.usedBy?.phone && ` (${ic.usedBy.phone})`}</span>}
                           {!used && expired && <span className="text-rose-500">Expired</span>}
-                          {active && (
-                            <span>Expires {new Date(ic.expiresAt).toLocaleDateString()} {new Date(ic.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                          )}
+                          {active && <span className="text-slate-500">Expires {new Date(ic.expiresAt).toLocaleDateString()} {new Date(ic.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
                         </div>
                       </div>
-
                       {active && (
                         <div className="flex gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => copy(ic.code, 'Code')}
-                            className="btn-secondary !px-3 !py-1.5 text-xs"
-                          >
-                            Copy code
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => copy(registerUrl(ic.code), 'Link')}
-                            className="btn-primary !px-3 !py-1.5 text-xs"
-                          >
-                            Copy link
-                          </button>
+                          <button type="button" onClick={() => copy(ic.code, 'Code')} className="btn-secondary !px-3 !py-1.5 text-xs">Copy code</button>
+                          <button type="button" onClick={() => copy(registerUrl(ic.code), 'Link')} className="btn-primary !px-3 !py-1.5 text-xs">Copy link</button>
                         </div>
                       )}
                     </div>
@@ -637,261 +590,125 @@ export default function AdminPage() {
           </section>
         )}
 
-        {/* ─── Receptionists panel ─────────────────────────────────────────── */}
+        {/* Receptionists panel */}
         {selectedClinic && (
-          <section className="card p-5 space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          <section className="card overflow-hidden animate-fade-in">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="font-semibold">
-                  Receptionists —{' '}
-                  <span className="text-brand-700">{selectedClinic.name}</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Add a receptionist directly with a temporary password. They can change
-                  it after the first sign-in.
-                </p>
+                <h2 className="section-title">Receptionists — <span className="text-brand-700">{selectedClinic.name}</span></h2>
+                <p className="section-sub">Add directly with a temp password, or share an invite code above.</p>
               </div>
-              <span className="text-xs text-slate-400">
-                {clinicReceptionists.length} receptionist(s)
-              </span>
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinicReceptionists.length}</span>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Add-receptionist form */}
-              <form
-                onSubmit={addReceptionist}
-                className="space-y-2 lg:col-span-1 rounded-lg ring-1 ring-slate-200 p-4 bg-slate-50/40 h-fit"
-              >
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs">
-                    +
-                  </span>
-                  New receptionist
-                </h3>
-
-                <input
-                  className="input"
-                  placeholder="Full name"
-                  value={recName}
-                  onChange={(e) => setRecName(e.target.value)}
-                  required
-                />
-                <input
-                  className="input"
-                  type="email"
-                  placeholder="Email (for login)"
-                  value={recEmail}
-                  onChange={(e) => setRecEmail(e.target.value)}
-                />
-                <PhoneInput
-                  label={null}
-                  value={recPhone}
-                  onChange={(raw, result) => {
-                    setRecPhone(raw);
-                    setRecPhoneResult(result);
-                  }}
-                  autoComplete="off"
-                />
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  At least one of email / mobile is required.
-                </p>
-
-                <button
-                  type="submit"
-                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={recBusy || (!recEmail && !recPhoneResult.ok)}
-                >
-                  {recBusy ? 'Adding…' : 'Add receptionist'}
-                </button>
-              </form>
-
-              {/* Existing receptionists list */}
-              <div className="lg:col-span-2">
-                {clinicReceptionists.length === 0 ? (
-                  <div className="py-10 text-center rounded-lg ring-1 ring-slate-200 bg-slate-50/40">
-                    <div className="text-4xl mb-2">👤</div>
-                    <p className="text-sm text-slate-500">
-                      No receptionists yet. Add one directly or share an invite code above.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 px-3">
-                    {clinicReceptionists.map((r) => (
-                      <div
-                        key={r.id}
-                        className="py-3 flex items-center justify-between gap-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{r.name}</div>
-                          <div className="text-xs text-slate-500 flex flex-wrap gap-x-2">
-                            {r.email && <span>{r.email}</span>}
-                            {r.email && r.phone && <span>·</span>}
-                            {r.phone && <span>{r.phone}</span>}
-                            {!r.email && !r.phone && (
-                              <span className="text-slate-400">no contact on file</span>
-                            )}
+            <div className="p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                <form onSubmit={addReceptionist} className="space-y-2.5 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs font-bold">+</span>
+                    New receptionist
+                  </h3>
+                  <input className="input" placeholder="Full name" value={recName} onChange={(e) => setRecName(e.target.value)} required />
+                  <input className="input" type="email" placeholder="Email (for login)" value={recEmail} onChange={(e) => setRecEmail(e.target.value)} />
+                  <PhoneInput label={null} value={recPhone} onChange={(raw, result) => { setRecPhone(raw); setRecPhoneResult(result); }} autoComplete="off" />
+                  <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
+                  <button type="submit" className="btn-primary w-full" disabled={recBusy || (!recEmail && !recPhoneResult.ok)}>
+                    {recBusy ? 'Adding…' : 'Add receptionist'}
+                  </button>
+                </form>
+                <div className="lg:col-span-3">
+                  {clinicReceptionists.length === 0 ? (
+                    <div className="py-12 text-center rounded-xl ring-1 ring-slate-200 bg-slate-50">
+                      <div className="text-4xl mb-2">👤</div>
+                      <p className="text-sm text-slate-500">No receptionists yet.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
+                      {clinicReceptionists.map((r, idx) => (
+                        <div key={r.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-800 truncate">{r.name}</div>
+                            <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
+                              {r.email && <span>{r.email}</span>}
+                              {r.email && r.phone && <span>·</span>}
+                              {r.phone && <span>{r.phone}</span>}
+                              {!r.email && !r.phone && <span className="text-slate-400">no contact</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-xs text-slate-400 hidden sm:block">{new Date(r.createdAt).toLocaleDateString()}</span>
+                            <button type="button" onClick={() => resetPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, role: 'receptionist' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                              Reset pwd
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-slate-400 hidden sm:inline">
-                            {new Date(r.createdAt).toLocaleDateString()}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              resetPassword({
-                                userId: r.id,
-                                name: r.name,
-                                email: r.email,
-                                phone: r.phone,
-                                role: 'receptionist',
-                              })
-                            }
-                            className="btn-secondary !px-2.5 !py-1 text-xs whitespace-nowrap"
-                            title="Generate a new temporary password"
-                          >
-                            Reset password
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </section>
         )}
 
-        {/* ─── Doctors panel for the selected clinic ───────────────────────── */}
+        {/* Doctors panel */}
         {selectedClinic && (
-          <section className="card p-5 space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+          <section className="card overflow-hidden animate-fade-in">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="font-semibold">
-                  Doctors — <span className="text-brand-700">{selectedClinic.name}</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Add a doctor directly (no invite code needed). A temporary password is
-                  generated and shown once — copy it before closing.
-                </p>
+                <h2 className="section-title">Doctors — <span className="text-brand-700">{selectedClinic.name}</span></h2>
+                <p className="section-sub">Temporary password is generated and shown once — copy before closing.</p>
               </div>
-              <span className="text-xs text-slate-400">{clinicDoctors.length} doctor(s)</span>
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinicDoctors.length}</span>
             </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Add-doctor form */}
-              <form
-                onSubmit={addDoctor}
-                className="space-y-2 lg:col-span-1 rounded-lg ring-1 ring-slate-200 p-4 bg-slate-50/40 h-fit"
-              >
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs">+</span>
-                  New doctor
-                </h3>
-
-                <input
-                  className="input"
-                  placeholder="Full name"
-                  value={docName}
-                  onChange={(e) => setDocName(e.target.value)}
-                  required
-                />
-                <input
-                  className="input"
-                  type="email"
-                  placeholder="Email (for login)"
-                  value={docEmail}
-                  onChange={(e) => setDocEmail(e.target.value)}
-                />
-                <PhoneInput
-                  label={null}
-                  value={docPhone}
-                  onChange={(raw, result) => {
-                    setDocPhone(raw);
-                    setDocPhoneResult(result);
-                  }}
-                  autoComplete="off"
-                />
-                <p className="text-[11px] text-slate-400 leading-relaxed">
-                  At least one of email / mobile is required.
-                </p>
-
-                <DepartmentPicker
-                  options={departments}
-                  value={docDeptId}
-                  onChange={setDocDeptId}
-                  required
-                />
-
-                <label className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-600 whitespace-nowrap">Avg consult:</span>
-                  <input
-                    className="input flex-1"
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={docAvg}
-                    onChange={(e) => setDocAvg(Number(e.target.value))}
-                    required
-                  />
-                  <span className="text-xs text-slate-400">min</span>
-                </label>
-
-                <button
-                  type="submit"
-                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={docBusy || (!docEmail && !docPhoneResult.ok)}
-                >
-                  {docBusy ? 'Adding…' : 'Add doctor'}
-                </button>
-              </form>
-
-              {/* Existing doctors list */}
-              <div className="lg:col-span-2">
-                {clinicDoctors.length === 0 ? (
-                  <div className="py-10 text-center rounded-lg ring-1 ring-slate-200 bg-slate-50/40">
-                    <div className="text-4xl mb-2">🩺</div>
-                    <p className="text-sm text-slate-500">
-                      No doctors yet. Use the form on the left to add the first one.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-slate-100 rounded-lg ring-1 ring-slate-200 px-3">
-                    {clinicDoctors.map((d) => (
-                      <div key={d.id} className="py-3 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">{d.user.name}</div>
-                          <div className="text-xs text-slate-500 flex flex-wrap gap-x-2">
-                            <span>{d.department?.name ?? 'No department'}</span>
-                            {d.user.email && <span>· {d.user.email}</span>}
-                            {d.user.phone && <span>· {d.user.phone}</span>}
+            <div className="p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                <form onSubmit={addDoctor} className="space-y-2.5 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs font-bold">+</span>
+                    New doctor
+                  </h3>
+                  <input className="input" placeholder="Full name" value={docName} onChange={(e) => setDocName(e.target.value)} required />
+                  <input className="input" type="email" placeholder="Email (for login)" value={docEmail} onChange={(e) => setDocEmail(e.target.value)} />
+                  <PhoneInput label={null} value={docPhone} onChange={(raw, result) => { setDocPhone(raw); setDocPhoneResult(result); }} autoComplete="off" />
+                  <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
+                  <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
+                  <label className="flex items-center gap-2 text-sm">
+                    <span className="text-slate-600 whitespace-nowrap shrink-0">Avg consult:</span>
+                    <input className="input flex-1" type="number" min={1} max={120} value={docAvg} onChange={(e) => setDocAvg(Number(e.target.value))} required />
+                    <span className="text-xs text-slate-400 shrink-0">min</span>
+                  </label>
+                  <button type="submit" className="btn-primary w-full" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
+                    {docBusy ? 'Adding…' : 'Add doctor'}
+                  </button>
+                </form>
+                <div className="lg:col-span-3">
+                  {clinicDoctors.length === 0 ? (
+                    <div className="py-12 text-center rounded-xl ring-1 ring-slate-200 bg-slate-50">
+                      <div className="text-4xl mb-2">🩺</div>
+                      <p className="text-sm text-slate-500">No doctors yet.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
+                      {clinicDoctors.map((d, idx) => (
+                        <div key={d.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-800 truncate">{d.user.name}</div>
+                            <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
+                              <span>{d.department?.name ?? 'No dept'}</span>
+                              <span>· ~{d.avgConsultMinutes} min</span>
+                              {d.user.email && <span>· {d.user.email}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button type="button" onClick={() => resetPassword({ userId: d.userId, name: d.user.name, email: d.user.email ?? null, phone: (d.user as { phone?: string | null }).phone ?? null, role: 'doctor' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                              Reset pwd
+                            </button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-slate-400 hidden sm:inline">
-                            ~{d.avgConsultMinutes} min
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              resetPassword({
-                                userId: d.userId,
-                                name: d.user.name,
-                                email: d.user.email ?? null,
-                                phone: (d.user as { phone?: string | null }).phone ?? null,
-                                role: 'doctor',
-                              })
-                            }
-                            className="btn-secondary !px-2.5 !py-1 text-xs whitespace-nowrap"
-                            title="Generate a new temporary password"
-                          >
-                            Reset password
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </section>
@@ -928,16 +745,16 @@ function StatCard({
 }) {
   const display = value === undefined ? '—' : value.toLocaleString();
   return (
-    <div className="card p-4 flex items-center gap-3">
+    <div className="card p-4 flex items-center gap-3.5 hover:shadow-md transition-shadow">
       <span
-        className={`flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${accent} text-white text-xl shadow-sm shrink-0`}
+        className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${accent} text-white text-2xl shadow-sm shrink-0`}
         aria-hidden
       >
         {icon}
       </span>
       <div className="min-w-0">
-        <div className="text-2xl font-bold leading-tight tabular-nums">{display}</div>
-        <div className="text-xs text-slate-500 truncate">{label}</div>
+        <div className="text-3xl font-bold leading-none tabular-nums tracking-tight">{display}</div>
+        <div className="text-xs text-slate-500 mt-1 font-medium uppercase tracking-wider">{label}</div>
       </div>
     </div>
   );
