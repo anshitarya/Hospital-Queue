@@ -4,37 +4,32 @@ import { create } from 'zustand';
 import { api, AuthResult } from './api';
 
 interface AuthState {
-  token: string | null;
   user: AuthResult['user'] | null;
   loaded: boolean;
   hydrate: () => void;
   setSession: (r: AuthResult) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set) => ({
-  token: null,
   user: null,
   loaded: false,
   hydrate: () => {
     if (typeof window === 'undefined') return;
-    const token = window.localStorage.getItem('hq_token');
     const userRaw = window.localStorage.getItem('hq_user');
     set({
-      token,
       user: userRaw ? JSON.parse(userRaw) : null,
       loaded: true,
     });
   },
   setSession: (r: AuthResult) => {
-    window.localStorage.setItem('hq_token', r.token);
     window.localStorage.setItem('hq_user', JSON.stringify(r.user));
-    set({ token: r.token, user: r.user, loaded: true });
+    set({ user: r.user, loaded: true });
   },
-  logout: () => {
-    window.localStorage.removeItem('hq_token');
+  logout: async () => {
+    try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     window.localStorage.removeItem('hq_user');
-    set({ token: null, user: null });
+    set({ user: null });
   },
 }));
 

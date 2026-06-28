@@ -1,6 +1,7 @@
 import { PrismaClient, Role, DoctorStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { HOSPITAL_DEPARTMENTS } from '../src/config/departments';
+import { clinicDefaults } from '../src/config/clinic.config';
 
 const prisma = new PrismaClient();
 
@@ -10,8 +11,8 @@ async function main() {
   // ── Default clinic (used for seeded demo data) ──────────────────────────
   const clinic = await prisma.clinic.upsert({
     where: { id: 'seed-clinic-001' },
-    update: { name: 'Demo Clinic' },
-    create: { id: 'seed-clinic-001', name: 'Demo Clinic', address: 'Main Street, City' },
+    update: { name: clinicDefaults.name },
+    create: { id: 'seed-clinic-001', name: clinicDefaults.name, address: clinicDefaults.address },
   });
 
   // ── Departments (global labels, not clinic-scoped) ───────────────────────
@@ -56,10 +57,11 @@ async function main() {
   });
 
   // ── Doctors ───────────────────────────────────────────────────────────────
+  const defaultAvg = clinicDefaults.queue.avgConsultMinutes;
   const seedDoctors = [
-    { email: 'dr.sharma@clinic.local', name: 'Dr. Anjali Sharma', dept: general, avg: 7 },
-    { email: 'dr.menon@clinic.local', name: 'Dr. Rahul Menon', dept: general, avg: 10 },
-    { email: 'dr.iyer@clinic.local', name: 'Dr. Priya Iyer', dept: pediatrics, avg: 8 },
+    { email: 'dr.sharma@clinic.local', name: 'Dr. Anjali Sharma', dept: general, avg: defaultAvg },
+    { email: 'dr.menon@clinic.local', name: 'Dr. Rahul Menon', dept: general, avg: defaultAvg },
+    { email: 'dr.iyer@clinic.local', name: 'Dr. Priya Iyer', dept: pediatrics, avg: defaultAvg },
   ];
   for (const d of seedDoctors) {
     const user = await prisma.user.upsert({

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IsEmail, IsString, Length, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -33,6 +34,16 @@ class VerifyEmailDto {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  private setSessionCookie(res: Response, token: string) {
+    res.cookie('hq_session', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+  }
+
   /* ─── Public auth endpoints ────────────────────────────────────────────── */
 
   /**
@@ -43,16 +54,26 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('staff/login')
-  staffLogin(@Body() dto: StaffLoginDto) {
-    return this.auth.staffLogin(dto.identifier, dto.password);
+  async staffLogin(
+    @Body() dto: StaffLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.staffLogin(dto.identifier, dto.password);
+    this.setSessionCookie(res, result.token);
+    return result;
   }
 
   /** Registration is rate-limited to discourage invite-code enumeration. */
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.auth.registerReceptionist(dto);
+  async register(
+    @Body() dto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.registerReceptionist(dto);
+    this.setSessionCookie(res, result.token);
+    return result;
   }
 
   /**
@@ -69,8 +90,20 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('otp/verify')
-  verifyOtp(@Body() dto: OtpVerifyDto) {
-    return this.auth.verifyPatientOtp(dto.phone, dto.code, dto.name);
+  async verifyOtp(
+    @Body() dto: OtpVerifyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.verifyPatientOtp(dto.phone, dto.code, dto.name);
+    this.setSessionCookie(res, result.token);
+    return result;
+  }
+
+  @Public()
+  @Post('logout')
+  logout(@Res({ passthrough: true }) res: Response) {
+    res.clearCookie('hq_session', { path: '/' });
+    return { ok: true };
   }
 
   /* ─── Authenticated routes ─────────────────────────────────────────────── */

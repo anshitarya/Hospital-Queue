@@ -1,6 +1,7 @@
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { parse as parseCookies } from 'cookie';
 import {
   ConnectedSocket,
   MessageBody,
@@ -32,7 +33,10 @@ import { QueueService } from '../queue.service';
  * connections for the public TV display board.
  */
 @WebSocketGateway({
-  cors: { origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',') },
+  cors: {
+    origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(','),
+    credentials: true,
+  },
 })
 export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(QueueGateway.name);
@@ -46,9 +50,14 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {}
 
   async handleConnection(client: Socket) {
-    // Optional token in `auth.token`. We don't kick anonymous connections —
-    // the public TV display uses them.
-    const token = (client.handshake.auth?.token as string | undefined) ?? undefined;
+    // Try cookie first (browser clients with withCredentials), then auth field (fallback).
+    const rawCookie = client.handshake.headers?.cookie ?? '';
+    const cookies = parseCookies(rawCookie);
+    const token =
+      cookies.hq_session ??
+      (client.handshake.auth?.token as string | undefined) ??
+      undefined;
+
     if (token) {
       try {
         const payload = this.jwt.verify(token, {

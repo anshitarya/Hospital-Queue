@@ -35,12 +35,9 @@ export function useDoctorQueue(doctorId: string | null) {
   useEffect(() => {
     if (!doctorId) return;
 
-    const token =
-      typeof window === 'undefined' ? null : window.localStorage.getItem('hq_token');
-
     const socket = io(URL, {
       transports: ['websocket'],
-      auth: token ? { token } : {},
+      withCredentials: true,
     });
     socketRef.current = socket;
 
@@ -93,14 +90,9 @@ export function usePatientStream(
   useEffect(() => {
     if (!enabled) return;
 
-    const token =
-      typeof window === 'undefined' ? null : window.localStorage.getItem('hq_token');
-    // No token → no auth → server would refuse to room-join us. Bail.
-    if (!token) return;
-
     const socket = io(URL, {
       transports: ['websocket'],
-      auth: { token },
+      withCredentials: true,
     });
 
     socket.on('connect', () => {

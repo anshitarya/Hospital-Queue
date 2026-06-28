@@ -1,4 +1,4 @@
-// Thin fetch wrapper. Centralizes base URL, auth header, and error normalization.
+// Thin fetch wrapper. Centralizes base URL, credentials, and error normalization.
 // Keep this dumb on purpose — no React, no state. Composes well with both server
 // and client components.
 
@@ -11,12 +11,6 @@ export class ApiError extends Error {
   }
 }
 
-function authHeader(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  const t = window.localStorage.getItem('hq_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
 export async function api<T>(
   path: string,
   init: RequestInit & { body?: unknown } = {},
@@ -26,9 +20,9 @@ export async function api<T>(
     ...init,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...authHeader(),
       ...(init.headers as Record<string, string> | undefined),
     },
+    credentials: 'include',
     body: init.body && !isFormData ? JSON.stringify(init.body) : (init.body as BodyInit),
     cache: 'no-store',
   });
@@ -37,6 +31,9 @@ export async function api<T>(
   const payload = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.localStorage.removeItem('hq_user');
+    }
     const msg = (payload as { message?: string | string[] })?.message;
     throw new ApiError(
       res.status,

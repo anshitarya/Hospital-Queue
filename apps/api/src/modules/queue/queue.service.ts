@@ -14,6 +14,7 @@ import { RedisService } from '../../common/redis/redis.service';
 import { EtaService, EnrichedEntry } from './eta.service';
 import { JoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
 import { QueueGateway } from './gateway/queue.gateway';
+import { clinicDefaults } from '../../config/clinic.config';
 
 function todayKey(): string {
   const d = new Date();
@@ -270,8 +271,8 @@ export class QueueService {
             where: { id: input.doctorId },
             select: { walkinGap: true, followUpEvery: true },
           });
-          const walkinGap  = doctor?.walkinGap ?? 4;
-          const followUpGap = (doctor?.followUpEvery && doctor.followUpEvery > 0) ? doctor.followUpEvery : 2;
+          const walkinGap  = doctor?.walkinGap ?? clinicDefaults.queue.walkinGap;
+          const followUpGap = (doctor?.followUpEvery && doctor.followUpEvery > 0) ? doctor.followUpEvery : clinicDefaults.queue.followUpEvery || 2;
 
           const chainGap = isCombined ? 3 : isFUOnly ? followUpGap : walkinGap;
 
@@ -455,7 +456,7 @@ export class QueueService {
     }
 
     const serviceDay = todayKey();
-    const gap = missed.doctor.missedGap ?? 4;
+    const gap = missed.doctor.missedGap ?? clinicDefaults.queue.missedGap;
 
     const allActive = await this.prisma.queueEntry.findMany({
       where: {
