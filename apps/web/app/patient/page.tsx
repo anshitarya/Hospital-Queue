@@ -7,19 +7,36 @@ import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
 import { LiveIndicator } from '@/components/StatusPill';
+import { useOutsideClick } from '@/lib/useOutsideClick';
+import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
 }
 
 const REFRESH_INTERVAL_MS = 30_000;
+const UPCOMING_THRESHOLD = 5; // show alert when ≤ this many people ahead
 
+// ─── Status display metadata ────────────────────────────────────────────────
+const STATUS_META = {
+  COMPLETED: { label: 'Completed', cls: 'bg-emerald-100 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500' },
+  SKIPPED:   { label: 'Skipped',   cls: 'bg-amber-100 text-amber-700 ring-amber-200',       dot: 'bg-amber-500'   },
+  CANCELLED: { label: 'Cancelled', cls: 'bg-rose-100 text-rose-700 ring-rose-200',           dot: 'bg-rose-500'    },
+  MISSED:    { label: 'Missed',    cls: 'bg-rose-100 text-rose-700 ring-rose-200',           dot: 'bg-rose-400'    },
+} as const;
+
+// ─── Root page ───────────────────────────────────────────────────────────────
 export default function PatientPage() {
   const { user, ready } = useRequireRole(['PATIENT']);
-  const [liveEntries, setLiveEntries] = useState<HistoryItem[]>([]);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastSync, setLastSync] = useState<Date | null>(null);
+
+  // Single source of truth — derive everything from history.
+  const [history, setHistory]               = useState<HistoryItem[]>([]);
+  const [completedIds, setCompletedIds]     = useState<Set<string>>(new Set());
+  const [positionsMap, setPositionsMap]     = useState<Record<string, number>>({});
+  const [refreshing, setRefreshing]         = useState(false);
+  const [lastSync, setLastSync]             = useState<Date | null>(null);
+  const [selectedClinicId, setSelectedClinicId] = useState<string | null>(null);
+  const [activeTab, setActiveTab]           = useState<'active' | 'history'>('active');
 
   const fetchHistory = useCallback(async () => {
     if (!user) return;
@@ -27,13 +44,9 @@ export default function PatientPage() {
     try {
       const items = await api<HistoryItem[]>(`/patients/${user.id}/history`);
       setHistory(items);
-      const live = items.filter(
-        (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
-      );
-      setLiveEntries(live);
       setLastSync(new Date());
     } catch {
-      // Quietly ignore — socket will catch up in the background.
+      // Socket will catch up.
     } finally {
       setRefreshing(false);
     }
@@ -46,143 +59,413 @@ export default function PatientPage() {
     return () => clearInterval(t);
   }, [ready, fetchHistory]);
 
-  const { connected: streamConnected } = usePatientStream(ready, () => {
-    fetchHistory();
-  });
+  const { connected: streamConnected } = usePatientStream(ready, fetchHistory);
+
+  const handlePositionUpdate = useCallback((entryId: string, ahead: number) => {
+    setPositionsMap((prev) => (prev[entryId] === ahead ? prev : { ...prev, [entryId]: ahead }));
+  }, []);
+
+  const handleCompleted = useCallback((updated: HistoryItem) => {
+    setCompletedIds((prev) => new Set([...prev, updated.id]));
+    setTimeout(fetchHistory, 2000);
+  }, [fetchHistory]);
 
   if (!ready) return <PageLoader label="Loading your queue…" />;
 
+  // Derive live / past from single history state (fixes race condition on clinic count).
+  const liveEntries = history.filter(
+    (e) => (e.status === 'WAITING' || e.status === 'IN_CONSULTATION') && !completedIds.has(e.id),
+  );
   const pastEntries = history.filter(
     (e) => e.status !== 'WAITING' && e.status !== 'IN_CONSULTATION',
   );
 
-  // Show the MISSED banner at page level when the patient has a MISSED entry today
-  // but is no longer in an active queue (so the ActiveEntry component isn't rendered).
-  // Use en-CA locale for a reliable YYYY-MM-DD string in the user's local timezone.
-  const todayLocal = new Date().toLocaleDateString('en-CA');
-  const hasMissedToday = liveEntries.length === 0 &&
-    pastEntries.some((e) => e.status === 'MISSED' && e.serviceDay === todayLocal);
+  // Build clinic list from history only — no separate state → no race.
+  const clinicMap = new Map<string, { id: string; name: string }>();
+  history.forEach((e) => {
+    const cid = e.doctor.clinicId ?? 'unknown';
+    if (!clinicMap.has(cid)) clinicMap.set(cid, { id: cid, name: e.doctor.clinic?.name ?? 'Clinic' });
+  });
+  const clinics        = Array.from(clinicMap.values());
+  const activeClinicId = selectedClinicId ?? clinics[0]?.id ?? null;
+
+  // Upcoming alerts — real-time position from socket, across ALL clinics.
+  const upcomingAlerts = liveEntries.filter((e) => {
+    const pos = positionsMap[e.id];
+    return pos !== undefined && pos <= UPCOMING_THRESHOLD;
+  });
+
+  // Missed today — across ALL clinics.
+  const todayLocal     = new Date().toLocaleDateString('en-CA');
+  const missedTodayAll = pastEntries.filter(
+    (e) => e.status === 'MISSED' && e.serviceDay === todayLocal,
+  );
+
+  // Entries scoped to selected clinic tab.
+  const clinicLive   = liveEntries.filter((e) => (e.doctor.clinicId ?? 'unknown') === activeClinicId);
+  const clinicMissed = missedTodayAll.filter((e) => (e.doctor.clinicId ?? 'unknown') === activeClinicId);
+
+  // Live count per clinic (for dropdown badge).
+  const liveCountByClinic = Object.fromEntries(
+    clinics.map((c) => [c.id, liveEntries.filter((e) => (e.doctor.clinicId ?? 'unknown') === c.id).length]),
+  );
+
+  // Build notification list for the bell.
+  const notifications: PatientNotification[] = [
+    ...upcomingAlerts.map((e): PatientNotification => {
+      const pos    = positionsMap[e.id] ?? 0;
+      const isNext = pos === 0;
+      return {
+        id:    `upcoming-${e.id}`,
+        type:  isNext ? 'urgent' : 'upcoming',
+        title: isNext
+          ? `It's your turn — ${e.doctor.user.name}`
+          : `Almost your turn with ${e.doctor.user.name}`,
+        body: isNext
+          ? `Please proceed to the consultation room now.${e.doctor.clinic?.name ? ` · ${e.doctor.clinic.name}` : ''}`
+          : `${pos} ${pos === 1 ? 'person' : 'people'} ahead of you — please be ready nearby.${e.doctor.clinic?.name ? ` · ${e.doctor.clinic.name}` : ''}`,
+      };
+    }),
+    ...missedTodayAll.map((e): PatientNotification => ({
+      id:    `missed-${e.id}`,
+      type:  'missed',
+      title: `Missed — ${e.doctor.user.name}`,
+      body:  `You were marked as missed${e.doctor.clinic?.name ? ` at ${e.doctor.clinic.name}` : ''}. Please reach out to the reception desk if you need to be re-added.`,
+    })),
+  ];
 
   return (
     <>
-      <Header title="My Queue" />
+      {/* Headless socket watchers — keeps positionsMap current for ALL live
+          entries regardless of which clinic tab is active. */}
+      {liveEntries.map((e) => (
+        <QueueWatcher key={e.id} entry={e} onPositionUpdate={handlePositionUpdate} />
+      ))}
+
+      <Header
+        title="My Queue"
+        actions={<NotificationBell notifications={notifications} />}
+      />
+
       <main className="mx-auto max-w-lg px-4 py-5 space-y-4 animate-fade-in">
 
-        {/* Sync status bar */}
+        {/* ── Sync bar ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-2 text-xs text-slate-500">
             <LiveIndicator connected={streamConnected} />
             {lastSync ? `Updated ${formatRelative(lastSync)}` : 'Syncing…'}
           </span>
-          <button
-            type="button"
-            onClick={fetchHistory}
-            disabled={refreshing}
-            className="btn-ghost !py-1 !px-2.5 text-xs"
-            aria-label="Refresh queue"
-          >
+          <button type="button" onClick={fetchHistory} disabled={refreshing}
+            className="btn-ghost !py-1 !px-2.5 text-xs" aria-label="Refresh queue">
             <span className={refreshing ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
             <span className="ml-1">Refresh</span>
           </button>
         </div>
 
-        {/* Missed banner — shown when patient has been missed today and is not in any active queue */}
-        {hasMissedToday && (
-          <div className="rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-800 text-center font-medium py-3 px-4">
-            ⚠️ You were previously missed. Please reach out to the reception desk if you need to be re-added.
+        {/* Per-doctor missed for active clinic (kept inline — scoped, not global) */}
+        {clinicMissed.map((e) => (
+          <div key={e.id} className="rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-800 text-center font-medium py-3 px-4 text-sm">
+            ⚠️ You were missed by <strong>{e.doctor.user.name}</strong>. Please reach out to the reception desk.
           </div>
-        )}
-
-        {/* Empty state */}
-        {liveEntries.length === 0 && (
-          <div className="card p-10 text-center">
-            <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-50 to-brand-100 flex items-center justify-center text-3xl mb-4 shadow-inner">
-              🏥
-            </div>
-            <h2 className="text-lg font-semibold text-slate-800">Not in any queue</h2>
-            <p className="text-sm text-slate-500 mt-2 max-w-xs mx-auto leading-relaxed">
-              Once reception registers you, your token will appear here and update live — no need to refresh.
-            </p>
-          </div>
-        )}
-
-        {/* Live entries */}
-        {liveEntries.map((entry) => (
-          <ActiveEntry
-            key={entry.id}
-            entry={entry}
-            onCompleted={(updatedEntry) =>
-              setLiveEntries((prev) => prev.filter((e) => e.id !== updatedEntry.id))
-            }
-          />
         ))}
 
-        {/* Past visits */}
-        {pastEntries.length > 0 && (
-          <section className="card overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h3 className="section-title">Recent visits</h3>
-              <span className="text-xs text-slate-400 font-medium">
-                {Math.min(pastEntries.length, 10)} of {pastEntries.length}
-              </span>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {pastEntries.slice(0, 10).map((h) => {
-                const statusMeta = {
-                  COMPLETED: { label: 'Completed', cls: 'bg-emerald-100 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500' },
-                  SKIPPED:   { label: 'Skipped',   cls: 'bg-amber-100 text-amber-700 ring-amber-200',     dot: 'bg-amber-500'   },
-                  CANCELLED: { label: 'Cancelled', cls: 'bg-rose-100 text-rose-700 ring-rose-200',         dot: 'bg-rose-500'    },
-                  MISSED:    { label: 'Missed',    cls: 'bg-rose-100 text-rose-700 ring-rose-200',         dot: 'bg-rose-400'    },
-                }[h.status as 'COMPLETED' | 'SKIPPED' | 'CANCELLED' | 'MISSED'] ?? {
-                  label: h.status, cls: 'bg-slate-100 text-slate-600 ring-slate-200', dot: 'bg-slate-400'
-                };
-                return (
-                  <div key={h.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${statusMeta.dot}`} />
-                      <div className="min-w-0">
-                        <div className="font-medium text-sm text-slate-800 truncate">
-                          <span className="font-mono text-brand-700">#{h.tokenNumber}</span>
-                          {' · '}
-                          {h.doctor.user.name}
-                        </div>
-                        <div className="text-xs text-slate-400 mt-0.5">
-                          {new Date(h.joinedAt).toLocaleString('en-IN', {
-                            day: 'numeric', month: 'short',
-                            hour: '2-digit', minute: '2-digit',
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                    <span className={`pill ring-1 ring-inset shrink-0 ${statusMeta.cls}`}>
-                      {statusMeta.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+        {/* ── Clinic selector ───────────────────────────────────────────────── */}
+        {clinics.length > 1 && (
+          <ClinicDropdown
+            clinics={clinics}
+            activeClinicId={activeClinicId}
+            liveCountByClinic={liveCountByClinic}
+            onChange={setSelectedClinicId}
+          />
         )}
+
+        {/* ── Active / History tab bar ──────────────────────────────────────── */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+          {(['active', 'history'] as const).map((tab) => (
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+              className={`flex-1 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
+                activeTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab === 'active'
+                ? `Active${liveEntries.length > 0 ? ` (${liveEntries.length})` : ''}`
+                : `History${pastEntries.length > 0 ? ` (${pastEntries.length})` : ''}`}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Active tab ───────────────────────────────────────────────────── */}
+        {activeTab === 'active' && (
+          <>
+            {/* Empty state */}
+            {clinicLive.length === 0 && clinicMissed.length === 0 && (
+              <div className="card p-10 text-center">
+                <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-50 to-brand-100 flex items-center justify-center text-3xl mb-4 shadow-inner">
+                  🏥
+                </div>
+                <h2 className="text-lg font-semibold text-slate-800">Not in any queue</h2>
+                <p className="text-sm text-slate-500 mt-2 max-w-xs mx-auto leading-relaxed">
+                  Once reception registers you, your token will appear here and update live — no need to refresh.
+                </p>
+              </div>
+            )}
+
+            {/* Live entries */}
+            {clinicLive.map((entry) => (
+              <ActiveEntry
+                key={entry.id}
+                entry={entry}
+                onCompleted={handleCompleted}
+                onPositionUpdate={handlePositionUpdate}
+              />
+            ))}
+          </>
+        )}
+
+        {/* ── History tab ──────────────────────────────────────────────────── */}
+        {activeTab === 'history' && (
+          <HistoryView entries={pastEntries} />
+        )}
+
       </main>
     </>
   );
 }
 
-function formatRelative(d: Date) {
-  const diffSec = Math.round((Date.now() - d.getTime()) / 1000);
-  if (diffSec < 5) return 'just now';
-  if (diffSec < 60) return `${diffSec}s ago`;
-  const min = Math.floor(diffSec / 60);
-  if (min < 60) return `${min} min ago`;
-  return d.toLocaleTimeString();
+// ─── Clinic dropdown ─────────────────────────────────────────────────────────
+function ClinicDropdown({
+  clinics,
+  activeClinicId,
+  liveCountByClinic,
+  onChange,
+}: {
+  clinics: { id: string; name: string }[];
+  activeClinicId: string | null;
+  liveCountByClinic: Record<string, number>;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutsideClick(ref, () => setOpen(false));
+  const active = clinics.find((c) => c.id === activeClinicId);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm hover:border-brand-300 transition-colors"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-lg">🏥</span>
+          <div className="min-w-0 text-left">
+            <div className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold leading-none mb-0.5">
+              Viewing clinic
+            </div>
+            <div className="text-sm font-semibold text-slate-800 truncate">
+              {active?.name ?? 'Select clinic'}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-slate-400 font-medium">{clinics.length} clinics</span>
+          <svg className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+          {clinics.map((c, i) => {
+            const liveCount = liveCountByClinic[c.id] ?? 0;
+            return (
+              <button key={c.id} type="button"
+                onClick={() => { onChange(c.id); setOpen(false); }}
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-sm text-left transition-colors hover:bg-slate-50 ${
+                  i > 0 ? 'border-t border-slate-100' : ''
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {c.id === activeClinicId ? (
+                    <svg className="w-4 h-4 text-brand-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <span className="w-4 h-4 shrink-0" />
+                  )}
+                  <span className={`font-medium truncate ${c.id === activeClinicId ? 'text-brand-700' : 'text-slate-700'}`}>
+                    {c.name}
+                  </span>
+                </div>
+                {liveCount > 0 && (
+                  <span className="shrink-0 text-[10px] font-bold bg-brand-100 text-brand-700 rounded-full px-2 py-0.5">
+                    {liveCount} active
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
+// ─── History view ─────────────────────────────────────────────────────────────
+function HistoryView({ entries }: { entries: HistoryItem[] }) {
+  if (entries.length === 0) {
+    return (
+      <div className="card p-10 text-center">
+        <div className="text-3xl mb-3">📋</div>
+        <h3 className="font-semibold text-slate-700">No visit history yet</h3>
+        <p className="text-sm text-slate-500 mt-1">Your past consultations will appear here.</p>
+      </div>
+    );
+  }
+
+  const completedCount = entries.filter((e) => e.status === 'COMPLETED').length;
+  const uniqueDoctors  = new Set(entries.map((e) => e.doctorId)).size;
+  const uniqueClinics  = new Set(entries.map((e) => e.doctor.clinicId ?? 'unknown')).size;
+
+  // Sort newest first, then group by date.
+  const sorted = [...entries].sort(
+    (a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime(),
+  );
+  const byDate = new Map<string, HistoryItem[]>();
+  sorted.forEach((e) => {
+    const key = new Date(e.joinedAt).toLocaleDateString('en-CA');
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key)!.push(e);
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* Stats strip */}
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { label: 'Total Visits',   value: entries.length,  icon: '📋' },
+          { label: 'Consultations',  value: completedCount,  icon: '✅' },
+          { label: 'Doctors Seen',   value: uniqueDoctors,   icon: '👨‍⚕️' },
+        ].map((s) => (
+          <div key={s.label} className="card p-3 text-center">
+            <div className="text-xl mb-1">{s.icon}</div>
+            <div className="text-2xl font-bold text-slate-800 tabular-nums">{s.value}</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium mt-0.5 leading-tight">
+              {s.label}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {uniqueClinics > 1 && (
+        <p className="text-xs text-slate-400 text-center">
+          Visits across <strong className="text-slate-500">{uniqueClinics} clinics</strong>
+        </p>
+      )}
+
+      {/* Date-grouped entries */}
+      {Array.from(byDate.entries()).map(([dateKey, dayEntries]) => (
+        <DateGroup key={dateKey} dateKey={dateKey} entries={dayEntries} />
+      ))}
+    </div>
+  );
+}
+
+function DateGroup({ dateKey, entries }: { dateKey: string; entries: HistoryItem[] }) {
+  // Group by clinic within this date.
+  const byClinic = new Map<string, { name: string; entries: HistoryItem[] }>();
+  entries.forEach((e) => {
+    const cid = e.doctor.clinicId ?? 'unknown';
+    if (!byClinic.has(cid)) byClinic.set(cid, { name: e.doctor.clinic?.name ?? 'Clinic', entries: [] });
+    byClinic.get(cid)!.entries.push(e);
+  });
+
+  return (
+    <div>
+      {/* Date divider */}
+      <div className="flex items-center gap-3 mb-2.5">
+        <span className="text-xs font-bold uppercase tracking-widest text-slate-400 shrink-0">
+          {formatDateLabel(dateKey)}
+        </span>
+        <div className="flex-1 h-px bg-slate-200" />
+      </div>
+
+      <div className="space-y-2">
+        {Array.from(byClinic.values()).map(({ name, entries: clinicEntries }) => (
+          <div key={name} className="card overflow-hidden">
+            <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-1.5">
+              <span className="text-sm">🏥</span>
+              <span className="text-xs font-bold text-brand-700 uppercase tracking-widest">{name}</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {clinicEntries.map((e) => (
+                <HistoryEntry key={e.id} entry={e} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function HistoryEntry({ entry }: { entry: HistoryItem }) {
+  const meta = STATUS_META[entry.status as keyof typeof STATUS_META] ?? {
+    label: entry.status, cls: 'bg-slate-100 text-slate-600 ring-slate-200', dot: 'bg-slate-400',
+  };
+  return (
+    <div className="px-4 py-3 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3 min-w-0">
+        <span className={`h-2 w-2 rounded-full shrink-0 ${meta.dot}`} />
+        <div className="min-w-0">
+          <div className="font-medium text-sm text-slate-800 truncate">
+            <span className="font-mono text-brand-700">#{entry.tokenNumber}</span>
+            {' · '}
+            {entry.doctor.user.name}
+          </div>
+          <div className="text-xs text-slate-400 mt-0.5">
+            {entry.doctor.department?.name ?? 'General'}
+            {' · '}
+            {new Date(entry.joinedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+        </div>
+      </div>
+      <span className={`pill ring-1 ring-inset shrink-0 ${meta.cls}`}>{meta.label}</span>
+    </div>
+  );
+}
+
+// ─── Headless watcher — subscribes to a doctor's queue without rendering UI ───
+function QueueWatcher({
+  entry,
+  onPositionUpdate,
+}: {
+  entry: HistoryItem;
+  onPositionUpdate: (entryId: string, ahead: number) => void;
+}) {
+  const { snapshot } = useDoctorQueue(entry.doctorId);
+  const live = snapshot?.entries.find((e) => e.id === entry.id);
+
+  useEffect(() => {
+    if (live?.peopleAhead !== undefined) {
+      onPositionUpdate(entry.id, live.peopleAhead);
+    }
+  }, [live?.peopleAhead, entry.id, onPositionUpdate]);
+
+  return null;
+}
+
+// ─── Active entry card ────────────────────────────────────────────────────────
 function ActiveEntry({
   entry,
   onCompleted,
+  onPositionUpdate,
 }: {
   entry: HistoryItem;
   onCompleted: (e: HistoryItem) => void;
+  onPositionUpdate: (entryId: string, ahead: number) => void;
 }) {
   const { snapshot, connected } = useDoctorQueue(entry.doctorId);
   const [finalStatus, setFinalStatus] = useState<string | null>(null);
@@ -206,31 +489,36 @@ function ActiveEntry({
     }
   }, [snapshot, live, entry, onCompleted]);
 
-  const status = live?.status ?? entry.status;
-  const ahead = live?.peopleAhead ?? 0;
-  const eta = live?.etaMinutes ?? 0;
-  const etaAbsolute = live?.etaAbsolute;
-  const movingAvgMinutes = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes;
+  const status     = live?.status ?? entry.status;
+  const ahead      = live?.peopleAhead ?? 0;
+  const eta        = live?.etaMinutes ?? 0;
+  const etaAbs     = live?.etaAbsolute;
+  const movingAvg  = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes;
   const isInConsult = status === 'IN_CONSULTATION';
-  const isNextUp = status === 'WAITING' && ahead === 0;
-  const isUrgent = isInConsult || isNextUp;
-  const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
+  const isNextUp    = status === 'WAITING' && ahead === 0;
+  const isUrgent    = isInConsult || isNextUp;
+  const breakUntil  = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
   const breakActive = snapshot?.doctor?.status === 'PAUSED' && breakUntil && breakUntil.getTime() > Date.now();
+
+  // Total queue size for the progress bar.
+  const totalInQueue = snapshot?.entries.filter(
+    (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
+  ).length ?? 0;
+  const progressPct = totalInQueue > 0
+    ? Math.round(((totalInQueue - ahead) / totalInQueue) * 100)
+    : 0;
 
   if (finalStatus) {
     const isDone = finalStatus === 'COMPLETED';
     return (
       <section className="card p-8 text-center animate-fade-in">
-        <div className={`mx-auto h-16 w-16 rounded-2xl flex items-center justify-center text-3xl mb-4 shadow-inner ${isDone ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+        <div className={`mx-auto h-16 w-16 rounded-2xl flex items-center justify-center text-3xl mb-4 shadow-inner ${isDone ? 'bg-emerald-100' : 'bg-slate-100'}`}>
           {isDone ? '✓' : '×'}
         </div>
         <div className="text-lg font-semibold">
-          {finalStatus === 'COMPLETED'
-            ? 'Consultation complete'
-            : finalStatus === 'SKIPPED'
-            ? 'Marked as skipped'
-            : finalStatus === 'MISSED'
-            ? 'You were missed'
+          {finalStatus === 'COMPLETED' ? 'Consultation complete'
+            : finalStatus === 'SKIPPED' ? 'Marked as skipped'
+            : finalStatus === 'MISSED'  ? 'You were missed'
             : 'Entry cancelled'}
         </div>
         {finalStatus === 'MISSED' && (
@@ -247,8 +535,12 @@ function ActiveEntry({
 
   return (
     <section className={`card overflow-hidden ${isUrgent ? 'ring-2 ring-brand-400/50 shadow-md' : ''}`}>
-      {/* Card header — doctor info */}
-      <div className={`px-5 py-4 border-b border-slate-100 flex items-center justify-between ${isInConsult ? 'bg-gradient-to-r from-emerald-50 to-teal-50' : isNextUp ? 'bg-gradient-to-r from-amber-50 to-orange-50' : 'bg-gradient-to-r from-slate-50 to-white'}`}>
+      {/* Header */}
+      <div className={`px-5 py-4 border-b border-slate-100 flex items-center justify-between ${
+        isInConsult ? 'bg-gradient-to-r from-emerald-50 to-teal-50'
+        : isNextUp   ? 'bg-gradient-to-r from-amber-50 to-orange-50'
+        : 'bg-gradient-to-r from-slate-50 to-white'
+      }`}>
         <div className="min-w-0">
           {entry.doctor.clinic?.name && (
             <div className="text-[10px] uppercase tracking-widest text-brand-700 font-bold mb-0.5 truncate">
@@ -262,7 +554,7 @@ function ActiveEntry({
       </div>
 
       <div className="p-5 space-y-4">
-        {/* Urgent status banners — shown above tokens so it's the first thing seen */}
+        {/* Status banners */}
         {isInConsult && (
           <div className="rounded-xl bg-emerald-500 text-white text-center font-semibold py-3 px-4 animate-pulse-slow shadow-sm">
             🔔 It&apos;s your turn — please proceed to the consultation room
@@ -278,7 +570,6 @@ function ActiveEntry({
             ⚠️ You were previously missed. Please reach out to the reception desk if you need to be re-added.
           </div>
         )}
-        {/* Doctor break info — Feature 4 */}
         {breakActive && (
           <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 text-center">
             ☕ Doctor is on a short break — returning at{' '}
@@ -287,11 +578,17 @@ function ActiveEntry({
           </div>
         )}
 
-        {/* Token numbers grid */}
+        {/* Token grid */}
         <div className="grid grid-cols-2 gap-3">
-          <div className={`rounded-xl p-4 text-center ${isInConsult ? 'bg-emerald-50 ring-2 ring-emerald-300' : isNextUp ? 'bg-amber-50 ring-2 ring-amber-300' : 'bg-brand-50 ring-1 ring-brand-100'}`}>
+          <div className={`rounded-xl p-4 text-center ${
+            isInConsult ? 'bg-emerald-50 ring-2 ring-emerald-300'
+            : isNextUp  ? 'bg-amber-50 ring-2 ring-amber-300'
+            : 'bg-brand-50 ring-1 ring-brand-100'
+          }`}>
             <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-medium">Your token</div>
-            <div className={`text-5xl font-bold leading-none tabular-nums ${isInConsult ? 'text-emerald-700' : isNextUp ? 'text-amber-700' : 'text-brand-700'}`}>
+            <div className={`text-5xl font-bold leading-none tabular-nums ${
+              isInConsult ? 'text-emerald-700' : isNextUp ? 'text-amber-700' : 'text-brand-700'
+            }`}>
               #{entry.tokenNumber}
             </div>
           </div>
@@ -303,34 +600,71 @@ function ActiveEntry({
           </div>
         </div>
 
-        {/* ETA row */}
+        {/* ETA + position */}
         {status === 'WAITING' && !isNextUp && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-3.5 text-center">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">People ahead</div>
-              <div className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">{ahead}</div>
-            </div>
-            <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-3.5 text-center">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Est. wait</div>
-              <div className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">
-                ~{eta}
-                <span className="text-sm text-slate-400 font-normal ml-1">min</span>
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-3.5 text-center">
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">People ahead</div>
+                <div className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">{ahead}</div>
               </div>
-              {/* Absolute ETA — Feature 5 */}
-              {etaAbsolute && (
-                <div className="text-xs text-slate-500 mt-1">
-                  your turn ~{new Date(etaAbsolute).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+              <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-3.5 text-center">
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Est. wait</div>
+                <div className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">
+                  ~{eta}<span className="text-sm text-slate-400 font-normal ml-1">min</span>
                 </div>
-              )}
-              {movingAvgMinutes != null && (
-                <div className="text-[10px] text-slate-400 mt-0.5">
-                  avg {Math.round(movingAvgMinutes)} min/patient
-                </div>
-              )}
+                {etaAbs && (
+                  <div className="text-xs text-slate-500 mt-1">
+                    your turn ~{new Date(etaAbs).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
+                {movingAvg != null && (
+                  <div className="text-[10px] text-slate-400 mt-0.5">avg {Math.round(movingAvg)} min/patient</div>
+                )}
+              </div>
             </div>
-          </div>
+
+            {/* Queue progress bar */}
+            {totalInQueue > 0 && (
+              <div>
+                <div className="flex justify-between text-[10px] text-slate-400 font-medium mb-1.5 uppercase tracking-wide">
+                  <span>Queue progress</span>
+                  <span>{totalInQueue - ahead} of {totalInQueue} seen</span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-brand-400 rounded-full transition-all duration-700"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>
   );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function formatDateLabel(dateKey: string): string {
+  const today     = new Date().toLocaleDateString('en-CA');
+  const yesterday = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA');
+  if (dateKey === today)     return 'Today';
+  if (dateKey === yesterday) return 'Yesterday';
+  const d = new Date(`${dateKey}T12:00:00`);
+  const weekAgo = new Date(Date.now() - 6 * 86_400_000);
+  if (d >= weekAgo) {
+    return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });
+  }
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function formatRelative(d: Date) {
+  const diff = Math.round((Date.now() - d.getTime()) / 1000);
+  if (diff < 5)  return 'just now';
+  if (diff < 60) return `${diff}s ago`;
+  const min = Math.floor(diff / 60);
+  if (min < 60)  return `${min} min ago`;
+  return d.toLocaleTimeString();
 }

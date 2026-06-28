@@ -1,23 +1,14 @@
 import { PrismaClient, Role, DoctorStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { HOSPITAL_DEPARTMENTS } from '../src/config/departments';
-import { clinicDefaults } from '../src/config/clinic.config';
+import { SEED_CLINICS } from '../src/config/clinic.config';
 
 const prisma = new PrismaClient();
 
 async function main() {
   const pwd = await argon2.hash('password123');
 
-  // ── Default clinic (used for seeded demo data) ──────────────────────────
-  const clinic = await prisma.clinic.upsert({
-    where: { id: 'seed-clinic-001' },
-    update: { name: clinicDefaults.name },
-    create: { id: 'seed-clinic-001', name: clinicDefaults.name, address: clinicDefaults.address },
-  });
-
-  // ── Departments (global labels, not clinic-scoped) ───────────────────────
-  // The full alphabetical hospital department list lives in
-  // apps/api/src/config/departments.ts — edit there to add/remove.
+  // ── Departments (global labels, shared across all clinics) ───────────────
   for (const name of HOSPITAL_DEPARTMENTS) {
     await prisma.department.upsert({
       where: { name },
@@ -26,10 +17,7 @@ async function main() {
     });
   }
 
-  const general = await prisma.department.findUniqueOrThrow({ where: { name: 'General Medicine' } });
-  const pediatrics = await prisma.department.findUniqueOrThrow({ where: { name: 'Pediatrics' } });
-
-  // ── Admin (no clinic — manages all clinics) ──────────────────────────────
+  // ── Admin (not tied to any clinic — manages all) ─────────────────────────
   await prisma.user.upsert({
     where: { email: 'admin@clinic.local' },
     update: { emailVerified: true, passwordHash: pwd },
@@ -42,59 +30,79 @@ async function main() {
     },
   });
 
-  // ── Receptionist (tied to demo clinic) ──────────────────────────────────
-  await prisma.user.upsert({
-    where: { email: 'reception@clinic.local' },
-    update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd },
-    create: {
-      email: 'reception@clinic.local',
-      role: Role.RECEPTIONIST,
-      name: 'Front Desk',
-      passwordHash: pwd,
-      clinicId: clinic.id,
-      emailVerified: true,
-    },
-  });
+  // ── Seed each clinic ─────────────────────────────────────────────────────
+  for (const cfg of SEED_CLINICS) {
+    // Create/update the clinic record.
+    const clinic = await prisma.clinic.upsert({
+      where: { id: cfg.id },
+      update: { name: cfg.name, address: cfg.address },
+      create: { id: cfg.id, name: cfg.name, address: cfg.address },
+    });
 
-  // ── Doctors ───────────────────────────────────────────────────────────────
-  const defaultAvg = clinicDefaults.queue.avgConsultMinutes;
-  const seedDoctors = [
-    { email: 'dr.sharma@clinic.local', name: 'Dr. Anjali Sharma', dept: general, avg: defaultAvg },
-    { email: 'dr.menon@clinic.local', name: 'Dr. Rahul Menon', dept: general, avg: defaultAvg },
-    { email: 'dr.iyer@clinic.local', name: 'Dr. Priya Iyer', dept: pediatrics, avg: defaultAvg },
-  ];
-  for (const d of seedDoctors) {
-    const user = await prisma.user.upsert({
-      where: { email: d.email },
+    // Receptionist for this clinic.
+    await prisma.user.upsert({
+      where: { email: cfg.receptionist.email },
       update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd },
       create: {
-        email: d.email,
-        role: Role.DOCTOR,
-        name: d.name,
+        email: cfg.receptionist.email,
+        role: Role.RECEPTIONIST,
+        name: cfg.receptionist.name,
         passwordHash: pwd,
         clinicId: clinic.id,
         emailVerified: true,
       },
     });
-    await prisma.doctor.upsert({
-      where: { userId: user.id },
-      update: { avgConsultMinutes: d.avg, departmentId: d.dept.id, clinicId: clinic.id },
-      create: {
-        userId: user.id,
-        departmentId: d.dept.id,
-        clinicId: clinic.id,
-        avgConsultMinutes: d.avg,
-        status: DoctorStatus.AVAILABLE,
-      },
-    });
+
+    // Doctors for this clinic.
+    for (const d of cfg.doctors) {
+      const dept = await prisma.department.findUniqueOrThrow({ where: { name: d.department } });
+      const avg  = d.avgConsultMinutes ?? cfg.queue.avgConsultMinutes;
+
+      const user = await prisma.user.upsert({
+        where: { email: d.email },
+        update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd },
+        create: {
+          email: d.email,
+          role: Role.DOCTOR,
+          name: d.name,
+          passwordHash: pwd,
+          clinicId: clinic.id,
+          emailVerified: true,
+        },
+      });
+
+      await prisma.doctor.upsert({
+        where: { userId: user.id },
+        update: {
+          avgConsultMinutes: avg,
+          departmentId: dept.id,
+          clinicId: clinic.id,
+          walkinGap: cfg.queue.walkinGap,
+          missedGap: cfg.queue.missedGap,
+          followUpEvery: cfg.queue.followUpEvery,
+        },
+        create: {
+          userId: user.id,
+          departmentId: dept.id,
+          clinicId: clinic.id,
+          avgConsultMinutes: avg,
+          walkinGap: cfg.queue.walkinGap,
+          missedGap: cfg.queue.missedGap,
+          followUpEvery: cfg.queue.followUpEvery,
+          status: DoctorStatus.AVAILABLE,
+        },
+      });
+    }
+
+    console.log(`  ✓ ${cfg.name} (${cfg.id})`);
+    console.log(`      Reception: ${cfg.receptionist.email} / password123`);
+    cfg.doctors.forEach((d) => console.log(`      Doctor:    ${d.email} / password123`));
   }
 
+  console.log('');
   console.log('Seed complete.');
-  console.log(`  Departments:  ${HOSPITAL_DEPARTMENTS.length} loaded`);
-  console.log('  Admin:        admin@clinic.local / password123');
-  console.log('  Receptionist: reception@clinic.local / password123');
-  console.log('  Doctors:      dr.sharma@ / dr.menon@ / dr.iyer@clinic.local / password123');
-  console.log(`  Demo clinic:  id=${clinic.id}`);
+  console.log(`  Departments: ${HOSPITAL_DEPARTMENTS.length} loaded`);
+  console.log('  Admin:       admin@clinic.local / password123');
 }
 
 main()

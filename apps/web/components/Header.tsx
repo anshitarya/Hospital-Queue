@@ -1,5 +1,5 @@
 'use client';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { ProfileMenu } from './ProfileMenu';
 
@@ -10,7 +10,7 @@ import { ProfileMenu } from './ProfileMenu';
  * Navigating away from a dashboard should go through the Profile menu
  * ("Log out") or the browser's back button, never through the logo.
  */
-export function Header({ title = 'Hospital Queue', subtitle }: { title?: string; subtitle?: string | null }) {
+export function Header({ title = 'Hospital Queue', subtitle, actions }: { title?: string; subtitle?: string | null; actions?: React.ReactNode }) {
   const { hydrate, loaded } = useAuth();
 
   useEffect(() => {
@@ -36,7 +36,10 @@ export function Header({ title = 'Hospital Queue', subtitle }: { title?: string;
             )}
           </div>
         </div>
-        <ProfileMenu />
+        <div className="flex items-center gap-1">
+          {actions}
+          <ProfileMenu />
+        </div>
       </div>
     </header>
   );

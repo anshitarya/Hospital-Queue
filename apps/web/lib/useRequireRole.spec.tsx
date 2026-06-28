@@ -30,13 +30,12 @@ function Probe({ allowed }: { allowed: Parameters<typeof useRequireRole>[0] }) {
 
 beforeEach(() => {
   routerReplace.mockReset();
-  useAuth.setState({ token: null, user: null, loaded: false });
-  window.localStorage.removeItem('hq_token');
+  useAuth.setState({ user: null, loaded: false });
   window.localStorage.removeItem('hq_user');
 });
 
 afterEach(() => {
-  useAuth.setState({ token: null, user: null, loaded: false });
+  useAuth.setState({ user: null, loaded: false });
 });
 
 describe('useRequireRole', () => {
@@ -55,7 +54,6 @@ describe('useRequireRole', () => {
   });
 
   it('redirects wrong-role authenticated user to their home', async () => {
-    window.localStorage.setItem('hq_token', 't');
     window.localStorage.setItem(
       'hq_user',
       JSON.stringify({ id: 'u', role: 'DOCTOR', name: 'Dr' }),
@@ -68,7 +66,6 @@ describe('useRequireRole', () => {
   });
 
   it('does not redirect when role matches', async () => {
-    window.localStorage.setItem('hq_token', 't');
     window.localStorage.setItem(
       'hq_user',
       JSON.stringify({ id: 'u', role: 'DOCTOR', name: 'Dr' }),

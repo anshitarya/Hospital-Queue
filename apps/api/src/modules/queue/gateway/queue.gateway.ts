@@ -1,7 +1,8 @@
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { parse as parseCookies } from 'cookie';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { parseCookie } = require('cookie') as { parseCookie: (str: string) => Record<string, string> };
 import {
   ConnectedSocket,
   MessageBody,
@@ -52,7 +53,7 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleConnection(client: Socket) {
     // Try cookie first (browser clients with withCredentials), then auth field (fallback).
     const rawCookie = client.handshake.headers?.cookie ?? '';
-    const cookies = parseCookies(rawCookie);
+    const cookies = parseCookie(rawCookie);
     const token =
       cookies.hq_session ??
       (client.handshake.auth?.token as string | undefined) ??

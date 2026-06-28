@@ -112,8 +112,7 @@ export function ProfileMenu() {
             <MenuItem
               onClick={() => {
                 setOpen(false);
-                logout();
-                router.push('/');
+                logout().catch(() => {}).finally(() => router.push('/'));
               }}
               icon={<Icon.Logout className="h-4 w-4" />}
               variant="danger"

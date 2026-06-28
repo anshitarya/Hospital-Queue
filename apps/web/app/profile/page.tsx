@@ -35,7 +35,6 @@ import { Icon } from '@/components/Icons';
 export default function ProfilePage() {
   const { user, ready } = useRequireRole(['PATIENT', 'RECEPTIONIST', 'DOCTOR', 'ADMIN']);
   const setSession = useAuth((s) => s.setSession);
-  const token = useAuth((s) => s.token);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,9 +54,9 @@ export default function ProfilePage() {
   // ensures the header avatar and name update everywhere.
   function syncSession(updated: UserProfile) {
     setProfile(updated);
-    if (token && user) {
+    if (user) {
       setSession({
-        token,
+        token: '',
         user: {
           id: updated.id,
           role: updated.role,

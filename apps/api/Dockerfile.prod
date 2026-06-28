@@ -48,6 +48,6 @@ EXPOSE 4000
 # Seed: upserts base data (doctors, departments, admin account).
 # Then: start compiled app.
 CMD ["sh", "-c", \
-  "npx prisma db push --skip-generate --accept-data-loss && \
+  "npx prisma migrate deploy && \
    npx prisma db seed && \
    node dist/main.js"]
