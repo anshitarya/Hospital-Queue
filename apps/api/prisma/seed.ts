@@ -31,7 +31,7 @@ async function main() {
   // ── Admin (no clinic — manages all clinics) ──────────────────────────────
   await prisma.user.upsert({
     where: { email: 'admin@clinic.local' },
-    update: { emailVerified: true },
+    update: { emailVerified: true, passwordHash: pwd },
     create: {
       email: 'admin@clinic.local',
       role: Role.ADMIN,
@@ -44,7 +44,7 @@ async function main() {
   // ── Receptionist (tied to demo clinic) ──────────────────────────────────
   await prisma.user.upsert({
     where: { email: 'reception@clinic.local' },
-    update: { clinicId: clinic.id, emailVerified: true },
+    update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd },
     create: {
       email: 'reception@clinic.local',
       role: Role.RECEPTIONIST,
@@ -64,7 +64,7 @@ async function main() {
   for (const d of seedDoctors) {
     const user = await prisma.user.upsert({
       where: { email: d.email },
-      update: { clinicId: clinic.id, emailVerified: true },
+      update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd },
       create: {
         email: d.email,
         role: Role.DOCTOR,

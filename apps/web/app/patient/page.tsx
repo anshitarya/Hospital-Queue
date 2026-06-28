@@ -56,6 +56,13 @@ export default function PatientPage() {
     (e) => e.status !== 'WAITING' && e.status !== 'IN_CONSULTATION',
   );
 
+  // Show the MISSED banner at page level when the patient has a MISSED entry today
+  // but is no longer in an active queue (so the ActiveEntry component isn't rendered).
+  // Use en-CA locale for a reliable YYYY-MM-DD string in the user's local timezone.
+  const todayLocal = new Date().toLocaleDateString('en-CA');
+  const hasMissedToday = liveEntries.length === 0 &&
+    pastEntries.some((e) => e.status === 'MISSED' && e.serviceDay === todayLocal);
+
   return (
     <>
       <Header title="My Queue" />
@@ -78,6 +85,13 @@ export default function PatientPage() {
             <span className="ml-1">Refresh</span>
           </button>
         </div>
+
+        {/* Missed banner — shown when patient has been missed today and is not in any active queue */}
+        {hasMissedToday && (
+          <div className="rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-800 text-center font-medium py-3 px-4">
+            ⚠️ You were previously missed. Please reach out to the reception desk if you need to be re-added.
+          </div>
+        )}
 
         {/* Empty state */}
         {liveEntries.length === 0 && (
@@ -118,7 +132,8 @@ export default function PatientPage() {
                   COMPLETED: { label: 'Completed', cls: 'bg-emerald-100 text-emerald-700 ring-emerald-200', dot: 'bg-emerald-500' },
                   SKIPPED:   { label: 'Skipped',   cls: 'bg-amber-100 text-amber-700 ring-amber-200',     dot: 'bg-amber-500'   },
                   CANCELLED: { label: 'Cancelled', cls: 'bg-rose-100 text-rose-700 ring-rose-200',         dot: 'bg-rose-500'    },
-                }[h.status as 'COMPLETED' | 'SKIPPED' | 'CANCELLED'] ?? {
+                  MISSED:    { label: 'Missed',    cls: 'bg-rose-100 text-rose-700 ring-rose-200',         dot: 'bg-rose-400'    },
+                }[h.status as 'COMPLETED' | 'SKIPPED' | 'CANCELLED' | 'MISSED'] ?? {
                   label: h.status, cls: 'bg-slate-100 text-slate-600 ring-slate-200', dot: 'bg-slate-400'
                 };
                 return (
@@ -194,9 +209,13 @@ function ActiveEntry({
   const status = live?.status ?? entry.status;
   const ahead = live?.peopleAhead ?? 0;
   const eta = live?.etaMinutes ?? 0;
+  const etaAbsolute = live?.etaAbsolute;
+  const movingAvgMinutes = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes;
   const isInConsult = status === 'IN_CONSULTATION';
   const isNextUp = status === 'WAITING' && ahead === 0;
   const isUrgent = isInConsult || isNextUp;
+  const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
+  const breakActive = snapshot?.doctor?.status === 'PAUSED' && breakUntil && breakUntil.getTime() > Date.now();
 
   if (finalStatus) {
     const isDone = finalStatus === 'COMPLETED';
@@ -210,8 +229,15 @@ function ActiveEntry({
             ? 'Consultation complete'
             : finalStatus === 'SKIPPED'
             ? 'Marked as skipped'
+            : finalStatus === 'MISSED'
+            ? 'You were missed'
             : 'Entry cancelled'}
         </div>
+        {finalStatus === 'MISSED' && (
+          <div className="text-sm text-rose-600 mt-2">
+            Please reach out to the reception desk if you need to be re-added.
+          </div>
+        )}
         <div className="text-sm text-slate-500 mt-1">
           Token <span className="font-mono font-bold text-brand-700">#{entry.tokenNumber}</span> with {entry.doctor.user.name}
         </div>
@@ -247,6 +273,19 @@ function ActiveEntry({
             ⚡ You&apos;re next — please be ready outside
           </div>
         )}
+        {(finalStatus === 'MISSED' || status === 'MISSED') && (
+          <div className="rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-800 text-center font-medium py-3 px-4">
+            ⚠️ You were previously missed. Please reach out to the reception desk if you need to be re-added.
+          </div>
+        )}
+        {/* Doctor break info — Feature 4 */}
+        {breakActive && (
+          <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 text-center">
+            ☕ Doctor is on a short break — returning at{' '}
+            <strong>{breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong>
+            {snapshot?.doctor?.breakNote && ` · ${snapshot.doctor.breakNote}`}
+          </div>
+        )}
 
         {/* Token numbers grid */}
         <div className="grid grid-cols-2 gap-3">
@@ -277,6 +316,17 @@ function ActiveEntry({
                 ~{eta}
                 <span className="text-sm text-slate-400 font-normal ml-1">min</span>
               </div>
+              {/* Absolute ETA — Feature 5 */}
+              {etaAbsolute && (
+                <div className="text-xs text-slate-500 mt-1">
+                  your turn ~{new Date(etaAbsolute).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+              {movingAvgMinutes != null && (
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  avg {Math.round(movingAvgMinutes)} min/patient
+                </div>
+              )}
             </div>
           </div>
         )}

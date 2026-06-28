@@ -32,6 +32,8 @@ export default function ReceptionPage() {
   const [phoneResult, setPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [priority, setPriority] = useState(0);
   const [notes, setNotes] = useState('');
+  const [walkin, setWalkin] = useState(false);
+  const [slotType, setSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
   const [busy, setBusy] = useState(false);
 
   // Add-doctor form
@@ -118,10 +120,14 @@ export default function ReceptionPage() {
           priority,
           notes: notes || undefined,
           idempotencyKey: idemKey,
+          walkin: walkin || undefined,
+          slotType: slotType !== 'NEW' ? slotType : undefined,
         },
       });
-      setToast({ type: 'ok', msg: `Token #${entry.tokenNumber} assigned to ${name}` });
+      const suffix = walkin ? ' (walk-in)' : slotType === 'FOLLOWUP' ? ' (follow-up)' : '';
+      setToast({ type: 'ok', msg: `Token #${entry.tokenNumber} assigned to ${name}${suffix}` });
       setName(''); setPhone(''); setPhoneResult({ ok: false }); setPriority(0); setNotes('');
+      setWalkin(false); setSlotType('NEW');
       document.getElementById('rec-name')?.focus();
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add patient' });
@@ -188,6 +194,10 @@ export default function ReceptionPage() {
     call(() => api(`/queue/entry/${id}/${action}`, { method: 'POST' }), action);
   const markEmergency = (id: string) =>
     call(() => api(`/queue/entry/${id}/reorder`, { method: 'POST', body: { priority: 100 } }), 'Emergency');
+  const missEntry = (id: string) =>
+    call(() => api(`/queue/entry/${id}/miss`, { method: 'POST' }), 'Mark missed');
+  const rejoinEntry = (id: string) =>
+    call(() => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }), 'Rejoin');
 
   return (
     <>
@@ -287,9 +297,32 @@ export default function ReceptionPage() {
                       onChange={(e) => setPriority(Number(e.target.value))}
                     >
                       <option value={0}>Normal priority</option>
-                      <option value={50}>VIP</option>
-                      <option value={100}>🚨 Emergency</option>
+                      <option value={100}>🚨 Emergency (goes to top)</option>
                     </select>
+                    {/* Walk-in + follow-up toggles — hidden for emergency */}
+                    {priority < 100 && (
+                      <div className="flex gap-4 py-0.5">
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none text-sm">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                            checked={walkin}
+                            onChange={(e) => setWalkin(e.target.checked)}
+                          />
+                          <span className="text-slate-700">Walk-in</span>
+                          <span className="text-[10px] text-slate-400">(inserts near current)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none text-sm">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                            checked={slotType === 'FOLLOWUP'}
+                            onChange={(e) => setSlotType(e.target.checked ? 'FOLLOWUP' : 'NEW')}
+                          />
+                          <span className="text-slate-700">Follow-up</span>
+                        </label>
+                      </div>
+                    )}
                     <textarea
                       className="input resize-none"
                       placeholder="Notes (optional)"
@@ -302,7 +335,7 @@ export default function ReceptionPage() {
                       className="btn-primary w-full"
                       disabled={busy || !selectedDoctorId || !phoneResult.ok}
                     >
-                      {busy ? 'Adding…' : '+ Add to queue'}
+                      {busy ? 'Adding…' : walkin ? '+ Walk-in (near current)' : '+ Add to queue'}
                     </button>
                   </form>
 
@@ -310,7 +343,12 @@ export default function ReceptionPage() {
                   {snapshot?.doctor && (
                     <div className="border-t border-slate-100 pt-3 space-y-2">
                       <div className="text-xs text-slate-500 flex items-center justify-between">
-                        <span>Avg {snapshot.doctor.avgConsultMinutes} min/patient</span>
+                        <span>
+                          {snapshot.movingAvgMinutes != null
+                            ? `~${Math.round(snapshot.movingAvgMinutes)} min/patient (live avg)`
+                            : `${snapshot.doctor.avgConsultMinutes} min/patient (default)`
+                          }
+                        </span>
                         {snapshot.doctor.delayMinutes > 0 && (
                           <span className="text-amber-600 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
                         )}
@@ -358,9 +396,9 @@ export default function ReceptionPage() {
                         key={e.id}
                         entry={e}
                         onComplete={() => setEntryStatus(e.id, 'complete')}
-                        onSkip={() => setEntryStatus(e.id, 'skip')}
                         onCancel={() => setEntryStatus(e.id, 'cancel')}
                         onEmergency={() => markEmergency(e.id)}
+                        onMiss={() => missEntry(e.id)}
                       />
                     ))
                   ) : (
@@ -374,6 +412,48 @@ export default function ReceptionPage() {
                 </div>
               </section>
             </div>
+
+            {/* Missed patients panel — Feature 2 */}
+            {(snapshot?.missedEntries ?? []).length > 0 && (
+              <section className="card overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-rose-100 bg-rose-50 flex items-center justify-between">
+                  <h2 className="section-title text-rose-700">
+                    Missed patients
+                    <span className="ml-1 text-sm font-normal text-rose-400">— didn&apos;t appear when called</span>
+                  </h2>
+                  <span className="pill bg-rose-100 text-rose-700 ring-rose-200">{snapshot!.missedEntries!.length}</span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {snapshot!.missedEntries!.map((e) => (
+                    <div key={e.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono font-bold text-rose-600 shrink-0">#{e.tokenNumber}</span>
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
+                            {e.patient?.name ?? '—'}
+                            {e.missedCount > 0 && (
+                              <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">
+                                Missed ×{e.missedCount}
+                              </span>
+                            )}
+                          </div>
+                          {e.patient?.phone && (
+                            <div className="text-xs text-slate-400">{e.patient.phone}</div>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => rejoinEntry(e.id)}
+                        className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 border-brand-200 hover:bg-brand-50 shrink-0"
+                      >
+                        Rejoin queue
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
 
@@ -545,15 +625,15 @@ export default function ReceptionPage() {
 function QueueRow({
   entry,
   onComplete,
-  onSkip,
   onCancel,
   onEmergency,
+  onMiss,
 }: {
   entry: QueueEntry;
   onComplete: () => void;
-  onSkip: () => void;
   onCancel: () => void;
   onEmergency: () => void;
+  onMiss: () => void;
 }) {
   const isInConsult = entry.status === 'IN_CONSULTATION';
   return (
@@ -566,8 +646,9 @@ function QueueRow({
         <div className="flex-1 min-w-0">
           <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
             {entry.patient?.name ?? '—'}
-            {entry.priority >= 100 && <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 EM</span>}
-            {entry.priority === 50 && <span className="pill bg-amber-100 text-amber-700 ring-amber-200 text-[10px]">VIP</span>}
+            {entry.priority >= 100 && <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 Emergency</span>}
+            {entry.walkin && <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">Walk-in</span>}
+            {entry.slotType === 'FOLLOWUP' && <span className="pill bg-purple-100 text-purple-700 ring-purple-200 text-[10px]">Follow-up</span>}
           </div>
           <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
             <span>{entry.patient?.phone ?? '—'}</span>
@@ -589,26 +670,31 @@ function QueueRow({
       </div>
 
       {/* Bottom row — action buttons */}
-      <div className="flex gap-1.5 mt-2.5 justify-end">
+      <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
         {isInConsult && (
-          <button type="button" onClick={onComplete} className="btn-success !px-3 !py-1.5 text-xs">
-            ✓ Done
-          </button>
+          <>
+            <button type="button" onClick={onComplete} className="btn-success !px-3 !py-1.5 text-xs">
+              ✓ Done
+            </button>
+            <button type="button" onClick={onMiss} className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200" title="Patient didn't appear when called">
+              Missed
+            </button>
+          </>
         )}
         {entry.status === 'WAITING' && (
           <>
             <button
               type="button"
               onClick={onEmergency}
-              title="Mark as emergency"
+              title="Mark as emergency — moves to top of queue"
               className="btn-danger !px-3 !py-1.5 text-xs"
             >
               🚨
             </button>
-            <button type="button" onClick={onSkip} className="btn-secondary !px-3 !py-1.5 text-xs">
-              Skip
+            <button type="button" onClick={onMiss} className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 hover:bg-rose-50 border-rose-200" title="Patient didn't appear — add to missed queue">
+              Missed
             </button>
-            <button type="button" onClick={onCancel} className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">
+            <button type="button" onClick={onCancel} className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 hover:bg-slate-50" title="Remove patient from queue">
               Cancel
             </button>
           </>

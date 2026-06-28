@@ -80,7 +80,9 @@ export type EntryStatus =
   | 'IN_CONSULTATION'
   | 'COMPLETED'
   | 'SKIPPED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'MISSED';
+export type SlotType = 'NEW' | 'FOLLOWUP';
 export type DoctorStatus = 'AVAILABLE' | 'BUSY' | 'PAUSED' | 'AWAY';
 
 export interface Department {
@@ -102,6 +104,13 @@ export interface Doctor {
   avgConsultMinutes: number;
   delayMinutes: number;
   status: DoctorStatus;
+  // Break handling (Feature 4)
+  breakUntil?: string | null;
+  breakNote?: string | null;
+  // Follow-up slots / insertion gaps (Features 1, 2, 6)
+  followUpEvery?: number;
+  walkinGap?: number;
+  missedGap?: number;
 }
 export interface QueueEntry {
   id: string;
@@ -117,13 +126,32 @@ export interface QueueEntry {
   calledAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  // Sort position for walk-ins / rejoins (Feature 1 & 2)
+  sortOrder?: number | null;
+  // Slot type: NEW or FOLLOWUP (Feature 6)
+  slotType?: SlotType;
+  // ETA enrichment fields (Features 3, 5)
   peopleAhead?: number;
   etaMinutes?: number;
+  etaAbsolute?: string;
+  movingAvgMinutes?: number;
 }
+export interface MissedEntry {
+  id: string;
+  tokenNumber: number;
+  patient: { id: string; name: string; phone?: string | null } | null;
+  completedAt: string | null;
+  missedCount: number;
+}
+
 export interface Snapshot {
   doctor: Doctor;
   entries: QueueEntry[];
   currentToken: number | null;
+  /** Today's MISSED entries for the receptionist missed-patients panel. Feature 2. */
+  missedEntries?: MissedEntry[];
+  /** Moving average minutes/patient used for ETA. null = no history yet. Feature 3. */
+  movingAvgMinutes?: number | null;
 }
 
 /**
@@ -133,7 +161,8 @@ export interface Snapshot {
 export interface HistoryEntry {
   id: string;
   tokenNumber: number;
-  status: 'COMPLETED' | 'SKIPPED' | 'CANCELLED';
+  status: 'COMPLETED' | 'SKIPPED' | 'CANCELLED' | 'MISSED';
+  slotType?: SlotType;
   serviceDay: string;
   priority: number;
   notes: string | null;

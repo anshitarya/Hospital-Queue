@@ -10,7 +10,7 @@ import {
 
 import { Role } from '@prisma/client';
 import { QueueService } from './queue.service';
-import { JoinQueueDto, PatientJoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
+import { JoinQueueDto, PatientJoinQueueDto, ReorderEntryDto, StartBreakDto } from './dto/queue.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
@@ -74,6 +74,20 @@ export class QueueController {
     return this.queue.cancel(id, user.id);
   }
 
+  /** Mark a called patient as missed (they didn't appear). Feature 2. */
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
+  @Post('entry/:id/miss')
+  miss(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.queue.markMissed(id, user.id);
+  }
+
+  /** Rejoin a previously-missed patient near the current position. Feature 2. */
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Post('entry/:id/rejoin')
+  rejoin(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.queue.rejoinQueue(id, user.id);
+  }
+
   @Roles(Role.RECEPTIONIST, Role.ADMIN)
   @Post('entry/:id/reorder')
   reorder(
@@ -97,18 +111,19 @@ export class QueueController {
   }
 
   /**
-   * GET /api/queue/history
-   *
-   * Returns completed / skipped / cancelled entries for a given service day.
-   *
-   * Query params:
-   *   date     - YYYY-MM-DD (optional, defaults to today)
-   *   doctorId - optional filter; required for ADMIN, ignored for DOCTOR role
-   *
-   * DOCTOR      → always sees only their own queue.
-   * RECEPTIONIST → sees all doctors in their clinic; may filter by doctorId.
-   * ADMIN        → must supply doctorId.
+   * Start a doctor break with an estimated return time. Feature 4.
+   * Body: { estimatedMinutes: number, note?: string }
    */
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
+  @Post('doctor/:doctorId/break')
+  startBreak(
+    @Param('doctorId') doctorId: string,
+    @Body() dto: StartBreakDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.queue.startBreak(doctorId, dto.estimatedMinutes, dto.note, user.id);
+  }
+
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
   @Get('history')
   getHistory(

@@ -8,7 +8,7 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
-import { DoctorStatus, EntryStatus, Prisma, Role } from '@prisma/client';
+import { DoctorStatus, EntryStatus, Prisma, Role, SlotType } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EtaService, EnrichedEntry } from './eta.service';
@@ -16,9 +16,15 @@ import { JoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
 import { QueueGateway } from './gateway/queue.gateway';
 
 function todayKey(): string {
-  // YYYY-MM-DD in UTC. Replace with clinic timezone if multi-region later.
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  // Use local timezone so the day resets at local midnight, not UTC midnight.
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** Sort key for a queue entry: explicit sortOrder takes priority, then tokenNumber. */
+function effectivePosition(e: { sortOrder: number | null; tokenNumber: number }): number {
+  return e.sortOrder ?? e.tokenNumber;
 }
 
 @Injectable()
@@ -39,17 +45,19 @@ export class QueueService {
     doctor: Awaited<ReturnType<PrismaService['doctor']['findUnique']>>;
     entries: EnrichedEntry[];
     currentToken: number | null;
+    missedEntries: Array<{ id: string; tokenNumber: number; patient: { id: string; name: string; phone?: string | null } | null; completedAt: string | null; missedCount: number }>;
+    movingAvgMinutes: number | null;
   }> {
     const doctor = await this.prisma.doctor.findUnique({
       where: { id: doctorId },
-      // Include clinic so patient & doctor dashboards can show
-      // "{Clinic name} → {Doctor name}" without an extra fetch.
       include: { user: true, department: true, clinic: true },
     });
     if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
 
     const serviceDay = todayKey();
-    const entries = await this.prisma.queueEntry.findMany({
+
+    // Fetch WAITING + IN_CONSULTATION — these are the live queue entries.
+    const rawEntries = await this.prisma.queueEntry.findMany({
       where: {
         doctorId,
         serviceDay,
@@ -59,11 +67,42 @@ export class QueueService {
       orderBy: { tokenNumber: 'asc' },
     });
 
-    const enriched = this.eta.enrich(doctor, entries);
+    // Sort in-memory by effective position so walk-ins slot in correctly. Feature 1.
+    const entries = [...rawEntries].sort(
+      (a, b) => effectivePosition(a) - effectivePosition(b),
+    );
+
+    // Fetch today's MISSED entries for the receptionist panel. Feature 2.
+    const missedRaw = await this.prisma.queueEntry.findMany({
+      where: { doctorId, serviceDay, status: EntryStatus.MISSED },
+      include: { patient: { select: { id: true, name: true, phone: true } } },
+      orderBy: { completedAt: 'desc' },
+    });
+    const missedEntries = missedRaw.map((e) => ({
+      id: e.id,
+      tokenNumber: e.tokenNumber,
+      patient: e.patient,
+      completedAt: e.completedAt?.toISOString() ?? null,
+      missedCount: e.missedCount,
+    }));
+
+    // Moving average for ETA. Feature 3.
+    const movingAvgMinutes = await this.eta.getMovingAvg(doctorId);
+
+    // Compute remaining break time. Feature 4.
+    const breakRemainingMinutes = doctor.breakUntil
+      ? Math.max(0, (doctor.breakUntil.getTime() - Date.now()) / 60_000)
+      : 0;
+
+    const enriched = this.eta.enrich(doctor, entries, {
+      movingAvgMinutes,
+      breakRemainingMinutes,
+    });
+
     const current =
       entries.find((e) => e.status === EntryStatus.IN_CONSULTATION)?.tokenNumber ?? null;
 
-    return { doctor, entries: enriched, currentToken: current };
+    return { doctor, entries: enriched, currentToken: current, missedEntries, movingAvgMinutes };
   }
 
   async getEntry(entryId: string) {
@@ -78,10 +117,6 @@ export class QueueService {
     return entry;
   }
 
-  /**
-   * Returns the same payload the patient screen renders — denormalized + ETA.
-   * Used by the patient app on initial load.
-   */
   async getPatientView(entryId: string) {
     const entry = await this.getEntry(entryId);
     const snap = await this.snapshot(entry.doctorId);
@@ -90,24 +125,51 @@ export class QueueService {
       entry: enrichedSelf ?? entry,
       currentToken: snap.currentToken,
       doctor: snap.doctor,
+      movingAvgMinutes: snap.movingAvgMinutes,
     };
   }
 
   // ---------- write paths ----------
 
   async joinByReception(dto: JoinQueueDto, createdById?: string) {
-    // Idempotency: replay-safe via Redis-cached entry id for the key.
     if (dto.idempotencyKey) {
       const cached = await this.redis.client.get(`idem:${dto.idempotencyKey}`);
       if (cached) return this.getEntry(cached);
     }
 
-    // Upsert patient by phone. Reception's most common case is a returning patient.
     const patient = await this.prisma.user.upsert({
       where: { phone: dto.patientPhone },
       update: { name: dto.patientName },
       create: { role: Role.PATIENT, name: dto.patientName, phone: dto.patientPhone },
     });
+
+    const serviceDay = todayKey();
+
+    // If the patient is in the MISSED panel, auto-rejoin instead of creating a duplicate.
+    const missedEntry = await this.prisma.queueEntry.findFirst({
+      where: { patientId: patient.id, doctorId: dto.doctorId, serviceDay, status: EntryStatus.MISSED },
+    });
+    if (missedEntry) {
+      const rejoined = await this.rejoinQueue(missedEntry.id, createdById);
+      if (dto.idempotencyKey) {
+        await this.redis.client.set(`idem:${dto.idempotencyKey}`, rejoined.id, 'EX', 600);
+      }
+      await this.broadcast(dto.doctorId, 'patient_joined', { entryId: rejoined.id });
+      return rejoined;
+    }
+
+    // Reject if patient already has an active entry for this doctor today.
+    const activeEntry = await this.prisma.queueEntry.findFirst({
+      where: {
+        patientId: patient.id,
+        doctorId: dto.doctorId,
+        serviceDay,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+      },
+    });
+    if (activeEntry) {
+      throw new ConflictException('Patient is already in the queue for this doctor today');
+    }
 
     const entry = await this.createEntry({
       doctorId: dto.doctorId,
@@ -115,6 +177,8 @@ export class QueueService {
       createdById,
       priority: dto.priority ?? 0,
       notes: dto.notes,
+      walkin: dto.walkin ?? false,
+      slotType: dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
     });
 
     if (dto.idempotencyKey) {
@@ -122,9 +186,6 @@ export class QueueService {
     }
 
     await this.broadcast(dto.doctorId, 'patient_joined', { entryId: entry.id });
-    // Patient's own private room — wakes their dashboard up the instant they
-    // are checked in, no matter which doctor it was. They might not have any
-    // doctor's room joined yet.
     this.gateway.emitToPatientRoom(patient.id, 'patient:queue:updated', {
       eventType: 'joined',
       entryId: entry.id,
@@ -139,6 +200,8 @@ export class QueueService {
       patientId,
       priority: 0,
       notes,
+      walkin: false,
+      slotType: SlotType.NEW,
     });
     await this.broadcast(doctorId, 'patient_joined', { entryId: entry.id });
     this.gateway.emitToPatientRoom(patientId, 'patient:queue:updated', {
@@ -151,7 +214,9 @@ export class QueueService {
 
   /**
    * Allocates the next token number atomically.
-   * Uses a SERIALIZABLE transaction so two concurrent joins can't claim the same number.
+   * Walk-ins get a fractional sortOrder computed between two adjacent queue
+   * positions so they slot in near current_position + walkinGap without
+   * disturbing anyone else's token number. Feature 1.
    */
   private async createEntry(input: {
     doctorId: string;
@@ -159,6 +224,11 @@ export class QueueService {
     createdById?: string;
     priority: number;
     notes?: string;
+    walkin: boolean;
+    slotType: SlotType;
+    // Pass an explicit sortOrder when rejoining a missed patient. Feature 2.
+    sortOrder?: number;
+    missedCount?: number;
   }) {
     const serviceDay = todayKey();
     return this.prisma.$transaction(
@@ -170,6 +240,104 @@ export class QueueService {
         });
         const tokenNumber = (last?.tokenNumber ?? 0) + 1;
 
+        let sortOrder: number | null = null;
+
+        if (input.sortOrder !== undefined) {
+          // Explicit sortOrder provided (e.g. rejoin). Use it.
+          sortOrder = input.sortOrder;
+        } else if (input.priority >= 100) {
+          // Emergency: jump to the very front of the waiting queue.
+          const allWaiting = await tx.queueEntry.findMany({
+            where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.WAITING },
+            select: { sortOrder: true, tokenNumber: true },
+          });
+          if (allWaiting.length > 0) {
+            const minPos = Math.min(...allWaiting.map((e) => effectivePosition(e)));
+            sortOrder = minPos - 1;
+          }
+        } else if (input.walkin || input.slotType === SlotType.FOLLOWUP) {
+          // All special entries (walk-in, follow-up, combined) share one chain so they
+          // interleave consistently. The gap per new entry type:
+          //   follow-up only  → skip 2 normals between specials (chainGap = followUpEvery||2)
+          //   walk-in only    → skip 4 normals between specials (chainGap = walkinGap)
+          //   walk-in+follow-up → skip 3 normals between specials (chainGap = 3)
+          const isWalkin   = input.walkin === true;
+          const isFU       = input.slotType === SlotType.FOLLOWUP;
+          const isCombined = isWalkin && isFU;
+          const isFUOnly   = isFU && !isWalkin;
+
+          const doctor = await tx.doctor.findUnique({
+            where: { id: input.doctorId },
+            select: { walkinGap: true, followUpEvery: true },
+          });
+          const walkinGap  = doctor?.walkinGap ?? 4;
+          const followUpGap = (doctor?.followUpEvery && doctor.followUpEvery > 0) ? doctor.followUpEvery : 2;
+
+          const chainGap = isCombined ? 3 : isFUOnly ? followUpGap : walkinGap;
+
+          // Shared anchor: last special entry (any walkin/followup), excluding emergencies.
+          const lastSpecial = await tx.queueEntry.findFirst({
+            where: {
+              doctorId: input.doctorId,
+              serviceDay,
+              status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+              sortOrder: { not: null },
+              priority: { lt: 100 },
+            },
+            orderBy: { sortOrder: 'desc' },
+            select: { sortOrder: true, tokenNumber: true },
+          });
+
+          let basePos: number;
+          if (lastSpecial) {
+            basePos = effectivePosition(lastSpecial) + chainGap;
+          } else if (isFUOnly) {
+            // First follow-up, no prior special: anchor off the first waiting patient.
+            const firstWaiting = await tx.queueEntry.findFirst({
+              where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.WAITING },
+              orderBy: { tokenNumber: 'asc' },
+              select: { tokenNumber: true },
+            });
+            basePos = (firstWaiting?.tokenNumber ?? 0) + followUpGap;
+          } else {
+            // First walk-in or combined: anchor off the currently-serving patient.
+            const serving = await tx.queueEntry.findFirst({
+              where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.IN_CONSULTATION },
+              select: { sortOrder: true, tokenNumber: true },
+            });
+            const currentPos = serving
+              ? effectivePosition(serving)
+              : await tx.queueEntry
+                  .findFirst({
+                    where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.COMPLETED },
+                    orderBy: { completedAt: 'desc' },
+                    select: { tokenNumber: true },
+                  })
+                  .then((e) => e?.tokenNumber ?? 0);
+            basePos = currentPos + walkinGap;
+          }
+
+          // Slot the new entry between its two nearest neighbours.
+          const allActive = await tx.queueEntry.findMany({
+            where: {
+              doctorId: input.doctorId,
+              serviceDay,
+              status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+            },
+            select: { sortOrder: true, tokenNumber: true },
+          });
+          const positions = allActive
+            .map((e) => effectivePosition(e))
+            .sort((a, b) => a - b);
+
+          const before = positions.filter((p) => p < basePos).pop();
+          const after = positions.find((p) => p >= basePos);
+
+          sortOrder = before !== undefined && after !== undefined
+            ? (before + after) / 2
+            : basePos;
+        }
+
         return tx.queueEntry.create({
           data: {
             doctorId: input.doctorId,
@@ -180,6 +348,10 @@ export class QueueService {
             priority: input.priority,
             notes: input.notes,
             status: EntryStatus.WAITING,
+            walkin: input.walkin ?? false,
+            slotType: input.slotType,
+            sortOrder,
+            missedCount: input.missedCount ?? 0,
           },
           include: { patient: true },
         });
@@ -189,12 +361,6 @@ export class QueueService {
   }
 
   // ---------- transitions ----------
-  //
-  // All transitions go through `transition()` which:
-  //   - checks the current status (state machine guard)
-  //   - bumps `version` (optimistic lock for clients that pass expectedVersion)
-  //   - writes an audit row to QueueEvent
-  //   - broadcasts the new snapshot to subscribers
 
   async callNext(doctorId: string, byUserId?: string) {
     const { entries } = await this.snapshot(doctorId);
@@ -206,14 +372,43 @@ export class QueueService {
       );
     }
 
-    const waiting = entries
-      .filter((e) => e.status === EntryStatus.WAITING)
-      .sort((a, b) => {
-        if (b.priority !== a.priority) return b.priority - a.priority;
-        return a.joinedAt.getTime() - b.joinedAt.getTime();
-      });
-    const next = waiting[0];
-    if (!next) throw new NotFoundException('No patients waiting');
+    // Entries are already sorted by effective position from snapshot(). Feature 1.
+    const waiting = entries.filter((e) => e.status === EntryStatus.WAITING);
+    if (!waiting.length) throw new NotFoundException('No patients waiting');
+
+    // Follow-up slot selection. Feature 6.
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      select: { followUpEvery: true },
+    });
+    const serviceDay = todayKey();
+    const servedToday = await this.prisma.queueEntry.count({
+      where: { doctorId, serviceDay, status: EntryStatus.COMPLETED },
+    });
+
+    let next: (typeof waiting)[0];
+
+    // Emergency patients (priority >= 100) always go first regardless of slot rules.
+    const emergency = waiting
+      .filter((e) => e.priority >= 100)
+      .sort((a, b) => effectivePosition(a) - effectivePosition(b))[0];
+
+    if (emergency) {
+      next = emergency;
+    } else {
+      const followUpEvery = doctor?.followUpEvery ?? 0;
+      if (followUpEvery > 0 && (servedToday + 1) % followUpEvery === 0) {
+        // This slot should be a follow-up. Prefer first FOLLOWUP patient; fall back to anyone.
+        next =
+          waiting.find((e) => e.slotType === SlotType.FOLLOWUP) ??
+          waiting[0];
+      } else {
+        // Normal slot. Prefer NEW patients; fall back to follow-up if no new patients.
+        next =
+          waiting.find((e) => e.slotType === SlotType.NEW) ??
+          waiting[0];
+      }
+    }
 
     return this.transition(next.id, EntryStatus.IN_CONSULTATION, byUserId, {
       calledAt: new Date(),
@@ -235,6 +430,106 @@ export class QueueService {
     return this.transition(entryId, EntryStatus.CANCELLED, byUserId, { completedAt: new Date() });
   }
 
+  /** Mark a patient as missed (called but didn't appear). Feature 2. */
+  async markMissed(entryId: string, byUserId?: string) {
+    // Increment missedCount before transitioning so the MISSED record carries the count.
+    await this.prisma.queueEntry.update({
+      where: { id: entryId },
+      data: { missedCount: { increment: 1 } },
+    });
+    return this.transition(entryId, EntryStatus.MISSED, byUserId, { completedAt: new Date() });
+  }
+
+  /**
+   * Re-insert a previously-missed patient near the current position + missedGap.
+   * Creates a brand-new entry so the original MISSED record stays for audit. Feature 2.
+   */
+  async rejoinQueue(missedEntryId: string, byUserId?: string) {
+    const missed = await this.prisma.queueEntry.findUnique({
+      where: { id: missedEntryId },
+      include: { doctor: { select: { id: true, missedGap: true } } },
+    });
+    if (!missed) throw new NotFoundException('Entry not found');
+    if (missed.status !== EntryStatus.MISSED) {
+      throw new BadRequestException('Only MISSED entries can rejoin');
+    }
+
+    const serviceDay = todayKey();
+    const gap = missed.doctor.missedGap ?? 4;
+
+    const allActive = await this.prisma.queueEntry.findMany({
+      where: {
+        doctorId: missed.doctorId,
+        serviceDay,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+      },
+      select: { sortOrder: true, tokenNumber: true },
+    });
+    // All active positions sorted — includes IN_CONSULTATION so the count is from the
+    // very top of the queue (not just from the top of WAITING).
+    const positions = allActive.map((e) => effectivePosition(e)).sort((a, b) => a - b);
+
+    // Chain only off other missed-rejoin entries (missedCount > 0).
+    // Walk-ins have sortOrder set too but can be very high — using them as an anchor
+    // pushes the rejoin to the end of the queue.
+    const lastMissedInQueue = await this.prisma.queueEntry.findFirst({
+      where: {
+        doctorId: missed.doctorId,
+        serviceDay,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        sortOrder: { not: null },
+        missedCount: { gt: 0 },
+      },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+
+    // First rejoin: positions[gap-1] is the gap-th patient counting from the absolute
+    // top of the queue (IN_CONSULTATION + WAITING). Inserting before it places the
+    // rejoin at exactly position gap overall.
+    // Subsequent rejoins: chain off the last rejoin anchor + gap-1.
+    let basePos: number;
+    if (lastMissedInQueue) {
+      basePos = lastMissedInQueue.sortOrder! + (gap - 1);
+    } else if (positions.length >= gap) {
+      basePos = positions[gap - 1];
+    } else {
+      basePos = positions.length > 0 ? positions[positions.length - 1] + 1 : gap;
+    }
+
+    const before = positions.filter((p) => p < basePos).pop();
+    const after = positions.find((p) => p >= basePos);
+    const sortOrder = before !== undefined && after !== undefined
+      ? (before + after) / 2
+      : basePos;
+
+    const entry = await this.createEntry({
+      doctorId: missed.doctorId,
+      patientId: missed.patientId,
+      createdById: byUserId,
+      priority: missed.priority,
+      notes: missed.notes ?? undefined,
+      walkin: false,
+      slotType: missed.slotType,
+      sortOrder,
+      missedCount: missed.missedCount,
+    });
+
+    // Remove the old MISSED entry from the panel by marking it CANCELLED.
+    await this.prisma.queueEntry.update({
+      where: { id: missedEntryId },
+      data: { status: EntryStatus.CANCELLED, completedAt: new Date() },
+    });
+
+    await this.broadcast(missed.doctorId, 'patient_rejoined', { entryId: entry.id, missedEntryId });
+    this.gateway.emitToPatientRoom(missed.patientId, 'patient:queue:updated', {
+      eventType: 'rejoined',
+      entryId: entry.id,
+      doctorId: missed.doctorId,
+    });
+    return entry;
+  }
+
   async reorder(entryId: string, dto: ReorderEntryDto, byUserId?: string) {
     const entry = await this.prisma.queueEntry.findUnique({ where: { id: entryId } });
     if (!entry) throw new NotFoundException('Entry not found');
@@ -242,9 +537,32 @@ export class QueueService {
       throw new BadRequestException('Can only reorder waiting entries');
     }
 
+    // If marking as emergency, also move to the front of the waiting queue visually.
+    let emergencySortOrder: number | undefined;
+    if (dto.priority >= 100) {
+      const serviceDay = todayKey();
+      const allWaiting = await this.prisma.queueEntry.findMany({
+        where: {
+          doctorId: entry.doctorId,
+          serviceDay,
+          status: EntryStatus.WAITING,
+          NOT: { id: entryId },
+        },
+        select: { sortOrder: true, tokenNumber: true },
+      });
+      if (allWaiting.length > 0) {
+        const minPos = Math.min(...allWaiting.map((e) => effectivePosition(e)));
+        emergencySortOrder = minPos - 1;
+      }
+    }
+
     const updated = await this.prisma.queueEntry.update({
       where: { id: entryId },
-      data: { priority: dto.priority, version: { increment: 1 } },
+      data: {
+        priority: dto.priority,
+        ...(emergencySortOrder !== undefined ? { sortOrder: emergencySortOrder } : {}),
+        version: { increment: 1 },
+      },
     });
 
     await this.prisma.queueEvent.create({
@@ -281,7 +599,8 @@ export class QueueService {
   async resumeDoctor(doctorId: string, byUserId?: string) {
     await this.prisma.doctor.update({
       where: { id: doctorId },
-      data: { status: DoctorStatus.AVAILABLE },
+      // Also clear break fields when resuming. Feature 4.
+      data: { status: DoctorStatus.AVAILABLE, breakUntil: null, breakNote: null },
     });
     await this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_resumed', payload: { byUserId } },
@@ -289,28 +608,34 @@ export class QueueService {
     await this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.AVAILABLE });
   }
 
+  /**
+   * Start a doctor break with an estimated return time. Feature 4.
+   * Sets status to PAUSED and records breakUntil / breakNote so ETA
+   * calculations can add the remaining break time for all patients.
+   */
+  async startBreak(doctorId: string, estimatedMinutes: number, note?: string, byUserId?: string) {
+    const breakUntil = new Date(Date.now() + estimatedMinutes * 60_000);
+    await this.prisma.doctor.update({
+      where: { id: doctorId },
+      data: { status: DoctorStatus.PAUSED, breakUntil, breakNote: note ?? null },
+    });
+    await this.prisma.queueEvent.create({
+      data: {
+        doctorId,
+        type: 'doctor_break',
+        payload: { byUserId, estimatedMinutes, breakUntil: breakUntil.toISOString() },
+      },
+    });
+    await this.broadcast(doctorId, 'doctor_break', {
+      status: DoctorStatus.PAUSED,
+      breakUntil: breakUntil.toISOString(),
+      breakNote: note ?? null,
+    });
+  }
+
   // ---------- history ----------
 
-  /**
-   * Returns completed/skipped/cancelled queue entries for a given service day.
-   *
-   * Access rules:
-   *   DOCTOR      → always sees only their own queue (doctorId param ignored).
-   *   RECEPTIONIST → sees all doctors in their clinic; may filter by doctorId.
-   *   ADMIN        → may pass any doctorId explicitly.
-   *
-   * @param role      - caller's role
-   * @param userId    - caller's user-table id
-   * @param date      - service day in YYYY-MM-DD format (defaults to today)
-   * @param doctorId  - optional filter (RECEPTIONIST / ADMIN only)
-   */
-  async getHistory(
-    role: Role,
-    userId: string,
-    date?: string,
-    filterDoctorId?: string,
-  ) {
-    // Validate / default the date
+  async getHistory(role: Role, userId: string, date?: string, filterDoctorId?: string) {
     const serviceDay = date ?? todayKey();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDay)) {
       throw new BadRequestException('date must be YYYY-MM-DD');
@@ -320,23 +645,20 @@ export class QueueService {
       EntryStatus.COMPLETED,
       EntryStatus.SKIPPED,
       EntryStatus.CANCELLED,
+      EntryStatus.MISSED,
     ];
 
-    // Build the list of doctor IDs we're allowed to query
     let doctorIds: string[];
 
     if (role === Role.DOCTOR) {
-      // Doctors can only see their own queue history
       const doctor = await this.prisma.doctor.findUnique({ where: { userId } });
       if (!doctor) throw new NotFoundException('Doctor profile not found');
       doctorIds = [doctor.id];
     } else if (role === Role.RECEPTIONIST) {
-      // Receptionist sees all doctors in their clinic
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (!user?.clinicId) throw new ForbiddenException('Receptionist has no clinic assigned');
 
       if (filterDoctorId) {
-        // Validate the requested doctor belongs to this clinic
         const doc = await this.prisma.doctor.findFirst({
           where: { id: filterDoctorId, clinicId: user.clinicId },
         });
@@ -350,7 +672,6 @@ export class QueueService {
         doctorIds = docs.map((d) => d.id);
       }
     } else {
-      // ADMIN — must supply a doctorId explicitly
       if (!filterDoctorId) throw new BadRequestException('Admins must supply doctorId');
       doctorIds = [filterDoctorId];
     }
@@ -374,21 +695,17 @@ export class QueueService {
       orderBy: [{ doctorId: 'asc' }, { tokenNumber: 'asc' }],
     });
 
-    // Compute derived durations on the server so the frontend is dumb-simple
     return raw.map((e) => {
       const waitMs =
-        e.calledAt && e.joinedAt
-          ? e.calledAt.getTime() - e.joinedAt.getTime()
-          : null;
+        e.calledAt && e.joinedAt ? e.calledAt.getTime() - e.joinedAt.getTime() : null;
       const consultMs =
-        e.completedAt && e.calledAt
-          ? e.completedAt.getTime() - e.calledAt.getTime()
-          : null;
+        e.completedAt && e.calledAt ? e.completedAt.getTime() - e.calledAt.getTime() : null;
 
       return {
         id: e.id,
         tokenNumber: e.tokenNumber,
         status: e.status,
+        slotType: e.slotType,
         serviceDay: e.serviceDay,
         priority: e.priority,
         notes: e.notes,
@@ -396,7 +713,6 @@ export class QueueService {
         calledAt: e.calledAt,
         startedAt: e.startedAt,
         completedAt: e.completedAt,
-        // Minutes rounded to nearest integer; null when timestamps are missing
         waitMinutes: waitMs !== null ? Math.round(waitMs / 60_000) : null,
         consultMinutes: consultMs !== null ? Math.round(consultMs / 60_000) : null,
         patient: e.patient,
@@ -422,11 +738,12 @@ export class QueueService {
     if (!entry) throw new NotFoundException('Entry not found');
 
     const allowed: Record<EntryStatus, EntryStatus[]> = {
-      WAITING: [EntryStatus.IN_CONSULTATION, EntryStatus.SKIPPED, EntryStatus.CANCELLED],
-      IN_CONSULTATION: [EntryStatus.COMPLETED, EntryStatus.SKIPPED],
+      WAITING: [EntryStatus.IN_CONSULTATION, EntryStatus.SKIPPED, EntryStatus.CANCELLED, EntryStatus.MISSED],
+      IN_CONSULTATION: [EntryStatus.COMPLETED, EntryStatus.SKIPPED, EntryStatus.MISSED],
       COMPLETED: [],
       SKIPPED: [],
       CANCELLED: [],
+      MISSED: [],
     };
     if (!allowed[entry.status].includes(next)) {
       throw new ConflictException(`Cannot transition ${entry.status} -> ${next}`);
@@ -453,9 +770,6 @@ export class QueueService {
       to: next,
     });
 
-    // Always notify the affected patient too — they might be on /patient
-    // without subscribing to this doctor (e.g., before their entry was visible
-    // to them, or if they only watch their own private stream).
     this.gateway.emitToPatientRoom(updated.patientId, 'patient:queue:updated', {
       eventType: `entry_${next.toLowerCase()}`,
       entryId,

@@ -39,6 +39,7 @@ function StatusBadge({ status }: { status: HistoryEntry['status'] }) {
     COMPLETED: { label: 'Done',      cls: 'bg-emerald-100 text-emerald-700 ring-emerald-200' },
     SKIPPED:   { label: 'Skipped',   cls: 'bg-amber-100   text-amber-700   ring-amber-200'   },
     CANCELLED: { label: 'Cancelled', cls: 'bg-rose-100    text-rose-700    ring-rose-200'    },
+    MISSED:    { label: 'Missed',    cls: 'bg-rose-100    text-rose-600    ring-rose-200'    },
   };
   const { label, cls } = map[status] ?? { label: status, cls: 'bg-slate-100 text-slate-600 ring-slate-200' };
   return (

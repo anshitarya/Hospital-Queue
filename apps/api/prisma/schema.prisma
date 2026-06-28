@@ -27,6 +27,12 @@ enum EntryStatus {
   COMPLETED
   SKIPPED
   CANCELLED
+  MISSED
+}
+
+enum SlotType {
+  NEW
+  FOLLOWUP
 }
 
 // A clinic groups receptionists, doctors, and their queues.
@@ -38,49 +44,49 @@ model Clinic {
   createdAt DateTime @default(now())
 
   inviteCodes InviteCode[]
-  users       User[]       // receptionists of this clinic
+  users       User[] // receptionists of this clinic
   doctors     Doctor[]
 }
 
 // One-use, time-limited code that lets a receptionist self-register.
 // Admin generates these; sharing them is done out-of-band (WhatsApp, email, etc.).
 model InviteCode {
-  id        String    @id @default(cuid())
-  code      String    @unique
+  id        String   @id @default(cuid())
+  code      String   @unique
   clinicId  String
-  clinic    Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  usedById  String?   @unique
-  usedBy    User?     @relation("InviteUsedBy", fields: [usedById], references: [id])
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  usedById  String?  @unique
+  usedBy    User?    @relation("InviteUsedBy", fields: [usedById], references: [id])
   expiresAt DateTime
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([clinicId])
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String  @id @default(cuid())
   role         Role
   name         String
-  phone        String?  @unique
-  email        String?  @unique
+  phone        String? @unique
+  email        String? @unique
   passwordHash String?
 
   // Verification flags. Phone is implicitly verified at signup (OTP for
   // patients, invite-code for staff). Email is always set to false on
   // change and only flipped true once the user confirms an emailed OTP.
-  emailVerified Boolean  @default(false)
-  phoneVerified Boolean  @default(true)
+  emailVerified Boolean @default(false)
+  phoneVerified Boolean @default(true)
 
   // Pending (unverified) email — the address the user *wants* to change to
   // but hasn't confirmed yet. Used by the verify flow. Null when no change
   // is in flight.
-  pendingEmail  String?
+  pendingEmail String?
 
   // Populated for RECEPTIONIST role — which clinic they belong to.
-  clinicId     String?
-  clinic       Clinic?  @relation(fields: [clinicId], references: [id])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  clinicId  String?
+  clinic    Clinic?  @relation(fields: [clinicId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   doctorProfile  Doctor?
   patientEntries QueueEntry[] @relation("PatientEntries")
@@ -111,6 +117,14 @@ model Doctor {
   avgConsultMinutes Int          @default(7)
   status            DoctorStatus @default(AVAILABLE)
   delayMinutes      Int          @default(0)
+  // Break handling (Feature 4)
+  breakUntil        DateTime?
+  breakNote         String?
+  // Follow-up slots: every Nth slot reserved for FOLLOWUP patients; 0 = disabled (Feature 6)
+  followUpEvery     Int          @default(0)
+  // Insertion gaps (Features 1 & 2)
+  walkinGap         Int          @default(4)
+  missedGap         Int          @default(4)
   entries           QueueEntry[]
   updatedAt         DateTime     @updatedAt
 
@@ -133,6 +147,13 @@ model QueueEntry {
   priority    Int         @default(0)
   notes       String?
   version     Int         @default(0)
+  // Walk-in / rejoin sort position (null = sort by tokenNumber). Feature 1 & 2.
+  sortOrder   Float?
+  // Whether this entry was added as a walk-in (no prior appointment).
+  walkin      Boolean     @default(false)
+  missedCount Int         @default(0)
+  // NEW vs FOLLOWUP slot reservation. Feature 6.
+  slotType    SlotType    @default(NEW)
   joinedAt    DateTime    @default(now())
   calledAt    DateTime?
   startedAt   DateTime?

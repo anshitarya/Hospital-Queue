@@ -32,6 +32,11 @@ export default function DoctorPage() {
 
   const [tab, setTab] = useTabState<'queue' | 'staff' | 'history'>('queue', ['queue', 'staff', 'history']);
 
+  // Break form state (Feature 4)
+  const [showBreakForm, setShowBreakForm] = useState(false);
+  const [breakMinutes, setBreakMinutes] = useState(15);
+  const [breakNote, setBreakNote] = useState('');
+
   const [recList, setRecList] = useState<ReceptionistRow[]>([]);
   const [recName, setRecName] = useState('');
   const [recEmail, setRecEmail] = useState('');
@@ -120,15 +125,27 @@ export default function DoctorPage() {
     call(() => api(`/queue/doctor/${doctorId}/call-next`, { method: 'POST' }), 'Call next');
   const completeEntry = (id: string) =>
     call(() => api(`/queue/entry/${id}/complete`, { method: 'POST' }), 'Complete');
-  const skipEntry = (id: string) =>
-    call(() => api(`/queue/entry/${id}/skip`, { method: 'POST' }), 'Skip');
+  const cancelEntry = (id: string) =>
+    call(() => api(`/queue/entry/${id}/cancel`, { method: 'POST' }), 'Cancel');
+  const missEntry = (id: string) =>
+    call(() => api(`/queue/entry/${id}/miss`, { method: 'POST' }), 'Mark missed');
   const doctorAction = (action: 'pause' | 'resume') =>
     call(() => api(`/queue/doctor/${doctorId}/${action}`, { method: 'POST' }), action);
+  const startBreak = async () => {
+    await call(
+      () => api(`/queue/doctor/${doctorId}/break`, { method: 'POST', body: { estimatedMinutes: breakMinutes, note: breakNote || undefined } }),
+      'Start break',
+    );
+    setShowBreakForm(false);
+    setBreakNote('');
+  };
 
   const current = snapshot?.entries.find((e) => e.status === 'IN_CONSULTATION');
   const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
   const nextUp = waiting[0];
   const isPaused = snapshot?.doctor?.status === 'PAUSED';
+  const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
+  const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
 
   return (
     <>
@@ -177,15 +194,24 @@ export default function DoctorPage() {
         {/* ── Queue tab ── */}
         {tab === 'queue' && (
           <>
-            {/* Pause banner */}
+            {/* Break / pause banner */}
             {isPaused && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-amber-800 font-medium text-sm">
-                  <span>⏸</span> Queue is paused — new patients are on hold
+              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-amber-800 font-medium text-sm">
+                    <span>{breakActive ? '☕' : '⏸'}</span>
+                    {breakActive
+                      ? `On break — returning at ~${breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                      : 'Queue is paused — new patients are on hold'
+                    }
+                  </div>
+                  <button type="button" onClick={() => doctorAction('resume')} className="btn-secondary !py-1 !px-3 text-xs shrink-0">
+                    Resume
+                  </button>
                 </div>
-                <button type="button" onClick={() => doctorAction('resume')} className="btn-secondary !py-1 !px-3 text-xs shrink-0">
-                  Resume
-                </button>
+                {snapshot?.doctor?.breakNote && (
+                  <div className="text-xs text-amber-700 pl-6">{snapshot.doctor.breakNote}</div>
+                )}
               </div>
             )}
 
@@ -201,13 +227,50 @@ export default function DoctorPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {!isPaused && (
-                    <button type="button" onClick={() => doctorAction('pause')} className="btn-ghost !py-1 !px-2.5 text-xs text-slate-500">
-                      Pause
+                    <button
+                      type="button"
+                      onClick={() => setShowBreakForm((v) => !v)}
+                      className="btn-ghost !py-1 !px-2.5 text-xs text-slate-500"
+                    >
+                      {showBreakForm ? 'Cancel' : '☕ Break'}
                     </button>
                   )}
                   <LiveIndicator connected={connected} />
                 </div>
               </div>
+
+              {/* Inline break form — appears when ☕ Break is clicked */}
+              {showBreakForm && (
+                <div className="px-5 py-4 bg-amber-50 border-b border-amber-100">
+                  <div className="text-sm font-semibold text-amber-800 mb-3">Schedule a break</div>
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <label className="flex flex-col gap-1 text-xs text-slate-600">
+                      <span>Duration (min)</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={480}
+                        value={breakMinutes}
+                        onChange={(e) => setBreakMinutes(Math.max(1, Number(e.target.value)))}
+                        className="input !py-1.5 w-24 text-sm"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-slate-600 flex-1 min-w-0">
+                      <span>Note (optional)</span>
+                      <input
+                        type="text"
+                        value={breakNote}
+                        onChange={(e) => setBreakNote(e.target.value)}
+                        placeholder="e.g. Lunch, will return at 1 PM"
+                        className="input !py-1.5 text-sm"
+                      />
+                    </label>
+                    <button type="button" onClick={startBreak} className="btn-primary !py-1.5 !px-4 text-sm shrink-0">
+                      Start break
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="p-5">
                 {current ? (
@@ -242,9 +305,14 @@ export default function DoctorPage() {
                         <button type="button" onClick={() => completeEntry(current.id)} className="btn-success">
                           ✓ Mark complete
                         </button>
-                        <button type="button" onClick={() => skipEntry(current.id)} className="btn-secondary text-rose-600 hover:bg-rose-50 border-rose-200">
-                          Skip patient
-                        </button>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => missEntry(current.id)} className="btn-secondary text-rose-500 hover:bg-rose-50 border-rose-200 flex-1" title="Patient didn't appear — add to missed queue">
+                            Missed
+                          </button>
+                          <button type="button" onClick={() => cancelEntry(current.id)} className="btn-secondary text-slate-500 hover:bg-slate-50 flex-1" title="Remove patient from queue">
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -311,6 +379,11 @@ export default function DoctorPage() {
                   Waiting
                   <span className="ml-2 text-sm font-normal text-slate-400">({waiting.length})</span>
                 </h2>
+                {snapshot?.movingAvgMinutes != null && (
+                  <span className="text-[10px] text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                    ~{Math.round(snapshot.movingAvgMinutes)} min/patient
+                  </span>
+                )}
               </div>
 
               {waiting.length === 0 ? (
@@ -332,26 +405,33 @@ export default function DoctorPage() {
                       </div>
                       {/* Patient info */}
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-slate-800 truncate flex items-center gap-2">
+                        <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
                           {e.patient?.name}
                           {idx === 0 && (
                             <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">next</span>
                           )}
                           {e.priority >= 100 && (
-                            <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 EM</span>
+                            <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 Emergency</span>
                           )}
-                          {e.priority === 50 && (
-                            <span className="pill bg-amber-100 text-amber-700 ring-amber-200 text-[10px]">VIP</span>
+                          {e.walkin && (
+                            <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">Walk-in</span>
+                          )}
+                          {e.slotType === 'FOLLOWUP' && (
+                            <span className="pill bg-purple-100 text-purple-700 ring-purple-200 text-[10px]">Follow-up</span>
                           )}
                         </div>
                         {e.notes && (
                           <div className="text-xs text-slate-400 truncate mt-0.5">{e.notes}</div>
                         )}
                       </div>
-                      {/* ETA */}
+                      {/* ETA — absolute time (Feature 5) */}
                       <div className="text-right text-xs text-slate-500 shrink-0">
                         <div className="font-medium text-slate-700">~{e.etaMinutes} min</div>
-                        <div>{e.peopleAhead === 0 ? 'next up' : `${e.peopleAhead} ahead`}</div>
+                        {e.etaAbsolute && (
+                          <div className="text-slate-400">
+                            {new Date(e.etaAbsolute).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
                       </div>
                       <div className="shrink-0">
                         <EntryStatusPill status={e.status} />

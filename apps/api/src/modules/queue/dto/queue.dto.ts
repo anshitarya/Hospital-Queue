@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
 
 export class JoinQueueDto {
   @IsString()
@@ -28,6 +28,16 @@ export class JoinQueueDto {
   @IsOptional()
   @IsString()
   idempotencyKey?: string;
+
+  // Walk-in: insert near current_position + doctor.walkinGap instead of end of queue. Feature 1.
+  @IsOptional()
+  @IsBoolean()
+  walkin?: boolean;
+
+  // NEW (default) or FOLLOWUP — for follow-up slot reservation. Feature 6.
+  @IsOptional()
+  @IsIn(['NEW', 'FOLLOWUP'])
+  slotType?: 'NEW' | 'FOLLOWUP';
 }
 
 export class PatientJoinQueueDto {
@@ -45,4 +55,16 @@ export class ReorderEntryDto {
   @Min(0)
   @Max(100)
   priority!: number;
+}
+
+// Feature 4: Doctor break with estimated duration.
+export class StartBreakDto {
+  @IsInt()
+  @Min(1)
+  @Max(480)
+  estimatedMinutes!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
 }
