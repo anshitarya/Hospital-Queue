@@ -23,6 +23,7 @@ COPY tsconfig.json next.config.mjs tailwind.config.ts postcss.config.js ./
 COPY app        ./app
 COPY components ./components
 COPY lib        ./lib
+RUN mkdir -p ./public
 COPY public     ./public
 
 RUN npm run build
