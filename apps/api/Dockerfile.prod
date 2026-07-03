@@ -40,6 +40,8 @@ COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
 # Prisma schema + seed (seed is run on every boot — it's idempotent).
 COPY --chown=appuser:appgroup prisma ./prisma
 COPY --chown=appuser:appgroup package.json ./
+# seed.ts imports from ../src/config — copy only those files (not full src/).
+COPY --from=builder --chown=appuser:appgroup /app/src/config ./src/config
 
 USER appuser
 EXPOSE 4000
