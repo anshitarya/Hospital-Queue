@@ -248,7 +248,7 @@ export default function ReceptionPage() {
                             : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
                         }`}
                       >
-                        <div className={`font-semibold ${isSelected ? 'text-brand-700' : 'text-slate-800'}`}>
+                        <div className={`font-semibold truncate ${isSelected ? 'text-brand-700' : 'text-slate-800'}`}>
                           {d.user.name}
                         </div>
                         <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
@@ -465,14 +465,13 @@ export default function ReceptionPage() {
                 <div className="px-5 py-3.5 border-b border-rose-100 bg-rose-50 flex items-center gap-3">
                   <h2 className="section-title text-rose-700 flex-1">
                     Missed patients
-                    <span className="ml-1 text-sm font-normal text-rose-400">— didn&apos;t appear when called</span>
                   </h2>
                   <input
                     type="search"
                     placeholder="Search…"
                     value={missedSearch}
                     onChange={(e) => setMissedSearch(e.target.value)}
-                    className="input !py-1 !w-36 text-xs"
+                    className="input !py-1 w-full sm:!w-36 text-xs"
                   />
                   <span className="pill bg-rose-100 text-rose-700 ring-rose-200 shrink-0">
                     {mq && filteredMissed.length !== allMissed.length
@@ -521,8 +520,8 @@ export default function ReceptionPage() {
         {tab === 'staff' && (
           <div className="space-y-4">
             {/* Doctors */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              <section className="card overflow-hidden lg:col-span-2 h-fit">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <section className="card overflow-hidden md:col-span-2 h-fit">
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-100 text-brand-700 text-xs font-bold shrink-0">+</span>
                   <h2 className="section-title">Add doctor</h2>
@@ -564,7 +563,7 @@ export default function ReceptionPage() {
                     {allDoctors.map((d, idx) => (
                       <div key={d.id} className={`px-5 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
                         <div className="min-w-0">
-                          <div className="font-medium text-slate-800">{d.user.name}</div>
+                          <div className="font-medium text-slate-800 truncate">{d.user.name}</div>
                           <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
                             <span>{d.deptName || 'No dept'}</span>
                             <span>·</span>
@@ -581,8 +580,8 @@ export default function ReceptionPage() {
             </div>
 
             {/* Receptionists */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-              <section className="card overflow-hidden lg:col-span-2 h-fit">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <section className="card overflow-hidden md:col-span-2 h-fit">
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-100 text-brand-700 text-xs font-bold shrink-0">+</span>
                   <h2 className="section-title">Add receptionist</h2>
@@ -603,7 +602,7 @@ export default function ReceptionPage() {
                 </div>
               </section>
 
-              <section className="card overflow-hidden lg:col-span-3">
+              <section className="card overflow-hidden md:col-span-3">
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                   <h2 className="section-title">Receptionists in {clinic?.name ?? 'your clinic'}</h2>
                   <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{receptionists.length}</span>

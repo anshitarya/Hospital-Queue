@@ -400,7 +400,7 @@ function HistoryView({ entries }: { entries: HistoryItem[] }) {
   return (
     <div className="space-y-4">
       {/* Stats strip */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {[
           { label: 'Total Visits',   value: entries.length,  icon: '📋' },
           { label: 'Consultations',  value: completedCount,  icon: '✅' },
@@ -783,7 +783,7 @@ function ActiveEntry({
               type="button"
               onClick={() => setShowCancelConfirm(true)}
               disabled={cancelling}
-              className="w-full text-xs text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 transition-colors py-0.5 disabled:opacity-50"
+              className="w-full text-xs text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 transition-colors py-2 disabled:opacity-50"
             >
               {cancelling ? 'Cancelling…' : 'Cancel appointment'}
             </button>

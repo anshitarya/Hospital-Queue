@@ -222,7 +222,7 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
             placeholder="Search name or phone…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="input !py-1.5 !w-44 text-xs"
+            className="input !py-1.5 w-full sm:!w-44 text-xs"
           />
           {/* Jump to yesterday */}
           <button
