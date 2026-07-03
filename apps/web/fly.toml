@@ -1,0 +1,29 @@
+# Fly.io config for the Next.js web app.
+# App name must be globally unique — change "hq-web" to something like "yourname-hq-web".
+app    = "hq-web"
+region = "bom"
+
+[build]
+  dockerfile = "Dockerfile.prod"
+
+  # NEXT_PUBLIC_* vars are baked into the browser bundle at build time.
+  # These must match the API app name above (replace "hq-api" if you renamed it).
+  [build.args]
+    NEXT_PUBLIC_API_URL    = "https://hq-api.fly.dev"
+    NEXT_PUBLIC_SOCKET_URL = "https://hq-api.fly.dev"
+
+[env]
+  PORT     = "3000"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port        = 3000
+  force_https          = true
+  auto_stop_machines   = false
+  auto_start_machines  = true
+  min_machines_running = 1
+
+[[vm]]
+  cpu_kind  = "shared"
+  cpus      = 1
+  memory_mb = 512
