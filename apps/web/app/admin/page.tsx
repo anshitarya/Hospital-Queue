@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type Clinic, type Doctor, type InviteCode } from '@/lib/api';
 import { useRequireRole } from '@/lib/useRequireRole';
