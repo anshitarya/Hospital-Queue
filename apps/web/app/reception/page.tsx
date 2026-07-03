@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { api, ApiError, type QueueEntry, type Clinic } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
