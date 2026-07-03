@@ -44,10 +44,6 @@ COPY --chown=appuser:appgroup package.json ./
 USER appuser
 EXPOSE 4000
 
-# 1. Apply pending migrations (idempotent, safe every boot).
-# 2. Run the pre-compiled seed JS — avoids ts-node ESM issues on Node 20.
-# 3. Start the app.
-CMD ["sh", "-c", \
-  "npx prisma migrate deploy && \
-   node dist/prisma/seed.js && \
-   node dist/main.js"]
+# Migrations and seed run as a Fly release_command (see fly.toml) before
+# traffic switches. The machine itself just starts the app.
+CMD ["node", "dist/main.js"]
