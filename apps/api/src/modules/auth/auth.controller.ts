@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Res, Query } from '@nestjs/common';
 import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IsEmail, IsString, Length, Matches } from 'class-validator';
@@ -21,6 +21,23 @@ class RequestEmailVerifyDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail({}, { message: 'Enter a valid email address' })
   email!: string;
+}
+
+class PinLoginDto {
+  @IsString()
+  phone!: string;
+
+  @IsString()
+  @Length(4, 4, { message: 'PIN must be exactly 4 digits' })
+  @Matches(/^\d{4}$/, { message: 'PIN must be 4 digits' })
+  pin!: string;
+}
+
+class SetPinDto {
+  @IsString()
+  @Length(4, 4, { message: 'PIN must be exactly 4 digits' })
+  @Matches(/^\d{4}$/, { message: 'PIN must be 4 digits' })
+  pin!: string;
 }
 
 class VerifyEmailDto {
@@ -97,6 +114,32 @@ export class AuthController {
     const result = await this.auth.verifyPatientOtp(dto.phone, dto.code, dto.name);
     this.setSessionCookie(res, result.token);
     return result;
+  }
+
+  /** Check if a phone number has a PIN set — tells the login page which flow to show. */
+  @Public()
+  @Get('patient/pin-status')
+  checkPinStatus(@Query('phone') phone: string) {
+    return this.auth.checkPinStatus(phone);
+  }
+
+  /** Login with phone + 4-digit PIN (returning patients). */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('patient/pin/login')
+  async pinLogin(
+    @Body() dto: PinLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.loginWithPin(dto.phone, dto.pin);
+    this.setSessionCookie(res, result.token);
+    return result;
+  }
+
+  /** Set / reset the patient PIN (must be authenticated — call after OTP verify). */
+  @Post('patient/pin/set')
+  setPin(@CurrentUser() user: AuthUser, @Body() dto: SetPinDto) {
+    return this.auth.setPatientPin(user.id, dto.pin);
   }
 
   @Public()

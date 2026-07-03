@@ -180,6 +180,7 @@ export class QueueService {
       notes: dto.notes,
       walkin: dto.walkin ?? false,
       slotType: dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
+      insertAtPosition: dto.insertAtPosition,
     });
 
     if (dto.idempotencyKey) {
@@ -230,6 +231,7 @@ export class QueueService {
     // Pass an explicit sortOrder when rejoining a missed patient. Feature 2.
     sortOrder?: number;
     missedCount?: number;
+    insertAtPosition?: number;
   }) {
     const serviceDay = todayKey();
     return this.prisma.$transaction(
@@ -256,87 +258,144 @@ export class QueueService {
             const minPos = Math.min(...allWaiting.map((e) => effectivePosition(e)));
             sortOrder = minPos - 1;
           }
+        } else if (input.insertAtPosition !== undefined) {
+          // Receptionist-specified position (1-based). Beats walk-in heuristics.
+          const allActive = await tx.queueEntry.findMany({
+            where: { doctorId: input.doctorId, serviceDay, status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] } },
+            select: { sortOrder: true, tokenNumber: true },
+          });
+          const sorted = allActive
+            .map((e) => effectivePosition(e))
+            .sort((a, b) => a - b);
+          const pos = input.insertAtPosition - 1; // 0-indexed: "insert after sorted[pos-1]"
+          if (pos <= 0) {
+            sortOrder = sorted.length > 0 ? sorted[0] - 0.5 : 1;
+          } else if (pos >= sorted.length) {
+            sortOrder = sorted.length > 0 ? sorted[sorted.length - 1] + 0.5 : 1;
+          } else {
+            sortOrder = (sorted[pos - 1] + sorted[pos]) / 2;
+          }
         } else if (input.walkin || input.slotType === SlotType.FOLLOWUP) {
-          // All special entries (walk-in, follow-up, combined) share one chain so they
-          // interleave consistently. The gap per new entry type:
-          //   follow-up only  → skip 2 normals between specials (chainGap = followUpEvery||2)
-          //   walk-in only    → skip 4 normals between specials (chainGap = walkinGap)
-          //   walk-in+follow-up → skip 3 normals between specials (chainGap = 3)
+          // Gap is measured in actual queue positions (all entry types count — walk-ins,
+          // follow-ups, and regular patients are all peers in the sorted list).
+          // Walk-ins and follow-ups maintain independent chains so they don't interfere:
+          //   • Walk-in  → anchors from the last walk-in entry
+          //   • Follow-up → anchors from the last follow-up entry (starts at top of queue)
+          //   • Combined  → anchors from the last special of either type, gap = 3
           const isWalkin   = input.walkin === true;
           const isFU       = input.slotType === SlotType.FOLLOWUP;
           const isCombined = isWalkin && isFU;
           const isFUOnly   = isFU && !isWalkin;
+          const isWOOnly   = isWalkin && !isFU;
 
           const doctor = await tx.doctor.findUnique({
             where: { id: input.doctorId },
             select: { walkinGap: true, followUpEvery: true },
           });
-          const walkinGap  = doctor?.walkinGap ?? clinicDefaults.queue.walkinGap;
-          const followUpGap = (doctor?.followUpEvery && doctor.followUpEvery > 0) ? doctor.followUpEvery : clinicDefaults.queue.followUpEvery || 2;
+          const walkinGap   = doctor?.walkinGap ?? clinicDefaults.queue.walkinGap;
+          // followUpEvery = 1 means insert after every 1 patient (quick consultations)
+          const followUpGap = (doctor?.followUpEvery && doctor.followUpEvery > 0)
+            ? doctor.followUpEvery
+            : 1;
 
           const chainGap = isCombined ? 3 : isFUOnly ? followUpGap : walkinGap;
 
-          // Shared anchor: last special entry (any walkin/followup), excluding emergencies.
-          const lastSpecial = await tx.queueEntry.findFirst({
-            where: {
-              doctorId: input.doctorId,
-              serviceDay,
-              status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-              sortOrder: { not: null },
-              priority: { lt: 100 },
-            },
-            orderBy: { sortOrder: 'desc' },
-            select: { sortOrder: true, tokenNumber: true },
-          });
-
-          let basePos: number;
-          if (lastSpecial) {
-            basePos = effectivePosition(lastSpecial) + chainGap;
-          } else if (isFUOnly) {
-            // First follow-up, no prior special: anchor off the first waiting patient.
-            const firstWaiting = await tx.queueEntry.findFirst({
-              where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.WAITING },
-              orderBy: { tokenNumber: 'asc' },
-              select: { tokenNumber: true },
-            });
-            basePos = (firstWaiting?.tokenNumber ?? 0) + followUpGap;
-          } else {
-            // First walk-in or combined: anchor off the currently-serving patient.
-            const serving = await tx.queueEntry.findFirst({
-              where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.IN_CONSULTATION },
-              select: { sortOrder: true, tokenNumber: true },
-            });
-            const currentPos = serving
-              ? effectivePosition(serving)
-              : await tx.queueEntry
-                  .findFirst({
-                    where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.COMPLETED },
-                    orderBy: { completedAt: 'desc' },
-                    select: { tokenNumber: true },
-                  })
-                  .then((e) => e?.tokenNumber ?? 0);
-            basePos = currentPos + walkinGap;
-          }
-
-          // Slot the new entry between its two nearest neighbours.
+          // Sorted snapshot of ALL active entries (emergencies included so they count
+          // toward the gap, but are never used as anchors).
           const allActive = await tx.queueEntry.findMany({
             where: {
               doctorId: input.doctorId,
               serviceDay,
               status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
             },
-            select: { sortOrder: true, tokenNumber: true },
+            select: { id: true, sortOrder: true, tokenNumber: true },
           });
-          const positions = allActive
-            .map((e) => effectivePosition(e))
-            .sort((a, b) => a - b);
+          const sorted = allActive.sort((a, b) => effectivePosition(a) - effectivePosition(b));
 
-          const before = positions.filter((p) => p < basePos).pop();
-          const after = positions.find((p) => p >= basePos);
+          // ── Locate the type-specific anchor ──────────────────────────────────
+          let anchorId: string | null = null;
 
-          sortOrder = before !== undefined && after !== undefined
-            ? (before + after) / 2
-            : basePos;
+          if (isCombined) {
+            // Combined: use whichever special (walk-in or follow-up) is furthest in the queue.
+            const lastSpecial = await tx.queueEntry.findFirst({
+              where: {
+                doctorId: input.doctorId,
+                serviceDay,
+                status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+                sortOrder: { not: null },
+                priority: { lt: 100 },
+                OR: [{ walkin: true }, { slotType: SlotType.FOLLOWUP }],
+              },
+              orderBy: { sortOrder: 'desc' },
+              select: { id: true },
+            });
+            anchorId = lastSpecial?.id ?? null;
+          } else if (isWOOnly) {
+            // Walk-in chain: anchor from the last pure walk-in.
+            const lastWalkin = await tx.queueEntry.findFirst({
+              where: {
+                doctorId: input.doctorId,
+                serviceDay,
+                status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+                sortOrder: { not: null },
+                priority: { lt: 100 },
+                walkin: true,
+                slotType: { not: SlotType.FOLLOWUP },
+              },
+              orderBy: { sortOrder: 'desc' },
+              select: { id: true },
+            });
+            if (lastWalkin) {
+              anchorId = lastWalkin.id;
+            } else {
+              // No prior walk-in: anchor from the currently-serving patient (if any).
+              const serving = await tx.queueEntry.findFirst({
+                where: { doctorId: input.doctorId, serviceDay, status: EntryStatus.IN_CONSULTATION },
+                select: { id: true },
+              });
+              anchorId = serving?.id ?? null;
+            }
+          } else if (isFUOnly) {
+            // Follow-up chain: anchor from the last follow-up.
+            // If no prior follow-up exists, anchorId stays null → chainGap counts from
+            // the very start of the waiting list (index -1 + followUpGap).
+            const lastFU = await tx.queueEntry.findFirst({
+              where: {
+                doctorId: input.doctorId,
+                serviceDay,
+                status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+                sortOrder: { not: null },
+                priority: { lt: 100 },
+                slotType: SlotType.FOLLOWUP,
+              },
+              orderBy: { sortOrder: 'desc' },
+              select: { id: true },
+            });
+            anchorId = lastFU?.id ?? null;
+          }
+
+          // ── Index-based insertion ─────────────────────────────────────────────
+          // anchorIndex = -1 means "before the first entry" (no anchor found).
+          // insertAfterIdx = anchorIndex + chainGap means "the new entry goes right
+          // after the entry at insertAfterIdx in the sorted list."
+          const anchorIndex = anchorId ? sorted.findIndex((e) => e.id === anchorId) : -1;
+          const insertAfterIdx = anchorIndex + chainGap;
+
+          if (sorted.length === 0 || insertAfterIdx >= sorted.length) {
+            // Append after everything currently in the queue.
+            const last = sorted[sorted.length - 1];
+            sortOrder = last ? effectivePosition(last) + 0.5 : 1;
+          } else if (insertAfterIdx < 0) {
+            // Land before the very first entry.
+            sortOrder = effectivePosition(sorted[0]) - 0.5;
+          } else {
+            // Insert between sorted[insertAfterIdx] and sorted[insertAfterIdx + 1].
+            const beforePos = effectivePosition(sorted[insertAfterIdx]);
+            const nextEntry  = sorted[insertAfterIdx + 1];
+            sortOrder = nextEntry
+              ? (beforePos + effectivePosition(nextEntry)) / 2
+              : beforePos + 0.5;
+          }
         }
 
         return tx.queueEntry.create({
@@ -580,6 +639,50 @@ export class QueueService {
       eventType: 'reordered',
       entryId,
       doctorId: entry.doctorId,
+    });
+    return updated;
+  }
+
+  async moveToPosition(entryId: string, targetPosition: number, byUserId?: string) {
+    const entry = await this.prisma.queueEntry.findUnique({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Entry not found');
+    if (entry.status !== EntryStatus.WAITING) {
+      throw new BadRequestException('Can only move waiting entries');
+    }
+    const serviceDay = todayKey();
+    const allActive = await this.prisma.queueEntry.findMany({
+      where: {
+        doctorId: entry.doctorId,
+        serviceDay,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        NOT: { id: entryId },
+      },
+      select: { sortOrder: true, tokenNumber: true },
+    });
+    const sorted = allActive
+      .map((e) => effectivePosition(e))
+      .sort((a, b) => a - b);
+
+    const pos = targetPosition - 1;
+    let newSortOrder: number;
+    if (pos <= 0) {
+      newSortOrder = sorted.length > 0 ? sorted[0] - 0.5 : 1;
+    } else if (pos >= sorted.length) {
+      newSortOrder = sorted.length > 0 ? sorted[sorted.length - 1] + 0.5 : 1;
+    } else {
+      newSortOrder = (sorted[pos - 1] + sorted[pos]) / 2;
+    }
+
+    const updated = await this.prisma.queueEntry.update({
+      where: { id: entryId },
+      data: { sortOrder: newSortOrder, version: { increment: 1 } },
+    });
+    await this.prisma.queueEvent.create({
+      data: { doctorId: entry.doctorId, entryId, type: 'moved', payload: { byUserId, targetPosition } },
+    });
+    await this.broadcast(entry.doctorId, 'queue_updated', { entryId });
+    this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
+      eventType: 'moved', entryId, doctorId: entry.doctorId,
     });
     return updated;
   }

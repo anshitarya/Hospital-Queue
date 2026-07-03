@@ -82,6 +82,10 @@ model User {
   // is in flight.
   pendingEmail String?
 
+  // 4-digit mPIN for patient quick-login (argon2-hashed). Null until the
+  // patient sets it after their first OTP verification.
+  patientPin String?
+
   // Populated for RECEPTIONIST role — which clinic they belong to.
   clinicId  String?
   clinic    Clinic?  @relation(fields: [clinicId], references: [id])

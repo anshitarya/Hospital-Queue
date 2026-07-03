@@ -218,7 +218,7 @@ export default function DoctorPage() {
             {/* Current patient card */}
             <section className={`card overflow-hidden ${current ? 'ring-2 ring-emerald-300/60 shadow-md' : ''}`}>
               {/* Section header */}
-              <div className={`px-5 py-3.5 border-b border-slate-100 flex items-center justify-between ${current ? 'bg-gradient-to-r from-emerald-50 to-teal-50' : 'bg-slate-50'}`}>
+              <div className={`px-5 py-3.5 border-b border-slate-100 flex items-center justify-between ${current ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30' : 'bg-slate-50'}`}>
                 <div>
                   <h2 className="section-title">{current ? 'In consultation' : 'Consultation'}</h2>
                   {snapshot?.doctor && !isPaused && (

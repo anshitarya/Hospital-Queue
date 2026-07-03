@@ -483,7 +483,6 @@ function Security({
               <div className="font-medium">OTP-based account</div>
               <div className="text-sky-700 mt-0.5">
                 You sign in with a one-time code sent to your phone — there&apos;s no password to change.
-                For account help, contact your clinic&apos;s reception.
               </div>
             </div>
           </div>

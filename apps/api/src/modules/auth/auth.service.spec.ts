@@ -26,7 +26,7 @@ function makeService() {
   const config = { get: jest.fn() } as unknown as ConfigService;
 
   return {
-    svc: new AuthService(prisma, jwt, otp, config),
+    svc: new AuthService(prisma, jwt, otp, config, { client: { get: async () => null, set: async () => {}, del: async () => {} } } as any),
     findUnique,
   };
 }

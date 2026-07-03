@@ -34,6 +34,7 @@ export default function ReceptionPage() {
   const [notes, setNotes] = useState('');
   const [walkin, setWalkin] = useState(false);
   const [slotType, setSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
+  const [insertAtPosition, setInsertAtPosition] = useState<number | ''>('');
   const [busy, setBusy] = useState(false);
 
   // Add-doctor form
@@ -62,6 +63,8 @@ export default function ReceptionPage() {
 
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [queueSearch, setQueueSearch] = useState('');
+  const [missedSearch, setMissedSearch] = useState('');
 
   const loadClinic = useCallback(async () => {
     try {
@@ -122,12 +125,13 @@ export default function ReceptionPage() {
           idempotencyKey: idemKey,
           walkin: walkin || undefined,
           slotType: slotType !== 'NEW' ? slotType : undefined,
+          insertAtPosition: insertAtPosition !== '' ? insertAtPosition : undefined,
         },
       });
       const suffix = walkin ? ' (walk-in)' : slotType === 'FOLLOWUP' ? ' (follow-up)' : '';
       setToast({ type: 'ok', msg: `Token #${entry.tokenNumber} assigned to ${name}${suffix}` });
       setName(''); setPhone(''); setPhoneResult({ ok: false }); setPriority(0); setNotes('');
-      setWalkin(false); setSlotType('NEW');
+      setWalkin(false); setSlotType('NEW'); setInsertAtPosition('');
       document.getElementById('rec-name')?.focus();
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add patient' });
@@ -198,6 +202,8 @@ export default function ReceptionPage() {
     call(() => api(`/queue/entry/${id}/miss`, { method: 'POST' }), 'Mark missed');
   const rejoinEntry = (id: string) =>
     call(() => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }), 'Rejoin');
+  const moveEntry = (id: string, position: number) =>
+    call(() => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }), 'Move');
 
   return (
     <>
@@ -211,7 +217,7 @@ export default function ReceptionPage() {
           </button>
           <button type="button" onClick={() => setTab('staff')} className={'tab ' + (tab === 'staff' ? 'tab-active' : 'tab-inactive')}>
             Staff
-            <span className="ml-1.5 opacity-70 text-xs">({allDoctors.length} dr · {receptionists.length} rcp)</span>
+            <span className="ml-1.5 opacity-70 text-xs">({allDoctors.length} doctors · {receptionists.length} receptionists)</span>
           </button>
           <button type="button" onClick={() => setTab('history')} className={'tab ' + (tab === 'history' ? 'tab-active' : 'tab-inactive')}>
             History
@@ -330,12 +336,24 @@ export default function ReceptionPage() {
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                     />
+                    <label className="flex items-center gap-2 text-sm">
+                      <span className="text-slate-600 whitespace-nowrap shrink-0">Position:</span>
+                      <input
+                        className="input flex-1"
+                        type="number"
+                        min={1}
+                        placeholder="Auto (end of queue)"
+                        value={insertAtPosition}
+                        onChange={(e) => setInsertAtPosition(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
+                      />
+                      <span className="text-xs text-slate-400 shrink-0">optional</span>
+                    </label>
                     <button
                       type="submit"
                       className="btn-primary w-full"
                       disabled={busy || !selectedDoctorId || !phoneResult.ok}
                     >
-                      {busy ? 'Adding…' : walkin ? '+ Walk-in (near current)' : '+ Add to queue'}
+                      {busy ? 'Adding…' : insertAtPosition !== '' ? `+ Add at #${insertAtPosition}` : walkin ? '+ Walk-in (near current)' : '+ Add to queue'}
                     </button>
                   </form>
 
@@ -374,57 +392,96 @@ export default function ReceptionPage() {
 
               {/* Live queue */}
               <section className="card overflow-hidden lg:col-span-2">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                  <h2 className="section-title">
-                    Live queue
-                    {snapshot?.doctor && (
-                      <span className="ml-2 text-sm font-normal text-slate-400">— {snapshot.doctor.user.name}</span>
-                    )}
-                  </h2>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-500 text-xs">Now serving</span>
-                    <span className="font-bold text-slate-800 font-mono">
-                      {snapshot?.currentToken ? `#${snapshot.currentToken}` : '—'}
-                    </span>
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h2 className="section-title">
+                      Live queue
+                      {snapshot?.doctor && (
+                        <span className="ml-2 text-sm font-normal text-slate-400">— {snapshot.doctor.user.name}</span>
+                      )}
+                    </h2>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-slate-500 text-xs">Now serving</span>
+                      <span className="font-bold text-slate-800 font-mono">
+                        {snapshot?.currentToken ? `#${snapshot.currentToken}` : '—'}
+                      </span>
+                    </div>
                   </div>
+                  <input
+                    type="search"
+                    placeholder="Search by name or phone…"
+                    value={queueSearch}
+                    onChange={(e) => setQueueSearch(e.target.value)}
+                    className="input !py-1.5 text-xs"
+                  />
                 </div>
 
-                <div className="divide-y divide-slate-100">
-                  {(snapshot?.entries ?? []).length > 0 ? (
-                    snapshot!.entries.map((e) => (
-                      <QueueRow
-                        key={e.id}
-                        entry={e}
-                        onComplete={() => setEntryStatus(e.id, 'complete')}
-                        onCancel={() => setEntryStatus(e.id, 'cancel')}
-                        onEmergency={() => markEmergency(e.id)}
-                        onMiss={() => missEntry(e.id)}
-                      />
-                    ))
-                  ) : (
-                    <div className="py-16 text-center">
-                      <div className="text-4xl mb-2">📭</div>
-                      <div className="text-sm text-slate-500">
-                        {selectedDoctorId ? 'Queue is empty' : 'Select a doctor above'}
-                      </div>
+                {(() => {
+                  const sq = queueSearch.toLowerCase().trim();
+                  const entries = snapshot?.entries ?? [];
+                  const filtered = sq ? entries.filter(e =>
+                    e.patient?.name?.toLowerCase().includes(sq) ||
+                    (e.patient?.phone ?? '').includes(sq)
+                  ) : entries;
+                  return (
+                    <div className="divide-y divide-slate-100">
+                      {filtered.length > 0 ? (
+                        filtered.map((e) => (
+                          <QueueRow
+                            key={e.id}
+                            entry={e}
+                            onComplete={() => setEntryStatus(e.id, 'complete')}
+                            onCancel={() => setEntryStatus(e.id, 'cancel')}
+                            onEmergency={() => markEmergency(e.id)}
+                            onMiss={() => missEntry(e.id)}
+                            onMove={(pos) => moveEntry(e.id, pos)}
+                          />
+                        ))
+                      ) : (
+                        <div className="py-16 text-center">
+                          <div className="text-4xl mb-2">{sq ? '🔍' : '📭'}</div>
+                          <div className="text-sm text-slate-500">
+                            {sq ? `No results for "${queueSearch}"` : selectedDoctorId ? 'Queue is empty' : 'Select a doctor above'}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </section>
             </div>
 
-            {/* Missed patients panel — Feature 2 */}
-            {(snapshot?.missedEntries ?? []).length > 0 && (
+            {/* Missed patients panel */}
+            {(() => {
+              const allMissed = snapshot?.missedEntries ?? [];
+              if (allMissed.length === 0) return null;
+              const mq = missedSearch.toLowerCase().trim();
+              const filteredMissed = mq ? allMissed.filter(e =>
+                e.patient?.name?.toLowerCase().includes(mq) ||
+                (e.patient?.phone ?? '').includes(mq)
+              ) : allMissed;
+              return (
               <section className="card overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-rose-100 bg-rose-50 flex items-center justify-between">
-                  <h2 className="section-title text-rose-700">
+                <div className="px-5 py-3.5 border-b border-rose-100 bg-rose-50 flex items-center gap-3">
+                  <h2 className="section-title text-rose-700 flex-1">
                     Missed patients
                     <span className="ml-1 text-sm font-normal text-rose-400">— didn&apos;t appear when called</span>
                   </h2>
-                  <span className="pill bg-rose-100 text-rose-700 ring-rose-200">{snapshot!.missedEntries!.length}</span>
+                  <input
+                    type="search"
+                    placeholder="Search…"
+                    value={missedSearch}
+                    onChange={(e) => setMissedSearch(e.target.value)}
+                    className="input !py-1 !w-36 text-xs"
+                  />
+                  <span className="pill bg-rose-100 text-rose-700 ring-rose-200 shrink-0">
+                    {mq && filteredMissed.length !== allMissed.length
+                      ? `${filteredMissed.length} / ${allMissed.length}`
+                      : allMissed.length}
+                  </span>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {snapshot!.missedEntries!.map((e) => (
+                  {filteredMissed.length > 0 ? filteredMissed.map((e) => (
                     <div key={e.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="font-mono font-bold text-rose-600 shrink-0">#{e.tokenNumber}</span>
@@ -450,10 +507,13 @@ export default function ReceptionPage() {
                         Rejoin queue
                       </button>
                     </div>
-                  ))}
+                  )) : (
+                    <div className="py-8 text-center text-sm text-slate-400">No missed patients match &ldquo;{missedSearch}&rdquo;</div>
+                  )}
                 </div>
               </section>
-            )}
+              );
+            })()}
           </>
         )}
 
@@ -628,14 +688,26 @@ function QueueRow({
   onCancel,
   onEmergency,
   onMiss,
+  onMove,
 }: {
   entry: QueueEntry;
   onComplete: () => void;
   onCancel: () => void;
   onEmergency: () => void;
   onMiss: () => void;
+  onMove: (position: number) => void;
 }) {
+  const [movingTo, setMovingTo] = useState<number | ''>('');
+  const [showMove, setShowMove] = useState(false);
   const isInConsult = entry.status === 'IN_CONSULTATION';
+
+  function submitMove() {
+    if (movingTo === '' || movingTo < 1) return;
+    onMove(movingTo);
+    setMovingTo('');
+    setShowMove(false);
+  }
+
   return (
     <div className={`px-4 py-3.5 transition-colors ${isInConsult ? 'bg-emerald-50/60 border-l-4 border-l-emerald-400' : 'hover:bg-slate-50/60'}`}>
       {/* Top row — token + name + status */}
@@ -669,6 +741,28 @@ function QueueRow({
         </div>
       </div>
 
+      {/* Move-to-position inline row */}
+      {showMove && entry.status === 'WAITING' && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            autoFocus
+            type="number"
+            min={1}
+            placeholder="Position #"
+            value={movingTo}
+            onChange={(e) => setMovingTo(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
+            onKeyDown={(e) => { if (e.key === 'Enter') submitMove(); if (e.key === 'Escape') setShowMove(false); }}
+            className="input !py-1.5 !px-2.5 text-xs w-28"
+          />
+          <button type="button" onClick={submitMove} disabled={movingTo === ''} className="btn-primary !py-1.5 !px-3 text-xs">
+            Move
+          </button>
+          <button type="button" onClick={() => setShowMove(false)} className="btn-ghost !py-1.5 !px-2 text-xs">
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Bottom row — action buttons */}
       <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
         {isInConsult && (
@@ -683,6 +777,14 @@ function QueueRow({
         )}
         {entry.status === 'WAITING' && (
           <>
+            <button
+              type="button"
+              onClick={() => setShowMove((v) => !v)}
+              title="Move to a specific position in the queue"
+              className="btn-secondary !px-3 !py-1.5 text-xs"
+            >
+              ↕ Move
+            </button>
             <button
               type="button"
               onClick={onEmergency}

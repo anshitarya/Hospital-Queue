@@ -51,7 +51,22 @@ export async function requestOtp(phone: string) {
 }
 
 export async function verifyOtp(phone: string, code: string, name?: string) {
-  return api<AuthResult>('/auth/otp/verify', { method: 'POST', body: { phone, code, name } });
+  return api<AuthResult & { pinSet: boolean }>('/auth/otp/verify', {
+    method: 'POST',
+    body: { phone, code, name },
+  });
+}
+
+export async function checkPinStatus(phone: string) {
+  return api<{ pinSet: boolean }>(`/auth/patient/pin-status?phone=${encodeURIComponent(phone)}`);
+}
+
+export async function loginWithPin(phone: string, pin: string) {
+  return api<AuthResult>('/auth/patient/pin/login', { method: 'POST', body: { phone, pin } });
+}
+
+export async function setPatientPin(pin: string) {
+  return api<{ ok: boolean }>('/auth/patient/pin/set', { method: 'POST', body: { pin } });
 }
 
 /* ─── Profile ─────────────────────────────────────────────────────────────── */

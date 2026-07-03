@@ -38,6 +38,12 @@ export class JoinQueueDto {
   @IsOptional()
   @IsIn(['NEW', 'FOLLOWUP'])
   slotType?: 'NEW' | 'FOLLOWUP';
+
+  // Explicit queue position (1 = first). Overrides walk-in heuristics when set.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  insertAtPosition?: number;
 }
 
 export class PatientJoinQueueDto {
@@ -55,6 +61,12 @@ export class ReorderEntryDto {
   @Min(0)
   @Max(100)
   priority!: number;
+}
+
+export class MoveToPositionDto {
+  @IsInt()
+  @Min(1)
+  position!: number;
 }
 
 // Feature 4: Doctor break with estimated duration.

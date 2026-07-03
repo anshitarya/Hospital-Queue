@@ -76,6 +76,17 @@ export default function AdminPage() {
 
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
+  // Inline edit state for clinics
+  const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
+  const [editClinicName, setEditClinicName] = useState('');
+  const [editClinicAddress, setEditClinicAddress] = useState('');
+  const [editClinicBusy, setEditClinicBusy] = useState(false);
+
+  // Inline email edit state for staff (doctors + receptionists)
+  const [editEmailUserId, setEditEmailUserId] = useState<string | null>(null);
+  const [editEmailValue, setEditEmailValue] = useState('');
+  const [editEmailBusy, setEditEmailBusy] = useState(false);
+
   const loadClinics = useCallback(async () => {
     try {
       setLoadingClinics(true);
@@ -337,6 +348,110 @@ export default function AdminPage() {
     }
   }
 
+  function startEditClinic(c: Clinic) {
+    setEditingClinicId(c.id);
+    setEditClinicName(c.name);
+    setEditClinicAddress(c.address ?? '');
+  }
+
+  async function saveEditClinic(clinicId: string) {
+    if (!editClinicName.trim()) return;
+    setEditClinicBusy(true);
+    try {
+      await api(`/clinics/${clinicId}`, {
+        method: 'PATCH',
+        body: { name: editClinicName, address: editClinicAddress || undefined },
+      });
+      setEditingClinicId(null);
+      setToast({ type: 'ok', msg: 'Clinic updated.' });
+      if (selectedClinic?.id === clinicId) {
+        setSelectedClinic((prev) => prev ? { ...prev, name: editClinicName, address: editClinicAddress || prev.address } : prev);
+      }
+      await Promise.all([loadClinics(), loadStats()]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update clinic' });
+    } finally {
+      setEditClinicBusy(false);
+    }
+  }
+
+  async function handleDeleteClinic(clinicId: string, name: string) {
+    const ok = window.confirm(
+      `Delete "${name}"?\n\nThis permanently removes the clinic and all its doctors, queue data, and invite codes. This cannot be undone.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/clinics/${clinicId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `Clinic "${name}" deleted.` });
+      if (selectedClinic?.id === clinicId) {
+        setSelectedClinic(null);
+        setInviteCodes([]);
+        setClinicDoctors([]);
+        setClinicReceptionists([]);
+      }
+      await Promise.all([loadClinics(), loadStats()]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to delete clinic' });
+    }
+  }
+
+  async function handleDeleteDoctor(doctorId: string, name: string) {
+    if (!selectedClinic) return;
+    const ok = window.confirm(
+      `Remove Dr. ${name} from ${selectedClinic.name}?\n\nAny waiting queue entries for this doctor will be removed. Past consultation history is preserved.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/clinics/${selectedClinic.id}/doctors/${doctorId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `Dr. ${name} removed.` });
+      await Promise.all([loadClinicDoctors(selectedClinic.id), loadClinics(), loadStats()]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to delete doctor' });
+    }
+  }
+
+  async function handleDeleteReceptionist(userId: string, name: string) {
+    if (!selectedClinic) return;
+    const ok = window.confirm(
+      `Remove ${name} from ${selectedClinic.name}?\n\nThey will lose access to this clinic. Their past activity is preserved.`,
+    );
+    if (!ok) return;
+    try {
+      await api(`/clinics/${selectedClinic.id}/receptionists/${userId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `${name} removed.` });
+      await Promise.all([loadClinicReceptionists(selectedClinic.id), loadClinics(), loadStats()]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove receptionist' });
+    }
+  }
+
+  function startEditEmail(userId: string, currentEmail: string | null) {
+    setEditEmailUserId(userId);
+    setEditEmailValue(currentEmail ?? '');
+  }
+
+  async function saveEditEmail(userId: string) {
+    if (!selectedClinic || !editEmailValue.trim()) return;
+    setEditEmailBusy(true);
+    try {
+      await api(`/clinics/${selectedClinic.id}/staff/${userId}/email`, {
+        method: 'PATCH',
+        body: { email: editEmailValue.trim() },
+      });
+      setEditEmailUserId(null);
+      setEditEmailValue('');
+      setToast({ type: 'ok', msg: 'Email updated.' });
+      await Promise.all([
+        loadClinicDoctors(selectedClinic.id),
+        loadClinicReceptionists(selectedClinic.id),
+      ]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update email' });
+    } finally {
+      setEditEmailBusy(false);
+    }
+  }
+
   async function createClinic(e: React.FormEvent) {
     e.preventDefault();
     setCreateBusy(true);
@@ -492,39 +607,87 @@ export default function AdminPage() {
               <div className="divide-y divide-slate-100">
                 {clinics.map((c, idx) => {
                   const isSelected = selectedClinic?.id === c.id;
+                  const isEditing = editingClinicId === c.id;
                   return (
                     <div
                       key={c.id}
-                      className={`flex items-center gap-3 px-5 py-4 transition-colors ${
+                      className={`px-5 py-4 transition-colors ${
                         isSelected ? 'bg-brand-50 border-l-4 border-l-brand-500' : idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/40 hover:bg-slate-50'
                       }`}
                     >
-                      <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
-                        {c.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className={`font-semibold truncate ${isSelected ? 'text-brand-800' : 'text-slate-800'}`}>
-                          {c.name}
-                          {isSelected && (
-                            <span className="ml-2 text-[10px] font-medium text-brand-600 bg-brand-100 rounded-full px-1.5 py-0.5 uppercase tracking-wider">
-                              active
-                            </span>
-                          )}
+                      {isEditing ? (
+                        /* Inline edit form */
+                        <div className="flex flex-col gap-2">
+                          <div className="flex gap-2">
+                            <input
+                              autoFocus
+                              className="input !py-1.5 flex-1"
+                              placeholder="Clinic name"
+                              value={editClinicName}
+                              onChange={(e) => setEditClinicName(e.target.value)}
+                            />
+                            <input
+                              className="input !py-1.5 flex-1"
+                              placeholder="Address (optional)"
+                              value={editClinicAddress}
+                              onChange={(e) => setEditClinicAddress(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button type="button" onClick={() => setEditingClinicId(null)} className="btn-ghost !py-1.5 !px-3 text-xs">Cancel</button>
+                            <button type="button" onClick={() => saveEditClinic(c.id)} disabled={editClinicBusy || !editClinicName.trim()} className="btn-primary !py-1.5 !px-3 text-xs">
+                              {editClinicBusy ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
                         </div>
-                        {c.address && <div className="text-xs text-slate-500 truncate mt-0.5">{c.address}</div>}
-                        <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
-                          <span>{c._count?.users ?? 0} rcp</span>
-                          <span>·</span>
-                          <span>{c._count?.doctors ?? 0} dr</span>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {c.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className={`font-semibold truncate ${isSelected ? 'text-brand-800' : 'text-slate-800'}`}>
+                              {c.name}
+                              {isSelected && (
+                                <span className="ml-2 text-[10px] font-medium text-brand-600 bg-brand-100 rounded-full px-1.5 py-0.5 uppercase tracking-wider">
+                                  active
+                                </span>
+                              )}
+                            </div>
+                            {c.address && <div className="text-xs text-slate-500 truncate mt-0.5">{c.address}</div>}
+                            <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                              <span>{c._count?.users ?? 0} rcp</span>
+                              <span>·</span>
+                              <span>{c._count?.doctors ?? 0} dr</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => startEditClinic(c)}
+                              className="btn-secondary !py-1.5 !px-2.5 text-xs"
+                              title="Edit clinic name / address"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClinic(c.id, c.name)}
+                              className="btn-secondary !py-1.5 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200"
+                              title="Permanently delete this clinic"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => selectClinic(c)}
+                              className={isSelected ? 'btn-secondary !py-1.5 !px-3 text-xs text-brand-700 border-brand-200 bg-brand-50 hover:bg-brand-100' : 'btn-secondary !py-1.5 !px-3 text-xs'}
+                            >
+                              {isSelected ? 'Managing' : 'Manage'}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => selectClinic(c)}
-                        className={isSelected ? 'btn-secondary !py-1.5 !px-3 text-xs text-brand-700 border-brand-200 bg-brand-50 hover:bg-brand-100' : 'btn-secondary !py-1.5 !px-3 text-xs'}
-                      >
-                        {isSelected ? 'Managing' : 'Manage'}
-                      </button>
+                      )}
                     </div>
                   );
                 })}
@@ -624,22 +787,47 @@ export default function AdminPage() {
                   ) : (
                     <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
                       {clinicReceptionists.map((r, idx) => (
-                        <div key={r.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
-                          <div className="min-w-0">
-                            <div className="font-medium text-slate-800 truncate">{r.name}</div>
-                            <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
-                              {r.email && <span>{r.email}</span>}
-                              {r.email && r.phone && <span>·</span>}
-                              {r.phone && <span>{r.phone}</span>}
-                              {!r.email && !r.phone && <span className="text-slate-400">no contact</span>}
+                        <div key={r.id} className={`px-4 py-3.5 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-800 truncate">{r.name}</div>
+                              <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
+                                {r.email && <span>{r.email}</span>}
+                                {r.email && r.phone && <span>·</span>}
+                                {r.phone && <span>{r.phone}</span>}
+                                {!r.email && !r.phone && <span className="text-slate-400">no contact</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                              <span className="text-xs text-slate-400 hidden sm:block">{new Date(r.createdAt).toLocaleDateString()}</span>
+                              <button type="button" onClick={() => startEditEmail(r.id, r.email)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                Edit email
+                              </button>
+                              <button type="button" onClick={() => resetPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, role: 'receptionist' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                Reset pwd
+                              </button>
+                              <button type="button" onClick={() => handleDeleteReceptionist(r.id, r.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">
+                                Remove
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs text-slate-400 hidden sm:block">{new Date(r.createdAt).toLocaleDateString()}</span>
-                            <button type="button" onClick={() => resetPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, role: 'receptionist' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
-                              Reset pwd
-                            </button>
-                          </div>
+                          {editEmailUserId === r.id && (
+                            <div className="mt-2 flex gap-2">
+                              <input
+                                autoFocus
+                                type="email"
+                                className="input !py-1.5 flex-1"
+                                placeholder="New email address"
+                                value={editEmailValue}
+                                onChange={(e) => setEditEmailValue(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveEditEmail(r.id); if (e.key === 'Escape') setEditEmailUserId(null); }}
+                              />
+                              <button type="button" onClick={() => saveEditEmail(r.id)} disabled={editEmailBusy || !editEmailValue.trim()} className="btn-primary !py-1.5 !px-3 text-xs">
+                                {editEmailBusy ? 'Saving…' : 'Save'}
+                              </button>
+                              <button type="button" onClick={() => setEditEmailUserId(null)} className="btn-ghost !py-1.5 !px-2 text-xs">Cancel</button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -690,20 +878,45 @@ export default function AdminPage() {
                   ) : (
                     <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
                       {clinicDoctors.map((d, idx) => (
-                        <div key={d.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
-                          <div className="min-w-0">
-                            <div className="font-medium text-slate-800 truncate">{d.user.name}</div>
-                            <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
-                              <span>{d.department?.name ?? 'No dept'}</span>
-                              <span>· ~{d.avgConsultMinutes} min</span>
-                              {d.user.email && <span>· {d.user.email}</span>}
+                        <div key={d.id} className={`px-4 py-3.5 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-800 truncate">{d.user.name}</div>
+                              <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
+                                <span>{d.department?.name ?? 'No dept'}</span>
+                                <span>· ~{d.avgConsultMinutes} min</span>
+                                {d.user.email && <span>· {d.user.email}</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                              <button type="button" onClick={() => startEditEmail(d.userId, d.user.email ?? null)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                Edit email
+                              </button>
+                              <button type="button" onClick={() => resetPassword({ userId: d.userId, name: d.user.name, email: d.user.email ?? null, phone: (d.user as { phone?: string | null }).phone ?? null, role: 'doctor' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                Reset pwd
+                              </button>
+                              <button type="button" onClick={() => handleDeleteDoctor(d.id, d.user.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">
+                                Remove
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button type="button" onClick={() => resetPassword({ userId: d.userId, name: d.user.name, email: d.user.email ?? null, phone: (d.user as { phone?: string | null }).phone ?? null, role: 'doctor' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
-                              Reset pwd
-                            </button>
-                          </div>
+                          {editEmailUserId === d.userId && (
+                            <div className="mt-2 flex gap-2">
+                              <input
+                                autoFocus
+                                type="email"
+                                className="input !py-1.5 flex-1"
+                                placeholder="New email address"
+                                value={editEmailValue}
+                                onChange={(e) => setEditEmailValue(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') saveEditEmail(d.userId); if (e.key === 'Escape') setEditEmailUserId(null); }}
+                              />
+                              <button type="button" onClick={() => saveEditEmail(d.userId)} disabled={editEmailBusy || !editEmailValue.trim()} className="btn-primary !py-1.5 !px-3 text-xs">
+                                {editEmailBusy ? 'Saving…' : 'Save'}
+                              </button>
+                              <button type="button" onClick={() => setEditEmailUserId(null)} className="btn-ghost !py-1.5 !px-2 text-xs">Cancel</button>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

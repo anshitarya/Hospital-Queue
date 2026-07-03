@@ -353,4 +353,67 @@ export class ClinicsService {
   async listDepartments() {
     return this.prisma.department.findMany({ orderBy: { name: 'asc' } });
   }
+
+  // ── Admin clinic management ────────────────────────────────────────────────
+
+  async updateClinic(clinicId: string, dto: { name?: string; address?: string }) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+    return this.prisma.clinic.update({
+      where: { id: clinicId },
+      data: { ...(dto.name ? { name: dto.name } : {}), ...(dto.address !== undefined ? { address: dto.address } : {}) },
+    });
+  }
+
+  async deleteClinic(clinicId: string) {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      include: { doctors: { select: { id: true } } },
+    });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    // Delete in dependency order to avoid FK constraint errors.
+    const doctorIds = clinic.doctors.map((d) => d.id);
+    if (doctorIds.length > 0) {
+      await this.prisma.queueEvent.deleteMany({ where: { doctorId: { in: doctorIds } } });
+      await this.prisma.queueEntry.deleteMany({ where: { doctorId: { in: doctorIds } } });
+      await this.prisma.doctor.deleteMany({ where: { clinicId } });
+    }
+    // Null out users (receptionists) linked to this clinic instead of deleting
+    // them — they may have queue entries as patients.
+    await this.prisma.user.updateMany({ where: { clinicId }, data: { clinicId: null } });
+    // InviteCodes cascade via schema FK.
+    await this.prisma.clinic.delete({ where: { id: clinicId } });
+    return { deleted: true };
+  }
+
+  async adminDeleteDoctor(clinicId: string, doctorId: string) {
+    const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
+    if (!doctor) throw new NotFoundException('Doctor not found');
+    if (doctor.clinicId !== clinicId) throw new ForbiddenException('Doctor not in this clinic');
+    const serviceDay = new Date().toISOString().slice(0, 10);
+    await this.prisma.queueEvent.deleteMany({ where: { doctorId } });
+    await this.prisma.queueEntry.deleteMany({ where: { doctorId, serviceDay, status: { in: ['WAITING'] } } });
+    await this.prisma.doctor.delete({ where: { id: doctorId } });
+    return { deleted: true };
+  }
+
+  async adminDeleteReceptionist(clinicId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.clinicId !== clinicId) throw new ForbiddenException('User not in this clinic');
+    if (user.role !== Role.RECEPTIONIST) throw new BadRequestException('User is not a receptionist');
+    // Null out clinic link rather than deleting — preserves patient queue history.
+    await this.prisma.user.update({ where: { id: userId }, data: { clinicId: null } });
+    return { deleted: true };
+  }
+
+  async updateStaffEmail(clinicId: string, userId: string, email: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.clinicId !== clinicId) throw new ForbiddenException('User not in this clinic');
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing && existing.id !== userId) throw new BadRequestException('Email already in use');
+    return this.prisma.user.update({ where: { id: userId }, data: { email } });
+  }
 }

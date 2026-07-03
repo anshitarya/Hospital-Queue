@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Role, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { OtpService } from './otp.service';
 import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -19,7 +20,11 @@ import { isValidIndianMobile, normalizeIndianMobile } from '../../common/utils/p
 export interface AuthResult {
   token: string;
   user: { id: string; role: Role; name: string; phone?: string | null; email?: string | null; clinicId?: string | null };
+  pinSet?: boolean;
 }
+
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_SECONDS = 15 * 60; // 15 min
 
 @Injectable()
 export class AuthService {
@@ -28,6 +33,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
     private readonly config: ConfigService,
+    private readonly redis: RedisService,
   ) {}
 
   async staffLogin(identifier: string, password: string): Promise<AuthResult> {
@@ -96,12 +102,74 @@ export class AuthService {
 
     const user = await this.prisma.user.upsert({
       where: { phone },
-      // Patient OTP verification implicitly verifies the phone every time.
       update: { phoneVerified: true, ...(name ? { name } : {}) },
       create: { phone, name: name ?? `Patient ${phone.slice(-4)}`, role: Role.PATIENT, phoneVerified: true },
     });
 
+    // Clear any PIN lockout since the patient just proved phone ownership.
+    await this.redis.client.del(`pin_lock:${user.id}`);
+
+    const result = await this.sign(user);
+    return { ...result, pinSet: !!user.patientPin };
+  }
+
+  /** Check whether a phone number has a PIN set (used by login page to decide which flow to show). */
+  async checkPinStatus(phone: string): Promise<{ pinSet: boolean }> {
+    const user = await this.prisma.user.findUnique({
+      where: { phone },
+      select: { patientPin: true, role: true },
+    });
+    if (!user || user.role !== Role.PATIENT) return { pinSet: false };
+    return { pinSet: !!user.patientPin };
+  }
+
+  /** Login with phone + PIN. Rate-limited: 5 failures → 15-min lockout. */
+  async loginWithPin(phone: string, pin: string): Promise<AuthResult> {
+    const user = await this.prisma.user.findUnique({ where: { phone } });
+
+    // Generic delay on invalid credentials to resist timing attacks.
+    if (!user || user.role !== Role.PATIENT || !user.patientPin) {
+      await new Promise((r) => setTimeout(r, 300));
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const lockKey = `pin_lock:${user.id}`;
+    const attempts = parseInt((await this.redis.client.get(lockKey)) ?? '0', 10);
+    if (attempts >= PIN_MAX_ATTEMPTS) {
+      throw new UnauthorizedException(
+        'Too many failed attempts. Please use OTP to log in and reset your PIN.',
+      );
+    }
+
+    const valid = await argon2.verify(user.patientPin, pin);
+    if (!valid) {
+      const next = attempts + 1;
+      await this.redis.client.set(lockKey, String(next), 'EX', PIN_LOCKOUT_SECONDS);
+      const remaining = PIN_MAX_ATTEMPTS - next;
+      throw new UnauthorizedException(
+        remaining > 0
+          ? `Incorrect PIN. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Too many failed attempts. Please use OTP to log in and reset your PIN.',
+      );
+    }
+
+    await this.redis.client.del(lockKey);
     return this.sign(user);
+  }
+
+  /** Set or replace the patient PIN (called after OTP verify or from profile). */
+  async setPatientPin(userId: string, pin: string): Promise<{ ok: boolean }> {
+    if (!/^\d{4}$/.test(pin)) {
+      throw new BadRequestException('PIN must be exactly 4 digits');
+    }
+    const hashed = await argon2.hash(pin);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { patientPin: hashed },
+    });
+    // Clear any lockout once PIN is reset.
+    await this.redis.client.del(`pin_lock:${userId}`);
+    return { ok: true };
   }
 
   /* ─── Profile management (authenticated user) ───────────────────────────── */

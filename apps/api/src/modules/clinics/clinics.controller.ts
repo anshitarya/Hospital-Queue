@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
@@ -180,5 +181,39 @@ export class ClinicsController {
   @Post(':id/staff/:userId/reset-password')
   resetStaffPassword(@Param('id') clinicId: string, @Param('userId') userId: string) {
     return this.clinics.resetStaffPassword(clinicId, userId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch(':id')
+  updateClinic(@Param('id') id: string, @Body() dto: { name?: string; address?: string }) {
+    return this.clinics.updateClinic(id, dto);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id')
+  deleteClinic(@Param('id') id: string) {
+    return this.clinics.deleteClinic(id);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id/doctors/:doctorId')
+  deleteDoctor(@Param('id') clinicId: string, @Param('doctorId') doctorId: string) {
+    return this.clinics.adminDeleteDoctor(clinicId, doctorId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id/receptionists/:userId')
+  deleteReceptionist(@Param('id') clinicId: string, @Param('userId') userId: string) {
+    return this.clinics.adminDeleteReceptionist(clinicId, userId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch(':id/staff/:userId/email')
+  updateStaffEmail(
+    @Param('id') clinicId: string,
+    @Param('userId') userId: string,
+    @Body('email') email: string,
+  ) {
+    return this.clinics.updateStaffEmail(clinicId, userId, email);
   }
 }

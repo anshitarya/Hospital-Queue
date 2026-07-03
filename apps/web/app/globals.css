@@ -15,6 +15,10 @@
                       radial-gradient(circle at 90% 110%, rgba(22, 163, 74, 0.04), transparent 40%);
     background-attachment: fixed;
   }
+  html.dark, html.dark body {
+    @apply bg-slate-950 text-slate-100;
+    background-image: none;
+  }
   ::selection {
     background-color: rgba(34, 197, 94, 0.25);
   }
@@ -137,3 +141,106 @@
   70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
+
+/* ── Dark mode overrides ──────────────────────────────────────────────────── */
+/* Override CSS component classes when html.dark is active */
+html.dark .card {
+  @apply bg-slate-800 ring-slate-700/60;
+}
+html.dark .card-inset {
+  @apply bg-slate-700/60 ring-slate-600/40;
+}
+html.dark .input {
+  @apply bg-slate-700 border-slate-600 text-slate-100 placeholder:text-slate-500;
+}
+html.dark .input:focus {
+  @apply border-brand-400 ring-brand-400/20;
+}
+html.dark .btn-secondary {
+  @apply bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600 hover:border-slate-500;
+}
+html.dark .btn-ghost {
+  @apply text-slate-300 hover:bg-slate-700 hover:text-slate-100;
+}
+html.dark .tabs-bar {
+  @apply border-slate-700;
+}
+html.dark .tab-active {
+  @apply bg-brand-700 text-white;
+}
+html.dark .tab-inactive {
+  @apply text-slate-400 hover:text-slate-200 hover:bg-slate-700;
+}
+html.dark .section-title {
+  @apply text-slate-100;
+}
+html.dark .section-sub {
+  @apply text-slate-400;
+}
+
+/* Override inline Tailwind utility classes in dark mode */
+html.dark .bg-white {
+  --tw-bg-opacity: 1;
+  background-color: rgb(30 41 59 / var(--tw-bg-opacity)); /* slate-800 */
+}
+html.dark .bg-slate-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(30 41 59 / var(--tw-bg-opacity)); /* slate-800 */
+}
+html.dark .bg-slate-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(51 65 85 / var(--tw-bg-opacity)); /* slate-700 */
+}
+html.dark .border-slate-100 {
+  --tw-border-opacity: 1;
+  border-color: rgb(51 65 85 / var(--tw-border-opacity)); /* slate-700 */
+}
+html.dark .border-slate-200 {
+  --tw-border-opacity: 1;
+  border-color: rgb(51 65 85 / var(--tw-border-opacity)); /* slate-700 */
+}
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  --tw-divide-opacity: 1;
+  border-color: rgb(51 65 85 / var(--tw-divide-opacity)); /* slate-700 */
+}
+html.dark .text-slate-900 { color: rgb(241 245 249); }
+html.dark .text-slate-800 { color: rgb(226 232 240); }
+html.dark .text-slate-700 { color: rgb(203 213 225); }
+html.dark .text-slate-600 { color: rgb(148 163 184); }
+html.dark .text-slate-500 { color: rgb(148 163 184); }
+html.dark .ring-slate-200\/80 { --tw-ring-color: rgb(51 65 85 / 0.6); }
+
+/* select elements need explicit bg override */
+html.dark select.input {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+/* ── Hover state overrides ────────────────────────────────────────────────── */
+html.dark .hover\:bg-slate-50:hover  { background-color: rgb(30 41 59); }
+html.dark .hover\:bg-slate-100:hover { background-color: rgb(51 65 85); }
+html.dark .hover\:bg-slate-200:hover { background-color: rgb(71 85 105); }
+
+/* ── Background opacity variants ──────────────────────────────────────────── */
+html.dark .bg-slate-50\/40 { background-color: rgb(30 41 59 / 0.6); }
+html.dark .bg-slate-50\/50 { background-color: rgb(30 41 59 / 0.5); }
+html.dark .bg-slate-50\/60 { background-color: rgb(30 41 59 / 0.6); }
+html.dark .bg-white\/70  { background-color: rgb(15 23 42 / 0.7); }
+html.dark .bg-white\/85  { background-color: rgb(15 23 42 / 0.85); }
+html.dark .bg-brand-50\/40 { background-color: rgb(7 22 12 / 0.6); }
+html.dark .bg-emerald-50\/60 { background-color: rgb(6 25 15 / 0.6); }
+html.dark .hover\:bg-slate-50\/60:hover { background-color: rgb(30 41 59 / 0.6); }
+html.dark .hover\:bg-brand-50:hover { background-color: rgb(7 22 12); }
+
+/* ── Ring color overrides ─────────────────────────────────────────────────── */
+html.dark .ring-slate-200 { --tw-ring-color: rgb(51 65 85 / var(--tw-ring-opacity, 1)); }
+html.dark .ring-slate-200\/70 { --tw-ring-color: rgb(51 65 85 / 0.7); }
+
+/* ── Contextual/brand surface overrides ───────────────────────────────────── */
+html.dark .bg-brand-50   { background-color: rgb(7 22 12); }
+html.dark .bg-emerald-50 { background-color: rgb(6 25 15); }
+html.dark .bg-rose-50    { background-color: rgb(30 10 10); }
+html.dark .bg-amber-50   { background-color: rgb(35 28 6); }
+html.dark .text-emerald-700 { color: rgb(52 211 153); }
+html.dark .text-brand-700   { color: rgb(74 222 128); }
+html.dark .text-brand-800   { color: rgb(134 239 172); }

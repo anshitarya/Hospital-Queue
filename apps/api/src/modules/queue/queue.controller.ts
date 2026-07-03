@@ -10,7 +10,7 @@ import {
 
 import { Role } from '@prisma/client';
 import { QueueService } from './queue.service';
-import { JoinQueueDto, PatientJoinQueueDto, ReorderEntryDto, StartBreakDto } from './dto/queue.dto';
+import { JoinQueueDto, MoveToPositionDto, PatientJoinQueueDto, ReorderEntryDto, StartBreakDto } from './dto/queue.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
@@ -96,6 +96,16 @@ export class QueueController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.queue.reorder(id, dto, user.id);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Post('entry/:id/move')
+  moveToPosition(
+    @Param('id') id: string,
+    @Body() dto: MoveToPositionDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.queue.moveToPosition(id, dto.position, user.id);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)

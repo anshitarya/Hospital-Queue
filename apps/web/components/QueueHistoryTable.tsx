@@ -51,7 +51,17 @@ function StatusBadge({ status }: { status: HistoryEntry['status'] }) {
 
 // ── Summary row shown above the table ────────────────────────────────────
 
-function SummaryBar({ entries }: { entries: HistoryEntry[] }) {
+type StatusFilter = 'COMPLETED' | 'SKIPPED' | 'CANCELLED' | null;
+
+function SummaryBar({
+  entries,
+  activeFilter,
+  onFilter,
+}: {
+  entries: HistoryEntry[];
+  activeFilter: StatusFilter;
+  onFilter: (f: StatusFilter) => void;
+}) {
   const done      = entries.filter((e) => e.status === 'COMPLETED').length;
   const skipped   = entries.filter((e) => e.status === 'SKIPPED').length;
   const cancelled = entries.filter((e) => e.status === 'CANCELLED').length;
@@ -71,10 +81,26 @@ function SummaryBar({ entries }: { entries: HistoryEntry[] }) {
 
   return (
     <div className="flex flex-wrap gap-3 text-sm">
-      <Chip color="emerald" label="Completed" value={done} />
-      <Chip color="amber"   label="Skipped"   value={skipped} />
-      <Chip color="rose"    label="Cancelled" value={cancelled} />
-      <Chip color="slate"   label="Total"     value={entries.length} />
+      <FilterChip
+        color="emerald" label="Completed" value={done}
+        active={activeFilter === 'COMPLETED'}
+        onClick={() => onFilter(activeFilter === 'COMPLETED' ? null : 'COMPLETED')}
+      />
+      <FilterChip
+        color="amber" label="Skipped" value={skipped}
+        active={activeFilter === 'SKIPPED'}
+        onClick={() => onFilter(activeFilter === 'SKIPPED' ? null : 'SKIPPED')}
+      />
+      <FilterChip
+        color="rose" label="Cancelled" value={cancelled}
+        active={activeFilter === 'CANCELLED'}
+        onClick={() => onFilter(activeFilter === 'CANCELLED' ? null : 'CANCELLED')}
+      />
+      <FilterChip
+        color="slate" label="Total" value={entries.length}
+        active={activeFilter === null}
+        onClick={() => onFilter(null)}
+      />
       {avgWait !== null && (
         <Chip color="brand" label="Avg wait" value={`${avgWait} min`} />
       )}
@@ -85,17 +111,37 @@ function SummaryBar({ entries }: { entries: HistoryEntry[] }) {
   );
 }
 
+function FilterChip({
+  color, label, value, active, onClick,
+}: {
+  color: string; label: string; value: number; active: boolean; onClick: () => void;
+}) {
+  const colors: Record<string, { base: string; activeRing: string }> = {
+    emerald: { base: 'bg-emerald-50 text-emerald-700 ring-emerald-200', activeRing: 'ring-2 ring-emerald-500 bg-emerald-100' },
+    amber:   { base: 'bg-amber-50   text-amber-700   ring-amber-200',   activeRing: 'ring-2 ring-amber-500   bg-amber-100'   },
+    rose:    { base: 'bg-rose-50    text-rose-700    ring-rose-200',    activeRing: 'ring-2 ring-rose-500    bg-rose-100'    },
+    slate:   { base: 'bg-slate-100  text-slate-600   ring-slate-200',   activeRing: 'ring-2 ring-slate-400   bg-slate-200'   },
+  };
+  const { base, activeRing } = colors[color] ?? colors.slate;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-inset transition-all ${active ? activeRing : `ring-1 ${base} hover:opacity-80`}`}
+    >
+      <span className="opacity-70">{label}</span>
+      <span className="font-bold">{value}</span>
+    </button>
+  );
+}
+
 function Chip({ color, label, value }: { color: string; label: string; value: number | string }) {
   const colors: Record<string, string> = {
-    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    amber:   'bg-amber-50   text-amber-700   ring-amber-200',
-    rose:    'bg-rose-50    text-rose-700    ring-rose-200',
-    slate:   'bg-slate-100  text-slate-600   ring-slate-200',
     brand:   'bg-brand-50   text-brand-700   ring-brand-200',
     purple:  'bg-purple-50  text-purple-700  ring-purple-200',
   };
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${colors[color] ?? colors.slate}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${colors[color] ?? 'bg-slate-100 text-slate-600 ring-slate-200'}`}>
       <span className="opacity-70">{label}</span>
       <span className="font-bold">{value}</span>
     </span>
@@ -132,10 +178,12 @@ interface Props {
 }
 
 export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorName }: Props) {
-  const [date, setDate]       = useState(todayISO());
-  const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState<string | null>(null);
+  const [date, setDate]             = useState(todayISO());
+  const [entries, setEntries]       = useState<HistoryEntry[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [search, setSearch]         = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(null);
 
   const load = useCallback(async (d: string) => {
     setLoading(true);
@@ -168,7 +216,14 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="search"
+            placeholder="Search name or phone…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input !py-1.5 !w-44 text-xs"
+          />
           {/* Jump to yesterday */}
           <button
             type="button"
@@ -239,12 +294,36 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
       {/* ── Results ── */}
       {!loading && !error && (
         <>
-          {entries.length > 0 && <SummaryBar entries={entries} />}
+          {entries.length > 0 && (
+            <SummaryBar entries={entries} activeFilter={statusFilter} onFilter={setStatusFilter} />
+          )}
 
           {entries.length === 0 ? (
             <EmptyState date={date} />
-          ) : (
+          ) : (() => {
+            const sq = search.toLowerCase().trim();
+            const byStatus = statusFilter ? entries.filter(e => e.status === statusFilter) : entries;
+            const filtered = sq ? byStatus.filter(e =>
+              e.patient.name.toLowerCase().includes(sq) ||
+              (e.patient.phone ?? '').includes(sq)
+            ) : byStatus;
+            return (
             <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
+              {(sq || statusFilter) && (
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 flex items-center gap-2">
+                  <span>{filtered.length} of {entries.length} results{sq ? ` for "${search}"` : ''}</span>
+                  {statusFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setStatusFilter(null)}
+                      className="ml-auto text-slate-400 hover:text-slate-700 transition-colors"
+                      title="Clear status filter"
+                    >
+                      ✕ Clear filter
+                    </button>
+                  )}
+                </div>
+              )}
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-left text-xs text-slate-500 uppercase tracking-wider">
@@ -263,7 +342,13 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {entries.map((e, idx) => (
+                  {filtered.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-10 text-center text-sm text-slate-400">
+                        No results for &ldquo;{search}&rdquo;
+                      </td>
+                    </tr>
+                  ) : filtered.map((e, idx) => (
                     <tr
                       key={e.id}
                       className={
@@ -359,7 +444,8 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
                 </tbody>
               </table>
             </div>
-          )}
+            );
+          })()}
         </>
       )}
     </div>

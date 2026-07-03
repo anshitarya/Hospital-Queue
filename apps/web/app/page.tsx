@@ -34,7 +34,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
             <div className="space-y-6 animate-fade-in">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 backdrop-blur ring-1 ring-slate-200 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-800/70 backdrop-blur ring-1 ring-slate-200 dark:ring-slate-600 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm">
                 <span className="live-dot" />
                 Live ETA · No app needed · Multi-clinic
               </div>
@@ -136,7 +136,7 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* HOW IT WORKS                                                        */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <section id="how" className="py-16 sm:py-24 bg-slate-50/60 border-y border-slate-200/60">
+      <section id="how" className="py-16 sm:py-24 bg-slate-50/60 dark:bg-slate-800/30 border-y border-slate-200/60 dark:border-slate-700/60">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <SectionHeading
             kicker="How it works"
@@ -215,7 +215,7 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FAQ                                                                 */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <section id="faq" className="py-16 sm:py-24 bg-slate-50/60 border-y border-slate-200/60">
+      <section id="faq" className="py-16 sm:py-24 bg-slate-50/60 dark:bg-slate-800/30 border-y border-slate-200/60 dark:border-slate-700/60">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <SectionHeading
             kicker="FAQ"

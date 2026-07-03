@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, type QueueEntry, type Doctor } from '@/lib/api';
+import { api, ApiError, type QueueEntry, type Doctor } from '@/lib/api';
 import { useDoctorQueue, usePatientStream } from '@/lib/socket';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
@@ -16,6 +16,50 @@ interface HistoryItem extends QueueEntry {
 
 const REFRESH_INTERVAL_MS = 30_000;
 const UPCOMING_THRESHOLD = 5; // show alert when ≤ this many people ahead
+
+// ─── Browser notification helpers ───────────────────────────────────────────
+
+function requestNotifPermission() {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+function sendBrowserNotif(title: string, body: string) {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body, icon: '/favicon.ico', badge: '/favicon.ico' });
+  } catch {}
+}
+
+function playChime(urgent: boolean) {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    const notes = urgent
+      ? [880, 1100, 880]      // two ascending + one for "your turn"
+      : [660, 880];           // one gentle up-tone for "you're next"
+    notes.forEach((freq, i) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.25);
+      gain.gain.setValueAtTime(0, now + i * 0.25);
+      gain.gain.linearRampToValueAtTime(0.25, now + i * 0.25 + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.25 + 0.4);
+      osc.start(now + i * 0.25);
+      osc.stop(now + i * 0.25 + 0.4);
+    });
+  } catch {}
+}
+
+function vibrate(urgent: boolean) {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(urgent ? [200, 100, 200, 100, 200] : [150, 80, 150]);
+  }
+}
 
 // ─── Status display metadata ────────────────────────────────────────────────
 const STATUS_META = {
@@ -64,6 +108,19 @@ export default function PatientPage() {
   const handlePositionUpdate = useCallback((entryId: string, ahead: number) => {
     setPositionsMap((prev) => (prev[entryId] === ahead ? prev : { ...prev, [entryId]: ahead }));
   }, []);
+
+  // Ask for notification permission once the user has an active queue entry.
+  const notifRequested = useRef(false);
+  useEffect(() => {
+    if (notifRequested.current) return;
+    const hasLive = history.some(
+      (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
+    );
+    if (hasLive) {
+      notifRequested.current = true;
+      requestNotifPermission();
+    }
+  }, [history]);
 
   const handleCompleted = useCallback((updated: HistoryItem) => {
     setCompletedIds((prev) => new Set([...prev, updated.id]));
@@ -180,11 +237,11 @@ export default function PatientPage() {
         )}
 
         {/* ── Active / History tab bar ──────────────────────────────────────── */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        <div className="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
           {(['active', 'history'] as const).map((tab) => (
             <button key={tab} type="button" onClick={() => setActiveTab(tab)}
               className={`flex-1 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
-                activeTab === tab ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                activeTab === tab ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
               {tab === 'active'
@@ -254,7 +311,7 @@ function ClinicDropdown({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm hover:border-brand-300 transition-colors"
+        className="w-full flex items-center justify-between gap-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 shadow-sm hover:border-brand-300 dark:hover:border-brand-600 transition-colors"
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="text-lg">🏥</span>
@@ -277,14 +334,14 @@ function ClinicDropdown({
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-20 overflow-hidden">
           {clinics.map((c, i) => {
             const liveCount = liveCountByClinic[c.id] ?? 0;
             return (
               <button key={c.id} type="button"
                 onClick={() => { onChange(c.id); setOpen(false); }}
-                className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-sm text-left transition-colors hover:bg-slate-50 ${
-                  i > 0 ? 'border-t border-slate-100' : ''
+                className={`w-full flex items-center justify-between gap-3 px-4 py-3 text-sm text-left transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 ${
+                  i > 0 ? 'border-t border-slate-100 dark:border-slate-700' : ''
                 }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -470,6 +527,23 @@ function ActiveEntry({
   const { snapshot, connected } = useDoctorQueue(entry.doctorId);
   const [finalStatus, setFinalStatus] = useState<string | null>(null);
   const completedFired = useRef(false);
+  const [cancelling, setCancelling]     = useState(false);
+  const [cancelError, setCancelError]   = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const prevStatusRef = useRef<string | null>(null);
+  const prevAheadRef  = useRef<number | null>(null);
+
+  async function confirmCancel() {
+    setShowCancelConfirm(false);
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await api(`/queue/entry/${entry.id}/cancel`, { method: 'POST' });
+    } catch (err) {
+      setCancelError(err instanceof ApiError ? err.message : 'Failed to cancel. Please try again.');
+      setCancelling(false);
+    }
+  }
 
   const live = snapshot?.entries.find((e) => e.id === entry.id);
 
@@ -480,6 +554,11 @@ function ActiveEntry({
       api<{ entry: QueueEntry }>(`/queue/entry/${entry.id}`)
         .then(({ entry: updated }) => {
           setFinalStatus(updated.status);
+          if (updated.status === 'MISSED') {
+            sendBrowserNotif('⚠️ You were missed', `Please contact reception to be re-added — ${entry.doctor.user.name}`);
+            playChime(false);
+            vibrate(false);
+          }
           setTimeout(() => onCompleted({ ...entry, status: updated.status as HistoryItem['status'] }), 4000);
         })
         .catch(() => {
@@ -499,6 +578,29 @@ function ActiveEntry({
   const isUrgent    = isInConsult || isNextUp;
   const breakUntil  = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
   const breakActive = snapshot?.doctor?.status === 'PAUSED' && breakUntil && breakUntil.getTime() > Date.now();
+
+  // Detect status / position transitions and fire browser notifications.
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    const prevAhead  = prevAheadRef.current;
+    prevStatusRef.current = status;
+    prevAheadRef.current  = ahead;
+
+    // Skip the very first render — no previous state to compare against.
+    if (prevStatus === null) return;
+    // Nothing changed.
+    if (prevStatus === status && prevAhead === ahead) return;
+
+    if (status === 'IN_CONSULTATION' && prevStatus !== 'IN_CONSULTATION') {
+      sendBrowserNotif(`🔔 It's your turn!`, `Please proceed to the consultation room — ${entry.doctor.user.name}`);
+      playChime(true);
+      vibrate(true);
+    } else if (status === 'WAITING' && ahead === 0 && (prevAhead === null || prevAhead > 0)) {
+      sendBrowserNotif(`⚡ You're next!`, `Please be ready outside — ${entry.doctor.user.name}`);
+      playChime(false);
+      vibrate(false);
+    }
+  }, [status, ahead, entry.doctor.user.name]);
 
   // Total queue size for the progress bar.
   const totalInQueue = snapshot?.entries.filter(
@@ -536,10 +638,10 @@ function ActiveEntry({
   return (
     <section className={`card overflow-hidden ${isUrgent ? 'ring-2 ring-brand-400/50 shadow-md' : ''}`}>
       {/* Header */}
-      <div className={`px-5 py-4 border-b border-slate-100 flex items-center justify-between ${
-        isInConsult ? 'bg-gradient-to-r from-emerald-50 to-teal-50'
-        : isNextUp   ? 'bg-gradient-to-r from-amber-50 to-orange-50'
-        : 'bg-gradient-to-r from-slate-50 to-white'
+      <div className={`px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between ${
+        isInConsult ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30'
+        : isNextUp   ? 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/30 dark:to-orange-900/30'
+        : 'bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800'
       }`}>
         <div className="min-w-0">
           {entry.doctor.clinic?.name && (
@@ -547,7 +649,7 @@ function ActiveEntry({
               {entry.doctor.clinic.name}
             </div>
           )}
-          <div className="font-semibold text-slate-900 truncate">{entry.doctor.user.name}</div>
+          <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">{entry.doctor.user.name}</div>
           <div className="text-xs text-slate-500">{entry.doctor.department?.name ?? 'General'}</div>
         </div>
         <LiveIndicator connected={connected} />
@@ -561,17 +663,17 @@ function ActiveEntry({
           </div>
         )}
         {isNextUp && (
-          <div className="rounded-xl bg-amber-50 border-2 border-amber-400 text-amber-800 text-center font-medium py-3 px-4">
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/30 border-2 border-amber-400 dark:border-amber-600 text-amber-800 dark:text-amber-300 text-center font-medium py-3 px-4">
             ⚡ You&apos;re next — please be ready outside
           </div>
         )}
         {(finalStatus === 'MISSED' || status === 'MISSED') && (
-          <div className="rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-800 text-center font-medium py-3 px-4">
+          <div className="rounded-xl bg-rose-50 dark:bg-rose-900/30 border-2 border-rose-400 dark:border-rose-600 text-rose-800 dark:text-rose-300 text-center font-medium py-3 px-4">
             ⚠️ You were previously missed. Please reach out to the reception desk if you need to be re-added.
           </div>
         )}
         {breakActive && (
-          <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 text-center">
+          <div className="rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 text-center">
             ☕ Doctor is on a short break — returning at{' '}
             <strong>{breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong>
             {snapshot?.doctor?.breakNote && ` · ${snapshot.doctor.breakNote}`}
@@ -581,20 +683,20 @@ function ActiveEntry({
         {/* Token grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className={`rounded-xl p-4 text-center ${
-            isInConsult ? 'bg-emerald-50 ring-2 ring-emerald-300'
-            : isNextUp  ? 'bg-amber-50 ring-2 ring-amber-300'
-            : 'bg-brand-50 ring-1 ring-brand-100'
+            isInConsult ? 'bg-emerald-50 dark:bg-emerald-900/30 ring-2 ring-emerald-300 dark:ring-emerald-700'
+            : isNextUp  ? 'bg-amber-50 dark:bg-amber-900/30 ring-2 ring-amber-300 dark:ring-amber-700'
+            : 'bg-brand-50 dark:bg-brand-900/20 ring-1 ring-brand-100 dark:ring-brand-800/50'
           }`}>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-medium">Your token</div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Your token</div>
             <div className={`text-5xl font-bold leading-none tabular-nums ${
-              isInConsult ? 'text-emerald-700' : isNextUp ? 'text-amber-700' : 'text-brand-700'
+              isInConsult ? 'text-emerald-700 dark:text-emerald-400' : isNextUp ? 'text-amber-700 dark:text-amber-400' : 'text-brand-700 dark:text-brand-400'
             }`}>
               #{entry.tokenNumber}
             </div>
           </div>
-          <div className="rounded-xl p-4 text-center bg-slate-50 ring-1 ring-slate-100">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 mb-1.5 font-medium">Now serving</div>
-            <div className="text-5xl font-bold text-slate-800 leading-none tabular-nums">
+          <div className="rounded-xl p-4 text-center bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Now serving</div>
+            <div className="text-5xl font-bold text-slate-800 dark:text-slate-100 leading-none tabular-nums">
               {snapshot?.currentToken ? `#${snapshot.currentToken}` : '—'}
             </div>
           </div>
@@ -604,13 +706,13 @@ function ActiveEntry({
         {status === 'WAITING' && !isNextUp && (
           <>
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-3.5 text-center">
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
                 <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">People ahead</div>
-                <div className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">{ahead}</div>
+                <div className="text-3xl font-bold text-slate-800 dark:text-slate-100 mt-1 tabular-nums">{ahead}</div>
               </div>
-              <div className="rounded-xl bg-slate-50 ring-1 ring-slate-100 p-3.5 text-center">
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
                 <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Est. wait</div>
-                <div className="text-3xl font-bold text-slate-800 mt-1 tabular-nums">
+                <div className="text-3xl font-bold text-slate-800 dark:text-slate-100 mt-1 tabular-nums">
                   ~{eta}<span className="text-sm text-slate-400 font-normal ml-1">min</span>
                 </div>
                 {etaAbs && (
@@ -631,7 +733,7 @@ function ActiveEntry({
                   <span>Queue progress</span>
                   <span>{totalInQueue - ahead} of {totalInQueue} seen</span>
                 </div>
-                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-brand-400 rounded-full transition-all duration-700"
                     style={{ width: `${progressPct}%` }}
@@ -642,6 +744,52 @@ function ActiveEntry({
           </>
         )}
       </div>
+
+      {/* Cancel appointment — only while still waiting */}
+      {status === 'WAITING' && (
+        <div className="border-t border-slate-100 dark:border-slate-700 px-5 py-3">
+          {cancelError && (
+            <p className="text-xs text-rose-600 text-center mb-2">{cancelError}</p>
+          )}
+
+          {showCancelConfirm ? (
+            <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 ring-1 ring-rose-200 dark:ring-rose-800 px-4 py-3 space-y-3">
+              <p className="text-sm font-medium text-rose-800 dark:text-rose-300 text-center">
+                Cancel your appointment with {entry.doctor.user.name}?
+              </p>
+              <p className="text-xs text-rose-600 dark:text-rose-400 text-center">
+                This cannot be undone.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCancelConfirm(false)}
+                  className="flex-1 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-medium py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Keep appointment
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmCancel}
+                  disabled={cancelling}
+                  className="flex-1 rounded-lg bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white text-xs font-medium py-2 transition-colors disabled:opacity-50"
+                >
+                  Yes, cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowCancelConfirm(true)}
+              disabled={cancelling}
+              className="w-full text-xs text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 transition-colors py-0.5 disabled:opacity-50"
+            >
+              {cancelling ? 'Cancelling…' : 'Cancel appointment'}
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
