@@ -37,19 +37,17 @@ COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
 # Trade-off: larger image; avoids cross-compiling native modules (argon2).
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
 
-# Prisma schema + seed (seed is run on every boot — it's idempotent).
+# Prisma schema (needed by migrate deploy + prisma client at runtime).
 COPY --chown=appuser:appgroup prisma ./prisma
 COPY --chown=appuser:appgroup package.json ./
-# seed.ts imports from ../src/config — copy only those files (not full src/).
-COPY --from=builder --chown=appuser:appgroup /app/src/config ./src/config
 
 USER appuser
 EXPOSE 4000
 
-# db push: syncs schema changes on every deploy (safe for single-instance MVP).
-# Seed: upserts base data (doctors, departments, admin account).
-# Then: start compiled app.
+# 1. Apply pending migrations (idempotent, safe every boot).
+# 2. Run the pre-compiled seed JS — avoids ts-node ESM issues on Node 20.
+# 3. Start the app.
 CMD ["sh", "-c", \
   "npx prisma migrate deploy && \
-   npx prisma db seed && \
+   node dist/prisma/seed.js && \
    node dist/main.js"]
