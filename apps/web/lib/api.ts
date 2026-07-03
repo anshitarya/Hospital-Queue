@@ -13,7 +13,7 @@ export class ApiError extends Error {
 
 export async function api<T>(
   path: string,
-  init: RequestInit & { body?: unknown } = {},
+  init: Omit<RequestInit, 'body'> & { body?: unknown } = {},
 ): Promise<T> {
   const isFormData = init.body instanceof FormData;
   const res = await fetch(`${BASE_URL}/api${path}`, {
