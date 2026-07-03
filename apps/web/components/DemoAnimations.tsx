@@ -287,7 +287,7 @@ export function ReceptionDemo() {
 
   const queue = step >= 4
     ? [
-        ...DEMO_DATA.reception.initialQueue,
+        ...DEMO_DATA.reception.initialQueue.map((p) => ({ ...p, status: 'waiting' as const })),
         { n: DEMO_DATA.reception.newTokenNumber, name: DEMO_DATA.reception.newPatientName, status: 'new' as const },
       ]
     : DEMO_DATA.reception.initialQueue.map((p) => ({ ...p, status: 'waiting' as const }));

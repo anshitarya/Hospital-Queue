@@ -125,6 +125,7 @@ export interface QueueEntry {
   completedAt?: string | null;
   // Sort position for walk-ins / rejoins (Feature 1 & 2)
   sortOrder?: number | null;
+  walkin?: boolean;
   // Slot type: NEW or FOLLOWUP (Feature 6)
   slotType?: SlotType;
   // ETA enrichment fields (Features 3, 5)
