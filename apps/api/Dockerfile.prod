@@ -4,7 +4,7 @@ RUN apt-get update -y \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
 # Install ALL deps (including devDeps) — needed for prisma CLI + ts-node in seed.
 RUN npm ci --no-audit --no-fund
 COPY prisma ./prisma
