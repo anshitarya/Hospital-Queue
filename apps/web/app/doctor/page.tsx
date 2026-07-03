@@ -34,7 +34,7 @@ export default function DoctorPage() {
 
   // Break form state (Feature 4)
   const [showBreakForm, setShowBreakForm] = useState(false);
-  const [breakMinutes, setBreakMinutes] = useState(15);
+  const [breakMinutes, setBreakMinutes] = useState('15');
   const [breakNote, setBreakNote] = useState('');
 
   const [recList, setRecList] = useState<ReceptionistRow[]>([]);
@@ -132,11 +132,13 @@ export default function DoctorPage() {
   const doctorAction = (action: 'pause' | 'resume') =>
     call(() => api(`/queue/doctor/${doctorId}/${action}`, { method: 'POST' }), action);
   const startBreak = async () => {
+    const mins = Math.max(1, parseInt(breakMinutes, 10) || 1);
     await call(
-      () => api(`/queue/doctor/${doctorId}/break`, { method: 'POST', body: { estimatedMinutes: breakMinutes, note: breakNote || undefined } }),
+      () => api(`/queue/doctor/${doctorId}/break`, { method: 'POST', body: { estimatedMinutes: mins, note: breakNote || undefined } }),
       'Start break',
     );
     setShowBreakForm(false);
+    setBreakMinutes('15');
     setBreakNote('');
   };
 
@@ -230,7 +232,9 @@ export default function DoctorPage() {
                     <button
                       type="button"
                       onClick={() => setShowBreakForm((v) => !v)}
-                      className="btn-ghost !py-1 !px-2.5 text-xs text-slate-500"
+                      className={showBreakForm
+                        ? 'btn-ghost !py-1 !px-2.5 text-xs text-slate-500'
+                        : 'btn-secondary !py-1 !px-3 text-xs'}
                     >
                       {showBreakForm ? 'Cancel' : '☕ Break'}
                     </button>
@@ -251,8 +255,8 @@ export default function DoctorPage() {
                         min={1}
                         max={480}
                         value={breakMinutes}
-                        onChange={(e) => setBreakMinutes(Math.max(1, Number(e.target.value)))}
-                        className="input !py-1.5 w-24 text-sm"
+                        onChange={(e) => setBreakMinutes(e.target.value)}
+                        className="input !py-1.5 w-24 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-slate-600 flex-1 min-w-0">
