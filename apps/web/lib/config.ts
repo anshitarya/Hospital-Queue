@@ -28,7 +28,7 @@ export const BRAND = {
     hours: '9 AM–8 PM IST',
   },
   // Replace this with your actual Google Form URL
-  doctorSurveyUrl: 'https://forms.gle/REPLACE_WITH_YOUR_FORM_ID',
+  doctorSurveyUrl: 'https://forms.gle/dy6eZe8yaz7XbtAP8',
 };
 
 /* ─────────────────────────────────────────────────────────────────────────── */
