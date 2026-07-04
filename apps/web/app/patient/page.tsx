@@ -82,6 +82,13 @@ export default function PatientPage() {
   const [lastSync, setLastSync]             = useState<Date | null>(null);
   const [selectedClinicId, setSelectedClinicId] = useState<string | null>(null);
   const [activeTab, setActiveTab]           = useState<'active' | 'history'>('active');
+  // Dismissed notification IDs, persisted for the session so refresh doesn't re-show them.
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
+    try {
+      const raw = typeof window !== 'undefined' ? sessionStorage.getItem('hq_dismissed_notifs') : null;
+      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    } catch { return new Set(); }
+  });
 
   const fetchHistory = useCallback(async () => {
     if (!user) return;
@@ -108,6 +115,24 @@ export default function PatientPage() {
 
   const handlePositionUpdate = useCallback((entryId: string, ahead: number) => {
     setPositionsMap((prev) => (prev[entryId] === ahead ? prev : { ...prev, [entryId]: ahead }));
+  }, []);
+
+  const dismissNotif = useCallback((id: string) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try { sessionStorage.setItem('hq_dismissed_notifs', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+
+  const dismissAllNotifs = useCallback((ids: string[]) => {
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      try { sessionStorage.setItem('hq_dismissed_notifs', JSON.stringify([...next])); } catch {}
+      return next;
+    });
   }, []);
 
   // Ask for notification permission once the user has an active queue entry.
@@ -168,13 +193,14 @@ export default function PatientPage() {
     clinics.map((c) => [c.id, liveEntries.filter((e) => (e.doctor.clinicId ?? 'unknown') === c.id).length]),
   );
 
-  // Build notification list for the bell.
-  const notifications: PatientNotification[] = [
+  // Build notification list: use position-versioned IDs so a previously-dismissed
+  // "3 ahead" doesn't suppress the new "1 ahead" notification.
+  const allNotifications: PatientNotification[] = [
     ...upcomingAlerts.map((e): PatientNotification => {
       const pos    = positionsMap[e.id] ?? 0;
       const isNext = pos === 0;
       return {
-        id:    `upcoming-${e.id}`,
+        id:    `upcoming-${e.id}-${pos}`,  // position-versioned: dismissing #3 ≠ dismissing #1
         type:  isNext ? 'urgent' : 'upcoming',
         title: isNext
           ? `It's your turn — ${e.doctor.user.name}`
@@ -191,6 +217,8 @@ export default function PatientPage() {
       body:  `You were marked as missed${e.doctor.clinic?.name ? ` at ${e.doctor.clinic.name}` : ''}. Please reach out to the reception desk if you need to be re-added.`,
     })),
   ];
+  // Filter out dismissed ones so the bell only shows unread notifications.
+  const notifications = allNotifications.filter((n) => !dismissedIds.has(n.id));
 
   return (
     <>
@@ -202,7 +230,13 @@ export default function PatientPage() {
 
       <Header
         title="My Queue"
-        actions={<NotificationBell notifications={notifications} />}
+        actions={
+          <NotificationBell
+            notifications={notifications}
+            onDismiss={dismissNotif}
+            onDismissAll={() => dismissAllNotifs(notifications.map((n) => n.id))}
+          />
+        }
       />
 
       <main className="mx-auto max-w-lg px-4 py-5 space-y-4 animate-fade-in">
