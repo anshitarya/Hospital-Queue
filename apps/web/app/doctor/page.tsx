@@ -129,6 +129,18 @@ export default function DoctorPage() {
     });
   }, [applyOptimistic, revertOptimistic]);
 
+  // Derived state — must be before any early returns so hooks (useMemo) count stays constant.
+  const current = snapshot?.entries.find((e) => e.status === 'IN_CONSULTATION');
+  const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
+  const nextUp = waiting[0];
+  const isPaused = snapshot?.doctor?.status === 'PAUSED';
+  const orderMap = useMemo(
+    () => new Map(waiting.map((e, i) => [e.id, i + 1])),
+    [waiting],
+  );
+  const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
+  const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
+
   if (!ready) return <PageLoader label="Loading your panel…" />;
 
   const callNext = () =>
@@ -225,18 +237,6 @@ export default function DoctorPage() {
     );
   };
 
-  const current = snapshot?.entries.find((e) => e.status === 'IN_CONSULTATION');
-  const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
-  const nextUp = waiting[0];
-  const isPaused = snapshot?.doctor?.status === 'PAUSED';
-
-  // 1-based position map for waiting patients
-  const orderMap = useMemo(
-    () => new Map(waiting.map((e, i) => [e.id, i + 1])),
-    [waiting],
-  );
-  const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
-  const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
 
   return (
     <>
@@ -370,7 +370,7 @@ export default function DoctorPage() {
                   <div className="space-y-4">
                     {/* Patient hero */}
                     <div className="flex items-start gap-4 flex-wrap">
-                      <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-emerald-100 text-emerald-700 font-bold text-xl shrink-0 shadow-inner">
+                      <div className="flex items-center justify-center h-14 min-w-[3.5rem] px-2 rounded-2xl bg-emerald-100 text-emerald-700 font-bold text-sm shrink-0 shadow-inner tracking-wide">
                         {tokenDisplay(current.tokenNumber)}
                       </div>
                       <div className="flex-1 min-w-0">

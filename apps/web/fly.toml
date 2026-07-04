@@ -9,8 +9,8 @@ region = "bom"
   # NEXT_PUBLIC_* vars are baked into the browser bundle at build time.
   # These must match the API app name above (replace "hq-api" if you renamed it).
   [build.args]
-    NEXT_PUBLIC_API_URL    = "https://hq-api.fly.dev"
-    NEXT_PUBLIC_SOCKET_URL = "https://hq-api.fly.dev"
+    NEXT_PUBLIC_API_URL    = "https://queue-hq-api.fly.dev"
+    NEXT_PUBLIC_SOCKET_URL = "https://queue-hq-api.fly.dev"
 
 [env]
   PORT     = "3000"
@@ -26,4 +26,4 @@ region = "bom"
 [[vm]]
   cpu_kind  = "shared"
   cpus      = 1
-  memory_mb = 512
+  memory_mb = 1024
