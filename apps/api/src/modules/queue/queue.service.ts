@@ -16,6 +16,16 @@ import { JoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
 import { QueueGateway } from './gateway/queue.gateway';
 import { clinicDefaults } from '../../config/clinic.config';
 
+function tokenToCode(n: number): string {
+  if (n <= 0) return '---';
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const M = 17576; // 26^3
+  const A = 6949;
+  const ADD = 3749;
+  const x = (((n - 1) * A) + ADD) % M;
+  return CHARS[Math.floor(x / 676)] + CHARS[Math.floor((x % 676) / 26)] + CHARS[x % 26];
+}
+
 function todayKey(): string {
   const d = new Date();
   // Use local timezone so the day resets at local midnight, not UTC midnight.
@@ -450,7 +460,7 @@ export class QueueService {
     const alreadyInProgress = entries.find((e) => e.status === EntryStatus.IN_CONSULTATION);
     if (alreadyInProgress) {
       throw new ConflictException(
-        `Doctor already has token #${alreadyInProgress.tokenNumber} in consultation`,
+        `Doctor already has token #${tokenToCode(alreadyInProgress.tokenNumber)} in consultation`,
       );
     }
 
@@ -838,6 +848,89 @@ export class QueueService {
         createdBy: e.createdBy ?? null,
       };
     });
+  }
+
+  // ---------- bulk operations ----------
+
+  async clearQueue(doctorId: string, options: { includeMissed?: boolean }, byUserId?: string) {
+    const serviceDay = todayKey();
+    const statuses: EntryStatus[] = [EntryStatus.WAITING];
+    if (options.includeMissed) statuses.push(EntryStatus.MISSED);
+
+    const entries = await this.prisma.queueEntry.findMany({
+      where: { doctorId, serviceDay, status: { in: statuses } },
+      select: { id: true, patientId: true },
+    });
+
+    if (!entries.length) return { cleared: 0 };
+
+    const ids = entries.map((e) => e.id);
+    await Promise.all([
+      this.prisma.queueEntry.updateMany({
+        where: { id: { in: ids } },
+        data: { status: EntryStatus.CANCELLED, completedAt: new Date() },
+      }),
+      this.prisma.queueEvent.create({
+        data: {
+          doctorId,
+          type: 'queue_cleared',
+          payload: { byUserId, count: entries.length, includeMissed: options.includeMissed ?? false },
+        },
+      }),
+    ]);
+
+    await this.broadcast(doctorId, 'queue_cleared', { count: entries.length });
+
+    for (const entry of entries) {
+      this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
+        eventType: 'entry_cancelled',
+        entryId: entry.id,
+        doctorId,
+      });
+    }
+
+    return { cleared: entries.length };
+  }
+
+  async cancelMany(entryIds: string[], byUserId?: string) {
+    if (!entryIds.length) return { cancelled: 0 };
+
+    const entries = await this.prisma.queueEntry.findMany({
+      where: {
+        id: { in: entryIds },
+        status: { in: [EntryStatus.WAITING, EntryStatus.MISSED] },
+      },
+      select: { id: true, doctorId: true, patientId: true },
+    });
+
+    if (!entries.length) return { cancelled: 0 };
+
+    await this.prisma.queueEntry.updateMany({
+      where: { id: { in: entries.map((e) => e.id) } },
+      data: { status: EntryStatus.CANCELLED, completedAt: new Date() },
+    });
+
+    const byDoctor = new Map<string, typeof entries>();
+    for (const e of entries) {
+      if (!byDoctor.has(e.doctorId)) byDoctor.set(e.doctorId, []);
+      byDoctor.get(e.doctorId)!.push(e);
+    }
+
+    await Promise.all(
+      Array.from(byDoctor.entries()).map(([did, es]) =>
+        this.broadcast(did, 'entries_cancelled', { count: es.length }),
+      ),
+    );
+
+    for (const entry of entries) {
+      this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
+        eventType: 'entry_cancelled',
+        entryId: entry.id,
+        doctorId: entry.doctorId,
+      });
+    }
+
+    return { cancelled: entries.length };
   }
 
   // ---------- internals ----------

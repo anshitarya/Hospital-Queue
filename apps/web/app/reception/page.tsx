@@ -66,6 +66,9 @@ export default function ReceptionPage() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [queueSearch, setQueueSearch] = useState('');
   const [missedSearch, setMissedSearch] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const loadClinic = useCallback(async () => {
     try {
@@ -352,6 +355,41 @@ export default function ReceptionPage() {
       'Move',
     );
 
+  const clearQueue = (includeMissed: boolean) => {
+    setShowClearConfirm(false);
+    const waitingCount = (snapshot?.entries ?? []).filter(e => e.status === 'WAITING').length;
+    const missedCount  = includeMissed ? (snapshot?.missedEntries ?? []).length : 0;
+    callAction(
+      () => api(`/queue/doctor/${selectedDoctorId}/clear-queue`, { method: 'POST', body: { includeMissed } }),
+      'Clear queue',
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e =>
+          e.status === 'WAITING' ? { ...e, status: 'CANCELLED' as const } : e
+        ),
+        missedEntries: includeMissed ? [] : s.missedEntries,
+      }),
+    );
+    if (waitingCount + missedCount > 0) {
+      setToast({ type: 'ok', msg: `Cleared ${waitingCount + missedCount} patient${waitingCount + missedCount !== 1 ? 's' : ''}` });
+    }
+  };
+
+  const cancelSelected = () => {
+    const ids = Array.from(selectedIds);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    callAction(
+      () => api('/queue/entries/cancel-many', { method: 'POST', body: { entryIds: ids } }),
+      'Cancel selected',
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e => ids.includes(e.id) ? { ...e, status: 'CANCELLED' as const } : e),
+        missedEntries: (s.missedEntries ?? []).filter(e => !ids.includes(e.id)),
+      }),
+    );
+  };
+
   return (
     <>
       <Header title="Reception" subtitle={clinic?.name} />
@@ -540,27 +578,75 @@ export default function ReceptionPage() {
               {/* Live queue */}
               <section className="card overflow-hidden lg:col-span-2">
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <h2 className="section-title">
                       Live queue
                       {snapshot?.doctor && (
                         <span className="ml-2 text-sm font-normal text-slate-400">— {snapshot.doctor.user.name}</span>
                       )}
                     </h2>
-                    <div className="flex items-center gap-2 text-sm">
+                    <div className="flex items-center gap-2">
                       <span className="text-slate-500 text-xs">Now serving</span>
-                      <span className="font-bold text-slate-800 font-mono">
-                        {snapshot?.currentToken ? `#${snapshot.currentToken}` : '—'}
+                      <span className="font-bold text-slate-800 font-mono text-sm">
+                        {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
                       </span>
                     </div>
                   </div>
-                  <input
-                    type="search"
-                    placeholder="Search by name or phone…"
-                    value={queueSearch}
-                    onChange={(e) => setQueueSearch(e.target.value)}
-                    className="input !py-1.5 text-xs"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="search"
+                      placeholder="Search by name or phone…"
+                      value={queueSearch}
+                      onChange={(e) => setQueueSearch(e.target.value)}
+                      className="input !py-1.5 text-xs flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setSelectMode(v => !v); setSelectedIds(new Set()); }}
+                      className={`btn-ghost !py-1 !px-2.5 text-xs shrink-0 ${selectMode ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : ''}`}
+                    >
+                      {selectMode ? 'Done' : 'Select'}
+                    </button>
+                    {selectedIds.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={cancelSelected}
+                        className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 shrink-0"
+                      >
+                        Cancel {selectedIds.size}
+                      </button>
+                    )}
+                    {!selectMode && (snapshot?.entries ?? []).some(e => e.status === 'WAITING') && (
+                      <button
+                        type="button"
+                        onClick={() => setShowClearConfirm(true)}
+                        className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 shrink-0"
+                        title="Cancel all waiting patients"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  {/* Clear confirm dialog */}
+                  {showClearConfirm && (
+                    <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 px-4 py-3 space-y-2">
+                      <p className="text-sm font-medium text-rose-800">Cancel all patients?</p>
+                      <p className="text-xs text-rose-600">They will appear in history as Cancelled.</p>
+                      <div className="flex gap-2 flex-wrap">
+                        <button type="button" onClick={() => clearQueue(false)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
+                          Clear waiting only
+                        </button>
+                        {(snapshot?.missedEntries ?? []).length > 0 && (
+                          <button type="button" onClick={() => clearQueue(true)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
+                            Clear waiting + missed
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setShowClearConfirm(false)} className="btn-ghost !py-1 !px-3 text-xs text-slate-500 ml-auto">
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {(() => {
@@ -575,16 +661,33 @@ export default function ReceptionPage() {
                     <div className="divide-y divide-slate-100">
                       {filtered.length > 0 ? (
                         filtered.map((e) => (
-                          <QueueRow
-                            key={e.id}
-                            entry={e}
-                            orderNumber={orderMap.get(e.id)}
-                            onComplete={() => setEntryStatus(e.id, 'complete')}
-                            onCancel={() => setEntryStatus(e.id, 'cancel')}
-                            onEmergency={() => markEmergency(e.id)}
-                            onMiss={() => missEntry(e.id)}
-                            onMove={(pos) => moveEntry(e.id, pos)}
-                          />
+                          <div key={e.id} className="flex items-stretch">
+                            {selectMode && e.status === 'WAITING' && (
+                              <label className="flex items-center pl-4 pr-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                                  checked={selectedIds.has(e.id)}
+                                  onChange={() => setSelectedIds(prev => {
+                                    const next = new Set(prev);
+                                    next.has(e.id) ? next.delete(e.id) : next.add(e.id);
+                                    return next;
+                                  })}
+                                />
+                              </label>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <QueueRow
+                                entry={e}
+                                orderNumber={orderMap.get(e.id)}
+                                onComplete={() => setEntryStatus(e.id, 'complete')}
+                                onCancel={() => setEntryStatus(e.id, 'cancel')}
+                                onEmergency={() => markEmergency(e.id)}
+                                onMiss={() => missEntry(e.id)}
+                                onMove={(pos) => moveEntry(e.id, pos)}
+                              />
+                            </div>
+                          </div>
                         ))
                       ) : (
                         <div className="py-16 text-center">
@@ -632,7 +735,7 @@ export default function ReceptionPage() {
                   {filteredMissed.length > 0 ? filteredMissed.map((e) => (
                     <div key={e.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="font-mono font-bold text-rose-600 shrink-0">#{e.tokenNumber}</span>
+                        <span className="font-mono font-bold text-rose-600 shrink-0">{tokenDisplay(e.tokenNumber)}</span>
                         <div className="min-w-0">
                           <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
                             {e.patient?.name ?? '—'}

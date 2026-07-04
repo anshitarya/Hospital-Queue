@@ -10,7 +10,7 @@ import {
 
 import { Role } from '@prisma/client';
 import { QueueService } from './queue.service';
-import { JoinQueueDto, MoveToPositionDto, PatientJoinQueueDto, ReorderEntryDto, StartBreakDto } from './dto/queue.dto';
+import { CancelManyDto, ClearQueueDto, JoinQueueDto, MoveToPositionDto, PatientJoinQueueDto, ReorderEntryDto, StartBreakDto } from './dto/queue.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
@@ -132,6 +132,22 @@ export class QueueController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.queue.startBreak(doctorId, dto.estimatedMinutes, dto.note, user.id);
+  }
+
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
+  @Post('doctor/:doctorId/clear-queue')
+  clearQueue(
+    @Param('doctorId') doctorId: string,
+    @Body() dto: ClearQueueDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.queue.clearQueue(doctorId, dto, user.id);
+  }
+
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
+  @Post('entries/cancel-many')
+  cancelMany(@Body() dto: CancelManyDto, @CurrentUser() user: AuthUser) {
+    return this.queue.cancelMany(dto.entryIds, user.id);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)

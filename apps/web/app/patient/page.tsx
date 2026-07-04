@@ -570,7 +570,8 @@ function ActiveEntry({
   }, [snapshot, live, entry, onCompleted]);
 
   const status     = live?.status ?? entry.status;
-  const ahead      = live?.peopleAhead ?? 0;
+  // Use null (not 0) when socket hasn't delivered data yet — prevents false "You're next" flash on refresh.
+  const ahead      = live !== undefined ? (live.peopleAhead ?? null) : null;
   const eta        = live?.etaMinutes ?? 0;
   const etaAbs     = live?.etaAbsolute;
   const movingAvg  = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes;
@@ -585,7 +586,7 @@ function ActiveEntry({
     const prevStatus = prevStatusRef.current;
     const prevAhead  = prevAheadRef.current;
     prevStatusRef.current = status;
-    prevAheadRef.current  = ahead;
+    prevAheadRef.current  = ahead ?? null;
 
     // Skip the very first render — no previous state to compare against.
     if (prevStatus === null) return;
@@ -596,7 +597,8 @@ function ActiveEntry({
       sendBrowserNotif(`🔔 It's your turn!`, `Please proceed to the consultation room — ${entry.doctor.user.name}`);
       playChime(true);
       vibrate(true);
-    } else if (status === 'WAITING' && ahead === 0 && (prevAhead === null || prevAhead > 0)) {
+    } else if (status === 'WAITING' && ahead === 0 && prevAhead !== null && prevAhead > 0) {
+      // Only fire when position genuinely IMPROVED to 0; not on page-load (prevAhead null).
       sendBrowserNotif(`⚡ You're next!`, `Please be ready outside — ${entry.doctor.user.name}`);
       playChime(false);
       vibrate(false);
@@ -607,7 +609,7 @@ function ActiveEntry({
   const totalInQueue = snapshot?.entries.filter(
     (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
   ).length ?? 0;
-  const progressPct = totalInQueue > 0
+  const progressPct = totalInQueue > 0 && ahead !== null
     ? Math.round(((totalInQueue - ahead) / totalInQueue) * 100)
     : 0;
 
@@ -663,7 +665,7 @@ function ActiveEntry({
             🔔 It&apos;s your turn — please proceed to the consultation room
           </div>
         )}
-        {isNextUp && (
+        {ahead !== null && isNextUp && (
           <div className="rounded-xl bg-amber-50 dark:bg-amber-900/30 border-2 border-amber-400 dark:border-amber-600 text-amber-800 dark:text-amber-300 text-center font-medium py-3 px-4">
             ⚡ You&apos;re next — please be ready outside
           </div>
@@ -704,7 +706,7 @@ function ActiveEntry({
         </div>
 
         {/* Queue position */}
-        {status === 'WAITING' && (
+        {status === 'WAITING' && ahead !== null && (
           <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Your position in queue</div>
             <div className="text-3xl font-bold text-slate-800 dark:text-slate-100 mt-1 tabular-nums">
@@ -714,7 +716,7 @@ function ActiveEntry({
         )}
 
         {/* ETA + position */}
-        {status === 'WAITING' && !isNextUp && (
+        {status === 'WAITING' && !isNextUp && ahead !== null && (
           <>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
@@ -742,7 +744,7 @@ function ActiveEntry({
               <div>
                 <div className="flex justify-between text-[10px] text-slate-400 font-medium mb-1.5 uppercase tracking-wide">
                   <span>Queue progress</span>
-                  <span>{totalInQueue - ahead} of {totalInQueue} seen</span>
+                  <span>{totalInQueue - (ahead ?? 0)} of {totalInQueue} seen</span>
                 </div>
                 <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                   <div

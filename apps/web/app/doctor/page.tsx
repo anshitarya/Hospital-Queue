@@ -38,6 +38,9 @@ export default function DoctorPage() {
   const [showBreakForm, setShowBreakForm] = useState(false);
   const [breakMinutes, setBreakMinutes] = useState('15');
   const [breakNote, setBreakNote] = useState('');
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const [recList, setRecList] = useState<ReceptionistRow[]>([]);
   const [recName, setRecName] = useState('');
@@ -191,6 +194,35 @@ export default function DoctorPage() {
     setShowBreakForm(false);
     setBreakMinutes('15');
     setBreakNote('');
+  };
+
+  const clearQueue = (includeMissed: boolean) => {
+    setShowClearConfirm(false);
+    callAction(
+      () => api(`/queue/doctor/${doctorId}/clear-queue`, { method: 'POST', body: { includeMissed } }),
+      'Clear queue',
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e =>
+          e.status === 'WAITING' ? { ...e, status: 'CANCELLED' as const } : e
+        ),
+        missedEntries: includeMissed ? [] : s.missedEntries,
+      }),
+    );
+  };
+
+  const cancelSelected = () => {
+    const ids = Array.from(selectedIds);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    callAction(
+      () => api('/queue/entries/cancel-many', { method: 'POST', body: { entryIds: ids } }),
+      'Cancel selected',
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e => ids.includes(e.id) ? { ...e, status: 'CANCELLED' as const } : e),
+      }),
+    );
   };
 
   const current = snapshot?.entries.find((e) => e.status === 'IN_CONSULTATION');
@@ -435,15 +467,57 @@ export default function DoctorPage() {
 
             {/* Waiting list */}
             <section className="card overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                <h2 className="section-title">
-                  Waiting
-                  <span className="ml-2 text-sm font-normal text-slate-400">({waiting.length})</span>
-                </h2>
-                {snapshot?.movingAvgMinutes != null && (
-                  <span className="text-[10px] text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
-                    ~{Math.round(snapshot.movingAvgMinutes)} min/patient
-                  </span>
+              <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 space-y-2">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h2 className="section-title">
+                    Waiting
+                    <span className="ml-2 text-sm font-normal text-slate-400">({waiting.length})</span>
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    {snapshot?.movingAvgMinutes != null && (
+                      <span className="text-[10px] text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                        ~{Math.round(snapshot.movingAvgMinutes)} min/patient
+                      </span>
+                    )}
+                    {waiting.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setSelectMode(v => !v); setSelectedIds(new Set()); }}
+                        className={`btn-ghost !py-1 !px-2.5 text-xs ${selectMode ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : ''}`}
+                      >
+                        {selectMode ? 'Done' : 'Select'}
+                      </button>
+                    )}
+                    {selectedIds.size > 0 && (
+                      <button type="button" onClick={cancelSelected} className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200">
+                        Cancel {selectedIds.size}
+                      </button>
+                    )}
+                    {!selectMode && waiting.length > 0 && (
+                      <button type="button" onClick={() => setShowClearConfirm(true)} className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50">
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {showClearConfirm && (
+                  <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 px-4 py-3 space-y-2">
+                    <p className="text-sm font-medium text-rose-800">Cancel all waiting patients?</p>
+                    <p className="text-xs text-rose-600">They will appear in history as Cancelled.</p>
+                    <div className="flex gap-2 flex-wrap">
+                      <button type="button" onClick={() => clearQueue(false)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
+                        Clear waiting only
+                      </button>
+                      {(snapshot?.missedEntries ?? []).length > 0 && (
+                        <button type="button" onClick={() => clearQueue(true)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
+                          Clear waiting + missed
+                        </button>
+                      )}
+                      <button type="button" onClick={() => setShowClearConfirm(false)} className="btn-ghost !py-1 !px-3 text-xs text-slate-500 ml-auto">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -455,7 +529,22 @@ export default function DoctorPage() {
               ) : (
                 <div className="divide-y divide-slate-100">
                   {waiting.map((e, idx) => (
-                    <div key={e.id} className={`px-5 py-3 flex items-center gap-3 transition-colors ${idx === 0 ? 'bg-brand-50/40' : 'hover:bg-slate-50'}`}>
+                    <div key={e.id} className={`flex items-center transition-colors ${idx === 0 ? 'bg-brand-50/40' : 'hover:bg-slate-50'}`}>
+                      {selectMode && (
+                        <label className="flex items-center pl-4 pr-1 self-stretch cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                            checked={selectedIds.has(e.id)}
+                            onChange={() => setSelectedIds(prev => {
+                              const next = new Set(prev);
+                              next.has(e.id) ? next.delete(e.id) : next.add(e.id);
+                              return next;
+                            })}
+                          />
+                        </label>
+                      )}
+                    <div className="flex flex-1 items-center gap-3 px-5 py-3 min-w-0">
                       {/* Position badge */}
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                         {idx + 1}
@@ -497,6 +586,7 @@ export default function DoctorPage() {
                       <div className="shrink-0">
                         <EntryStatusPill status={e.status} />
                       </div>
+                    </div>
                     </div>
                   ))}
                 </div>

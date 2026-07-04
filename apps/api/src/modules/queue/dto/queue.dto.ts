@@ -69,6 +69,17 @@ export class MoveToPositionDto {
   position!: number;
 }
 
+export class ClearQueueDto {
+  @IsOptional()
+  @IsBoolean()
+  includeMissed?: boolean;
+}
+
+export class CancelManyDto {
+  @IsString({ each: true })
+  entryIds!: string[];
+}
+
 // Feature 4: Doctor break with estimated duration.
 export class StartBreakDto {
   @IsInt()
