@@ -493,7 +493,7 @@ export default function DoctorPage() {
                         Cancel {selectedIds.size}
                       </button>
                     )}
-                    {!selectMode && waiting.length > 0 && (
+                    {!selectMode && (waiting.length > 0 || (snapshot?.missedEntries ?? []).length > 0) && (
                       <button type="button" onClick={() => setShowClearConfirm(true)} className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50">
                         Clear all
                       </button>

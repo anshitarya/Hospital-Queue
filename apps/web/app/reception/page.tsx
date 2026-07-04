@@ -616,7 +616,7 @@ export default function ReceptionPage() {
                         Cancel {selectedIds.size}
                       </button>
                     )}
-                    {!selectMode && (snapshot?.entries ?? []).some(e => e.status === 'WAITING') && (
+                    {!selectMode && ((snapshot?.entries ?? []).some(e => e.status === 'WAITING') || (snapshot?.missedEntries ?? []).length > 0) && (
                       <button
                         type="button"
                         onClick={() => setShowClearConfirm(true)}
