@@ -8,11 +8,14 @@ import {
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { QueueService } from '../queue.service';
 
@@ -39,7 +42,7 @@ import { QueueService } from '../queue.service';
     credentials: true,
   },
 })
-export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class QueueGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(QueueGateway.name);
   @WebSocketServer() server!: Server;
 
@@ -49,6 +52,19 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => QueueService)) private readonly queue: QueueService,
   ) {}
+
+  afterInit(server: Server) {
+    const redisUrl = this.config.get<string>('redis.url');
+    if (!redisUrl || redisUrl.startsWith('redis://localhost')) {
+      this.logger.warn('Socket.IO running without Redis adapter (dev mode — single instance only)');
+      return;
+    }
+    // Two separate connections required by the Redis adapter (pub + sub).
+    const pub = new Redis(redisUrl, { lazyConnect: false, maxRetriesPerRequest: null });
+    const sub = pub.duplicate();
+    server.adapter(createAdapter(pub, sub));
+    this.logger.log('Socket.IO Redis adapter attached');
+  }
 
   async handleConnection(client: Socket) {
     // Try cookie first (browser clients with withCredentials), then auth field (fallback).
