@@ -46,4 +46,4 @@ EXPOSE 4000
 
 # Migrations and seed run as a Fly release_command (see fly.toml) before
 # traffic switches. The machine itself just starts the app.
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]
