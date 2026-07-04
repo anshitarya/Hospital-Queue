@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
-import { api, ApiError, type QueueEntry, type Clinic } from '@/lib/api';
+import { api, ApiError, type QueueEntry, type Clinic, type Snapshot } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
+import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
@@ -35,7 +36,6 @@ export default function ReceptionPage() {
   const [walkin, setWalkin] = useState(false);
   const [slotType, setSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
   const [insertAtPosition, setInsertAtPosition] = useState<number | ''>('');
-  const [busy, setBusy] = useState(false);
 
   // Add-doctor form
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -89,55 +89,65 @@ export default function ReceptionPage() {
     api<Department[]>('/clinics/my/departments').then(setDepartments).catch(() => {});
   }, [ready, loadClinic, loadReceptionists]);
 
-  const { snapshot, connected } = useDoctorQueue(ready ? selectedDoctorId : null);
+  const { snapshot: liveSnapshot, connected } = useDoctorQueue(ready ? selectedDoctorId : null);
+  const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
 
   const allDoctors = useMemo(
     () => (clinic?.doctors ?? []).map((d) => ({ ...d, deptName: d.department?.name ?? '' })),
     [clinic],
   );
 
-  const call = useCallback(async (fn: () => Promise<unknown>, label = 'Action') => {
-    try {
-      await fn();
-    } catch (err) {
+  // Fire-and-forget action: apply optimistic patch immediately, call API in
+  // the background, revert + show error toast only if the API fails.
+  const callAction = useCallback((
+    fn: () => Promise<unknown>,
+    label: string,
+    patcher?: (s: Snapshot) => Snapshot,
+  ) => {
+    if (patcher) applyOptimistic(patcher);
+    fn().catch((err) => {
       const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
       setToast({ type: 'err', msg: `${label} failed: ${msg}` });
-    }
-  }, []);
+      revertOptimistic();
+    });
+  }, [applyOptimistic, revertOptimistic]);
 
   if (!ready) return <PageLoader label="Loading reception…" />;
 
-  async function addPatient(e: React.FormEvent) {
+  function addPatient(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedDoctorId) return;
-    setBusy(true);
-    try {
-      const e164 = phoneResult.e164 ?? phone;
-      const idemKey = `${selectedDoctorId}:${e164}:${Date.now() >> 14}`;
-      const entry = await api<QueueEntry>('/queue/reception/join', {
-        method: 'POST',
-        body: {
-          doctorId: selectedDoctorId,
-          patientName: name,
-          patientPhone: e164,
-          priority,
-          notes: notes || undefined,
-          idempotencyKey: idemKey,
-          walkin: walkin || undefined,
-          slotType: slotType !== 'NEW' ? slotType : undefined,
-          insertAtPosition: insertAtPosition !== '' ? insertAtPosition : undefined,
-        },
-      });
-      const suffix = walkin ? ' (walk-in)' : slotType === 'FOLLOWUP' ? ' (follow-up)' : '';
-      setToast({ type: 'ok', msg: `Token #${entry.tokenNumber} assigned to ${name}${suffix}` });
-      setName(''); setPhone(''); setPhoneResult({ ok: false }); setPriority(0); setNotes('');
-      setWalkin(false); setSlotType('NEW'); setInsertAtPosition('');
-      document.getElementById('rec-name')?.focus();
-    } catch (err) {
+
+    // Capture form state before clearing
+    const e164 = phoneResult.e164 ?? phone;
+    const capturedName = name;
+    const capturedWalkin = walkin;
+    const capturedSlotType = slotType;
+    const idemKey = `${selectedDoctorId}:${e164}:${Date.now() >> 14}`;
+    const body = {
+      doctorId: selectedDoctorId,
+      patientName: capturedName,
+      patientPhone: e164,
+      priority,
+      notes: notes || undefined,
+      idempotencyKey: idemKey,
+      walkin: capturedWalkin || undefined,
+      slotType: capturedSlotType !== 'NEW' ? capturedSlotType : undefined,
+      insertAtPosition: insertAtPosition !== '' ? insertAtPosition : undefined,
+    };
+
+    // Reset form instantly — don't wait for the API
+    setName(''); setPhone(''); setPhoneResult({ ok: false }); setPriority(0); setNotes('');
+    setWalkin(false); setSlotType('NEW'); setInsertAtPosition('');
+    document.getElementById('rec-name')?.focus();
+
+    // Fire the API in the background; show token number when confirmed
+    api<QueueEntry>('/queue/reception/join', { method: 'POST', body }).then((entry) => {
+      const suffix = capturedWalkin ? ' (walk-in)' : capturedSlotType === 'FOLLOWUP' ? ' (follow-up)' : '';
+      setToast({ type: 'ok', msg: `Token #${entry.tokenNumber} assigned to ${capturedName}${suffix}` });
+    }).catch((err) => {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add patient' });
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function addDoctor(e: React.FormEvent) {
@@ -191,19 +201,85 @@ export default function ReceptionPage() {
   }
 
   const callNext = () =>
-    call(() => api(`/queue/doctor/${selectedDoctorId}/call-next`, { method: 'POST' }), 'Call next');
+    callAction(
+      () => api(`/queue/doctor/${selectedDoctorId}/call-next`, { method: 'POST' }),
+      'Call next',
+      (s) => {
+        const first = s.entries.find(e => e.status === 'WAITING');
+        if (!first) return s;
+        return {
+          ...s,
+          currentToken: first.tokenNumber,
+          entries: s.entries.map(e =>
+            e.id === first.id ? { ...e, status: 'IN_CONSULTATION' as const } : e
+          ),
+        };
+      },
+    );
+
   const controlDoctor = (action: 'pause' | 'resume') =>
-    call(() => api(`/queue/doctor/${selectedDoctorId}/${action}`, { method: 'POST' }), action);
+    callAction(
+      () => api(`/queue/doctor/${selectedDoctorId}/${action}`, { method: 'POST' }),
+      action,
+      (s) => ({
+        ...s,
+        doctor: s.doctor
+          ? { ...s.doctor, status: (action === 'pause' ? 'PAUSED' : 'AVAILABLE') as typeof s.doctor.status }
+          : s.doctor,
+      }),
+    );
+
   const setEntryStatus = (id: string, action: 'complete' | 'skip' | 'cancel') =>
-    call(() => api(`/queue/entry/${id}/${action}`, { method: 'POST' }), action);
+    callAction(
+      () => api(`/queue/entry/${id}/${action}`, { method: 'POST' }),
+      action,
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e =>
+          e.id === id
+            ? { ...e, status: (action === 'complete' ? 'COMPLETED' : action === 'skip' ? 'SKIPPED' : 'CANCELLED') as typeof e.status }
+            : e
+        ),
+      }),
+    );
+
   const markEmergency = (id: string) =>
-    call(() => api(`/queue/entry/${id}/reorder`, { method: 'POST', body: { priority: 100 } }), 'Emergency');
+    callAction(
+      () => api(`/queue/entry/${id}/reorder`, { method: 'POST', body: { priority: 100 } }),
+      'Emergency',
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e => e.id === id ? { ...e, priority: 100 } : e),
+      }),
+    );
+
   const missEntry = (id: string) =>
-    call(() => api(`/queue/entry/${id}/miss`, { method: 'POST' }), 'Mark missed');
+    callAction(
+      () => api(`/queue/entry/${id}/miss`, { method: 'POST' }),
+      'Mark missed',
+      (s) => ({
+        ...s,
+        entries: s.entries.map(e =>
+          e.id === id ? { ...e, status: 'MISSED' as const } : e
+        ),
+      }),
+    );
+
   const rejoinEntry = (id: string) =>
-    call(() => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }), 'Rejoin');
+    callAction(
+      () => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }),
+      'Rejoin',
+      (s) => ({
+        ...s,
+        missedEntries: (s.missedEntries ?? []).filter(e => e.id !== id),
+      }),
+    );
+
   const moveEntry = (id: string, position: number) =>
-    call(() => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }), 'Move');
+    callAction(
+      () => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }),
+      'Move',
+    );
 
   return (
     <>
@@ -351,9 +427,9 @@ export default function ReceptionPage() {
                     <button
                       type="submit"
                       className="btn-primary w-full"
-                      disabled={busy || !selectedDoctorId || !phoneResult.ok}
+                      disabled={!selectedDoctorId || !phoneResult.ok}
                     >
-                      {busy ? 'Adding…' : insertAtPosition !== '' ? `+ Add at #${insertAtPosition}` : walkin ? '+ Walk-in (near current)' : '+ Add to queue'}
+                      {insertAtPosition !== '' ? `+ Add at #${insertAtPosition}` : walkin ? '+ Walk-in (near current)' : '+ Add to queue'}
                     </button>
                   </form>
 

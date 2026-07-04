@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { api, ApiError, type Doctor } from '@/lib/api';
+import { api, ApiError, type Doctor, type Snapshot } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
+import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
@@ -108,34 +109,83 @@ export default function DoctorPage() {
     }).catch(() => setLinkError('Failed to load doctor profile.'));
   }, [ready, user]);
 
-  const { snapshot, connected } = useDoctorQueue(doctorId);
+  const { snapshot: liveSnapshot, connected } = useDoctorQueue(doctorId);
+  const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
 
-  const call = useCallback(async (fn: () => Promise<unknown>, label = 'Action') => {
-    try {
-      await fn();
-    } catch (err) {
+  const callAction = useCallback((
+    fn: () => Promise<unknown>,
+    label: string,
+    patcher?: (s: Snapshot) => Snapshot,
+  ) => {
+    if (patcher) applyOptimistic(patcher);
+    fn().catch((err) => {
       const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
       setToast({ type: 'err', msg: `${label} failed: ${msg}` });
-    }
-  }, []);
+      revertOptimistic();
+    });
+  }, [applyOptimistic, revertOptimistic]);
 
   if (!ready) return <PageLoader label="Loading your panel…" />;
 
   const callNext = () =>
-    call(() => api(`/queue/doctor/${doctorId}/call-next`, { method: 'POST' }), 'Call next');
+    callAction(
+      () => api(`/queue/doctor/${doctorId}/call-next`, { method: 'POST' }),
+      'Call next',
+      (s) => {
+        const first = s.entries.find(e => e.status === 'WAITING');
+        if (!first) return s;
+        return {
+          ...s,
+          currentToken: first.tokenNumber,
+          entries: s.entries.map(e =>
+            e.id === first.id ? { ...e, status: 'IN_CONSULTATION' as const } : e
+          ),
+        };
+      },
+    );
+
   const completeEntry = (id: string) =>
-    call(() => api(`/queue/entry/${id}/complete`, { method: 'POST' }), 'Complete');
+    callAction(
+      () => api(`/queue/entry/${id}/complete`, { method: 'POST' }),
+      'Complete',
+      (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'COMPLETED' as const } : e) }),
+    );
+
   const cancelEntry = (id: string) =>
-    call(() => api(`/queue/entry/${id}/cancel`, { method: 'POST' }), 'Cancel');
+    callAction(
+      () => api(`/queue/entry/${id}/cancel`, { method: 'POST' }),
+      'Cancel',
+      (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'CANCELLED' as const } : e) }),
+    );
+
   const missEntry = (id: string) =>
-    call(() => api(`/queue/entry/${id}/miss`, { method: 'POST' }), 'Mark missed');
+    callAction(
+      () => api(`/queue/entry/${id}/miss`, { method: 'POST' }),
+      'Mark missed',
+      (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'MISSED' as const } : e) }),
+    );
+
   const doctorAction = (action: 'pause' | 'resume') =>
-    call(() => api(`/queue/doctor/${doctorId}/${action}`, { method: 'POST' }), action);
-  const startBreak = async () => {
+    callAction(
+      () => api(`/queue/doctor/${doctorId}/${action}`, { method: 'POST' }),
+      action,
+      (s) => ({
+        ...s,
+        doctor: s.doctor
+          ? { ...s.doctor, status: (action === 'pause' ? 'PAUSED' : 'AVAILABLE') as typeof s.doctor.status }
+          : s.doctor,
+      }),
+    );
+
+  const startBreak = () => {
     const mins = Math.max(1, parseInt(breakMinutes, 10) || 1);
-    await call(
+    callAction(
       () => api(`/queue/doctor/${doctorId}/break`, { method: 'POST', body: { estimatedMinutes: mins, note: breakNote || undefined } }),
       'Start break',
+      (s) => ({
+        ...s,
+        doctor: s.doctor ? { ...s.doctor, status: 'PAUSED' as const } : s.doctor,
+      }),
     );
     setShowBreakForm(false);
     setBreakMinutes('15');
