@@ -49,36 +49,38 @@ export class QueueService {
     missedEntries: Array<{ id: string; tokenNumber: number; patient: { id: string; name: string; phone?: string | null } | null; completedAt: string | null; missedCount: number }>;
     movingAvgMinutes: number | null;
   }> {
-    const doctor = await this.prisma.doctor.findUnique({
-      where: { id: doctorId },
-      include: { user: true, department: true, clinic: true },
-    });
-    if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
-
     const serviceDay = todayKey();
 
-    // Fetch WAITING + IN_CONSULTATION — these are the live queue entries.
-    const rawEntries = await this.prisma.queueEntry.findMany({
-      where: {
-        doctorId,
-        serviceDay,
-        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-      },
-      include: { patient: true },
-      orderBy: { tokenNumber: 'asc' },
-    });
+    // Run all four independent reads in parallel to cut snapshot latency ~4×.
+    const [doctor, rawEntries, missedRaw, movingAvgMinutes] = await Promise.all([
+      this.prisma.doctor.findUnique({
+        where: { id: doctorId },
+        include: { user: true, department: true, clinic: true },
+      }),
+      this.prisma.queueEntry.findMany({
+        where: {
+          doctorId,
+          serviceDay,
+          status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        },
+        include: { patient: true },
+        orderBy: { tokenNumber: 'asc' },
+      }),
+      this.prisma.queueEntry.findMany({
+        where: { doctorId, serviceDay, status: EntryStatus.MISSED },
+        include: { patient: { select: { id: true, name: true, phone: true } } },
+        orderBy: { completedAt: 'desc' },
+      }),
+      this.eta.getMovingAvg(doctorId),
+    ]);
 
-    // Sort in-memory by effective position so walk-ins slot in correctly. Feature 1.
+    if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
+
+    // Sort in-memory by effective position so walk-ins slot in correctly.
     const entries = [...rawEntries].sort(
       (a, b) => effectivePosition(a) - effectivePosition(b),
     );
 
-    // Fetch today's MISSED entries for the receptionist panel. Feature 2.
-    const missedRaw = await this.prisma.queueEntry.findMany({
-      where: { doctorId, serviceDay, status: EntryStatus.MISSED },
-      include: { patient: { select: { id: true, name: true, phone: true } } },
-      orderBy: { completedAt: 'desc' },
-    });
     const missedEntries = missedRaw.map((e) => ({
       id: e.id,
       tokenNumber: e.tokenNumber,
@@ -87,10 +89,6 @@ export class QueueService {
       missedCount: e.missedCount,
     }));
 
-    // Moving average for ETA. Feature 3.
-    const movingAvgMinutes = await this.eta.getMovingAvg(doctorId);
-
-    // Compute remaining break time. Feature 4.
     const breakRemainingMinutes = doctor.breakUntil
       ? Math.max(0, (doctor.breakUntil.getTime() - Date.now()) / 60_000)
       : 0;
@@ -423,7 +421,31 @@ export class QueueService {
   // ---------- transitions ----------
 
   async callNext(doctorId: string, byUserId?: string) {
-    const { entries } = await this.snapshot(doctorId);
+    const serviceDay = todayKey();
+
+    // Fetch all three needed facts in parallel — skip missed/movingAvg (not needed here).
+    const [doctor, rawEntries, servedToday] = await Promise.all([
+      this.prisma.doctor.findUnique({
+        where: { id: doctorId },
+        select: { followUpEvery: true },
+      }),
+      this.prisma.queueEntry.findMany({
+        where: {
+          doctorId,
+          serviceDay,
+          status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        },
+        include: { patient: true },
+        orderBy: { tokenNumber: 'asc' },
+      }),
+      this.prisma.queueEntry.count({
+        where: { doctorId, serviceDay, status: EntryStatus.COMPLETED },
+      }),
+    ]);
+
+    const entries = [...rawEntries].sort(
+      (a, b) => effectivePosition(a) - effectivePosition(b),
+    );
 
     const alreadyInProgress = entries.find((e) => e.status === EntryStatus.IN_CONSULTATION);
     if (alreadyInProgress) {
@@ -432,19 +454,8 @@ export class QueueService {
       );
     }
 
-    // Entries are already sorted by effective position from snapshot(). Feature 1.
     const waiting = entries.filter((e) => e.status === EntryStatus.WAITING);
     if (!waiting.length) throw new NotFoundException('No patients waiting');
-
-    // Follow-up slot selection. Feature 6.
-    const doctor = await this.prisma.doctor.findUnique({
-      where: { id: doctorId },
-      select: { followUpEvery: true },
-    });
-    const serviceDay = todayKey();
-    const servedToday = await this.prisma.queueEntry.count({
-      where: { doctorId, serviceDay, status: EntryStatus.COMPLETED },
-    });
 
     let next: (typeof waiting)[0];
 
@@ -459,14 +470,13 @@ export class QueueService {
       const followUpEvery = doctor?.followUpEvery ?? 0;
       if (followUpEvery > 0 && (servedToday + 1) % followUpEvery === 0) {
         // This slot should be a follow-up. Prefer first FOLLOWUP patient; fall back to anyone.
-        next =
-          waiting.find((e) => e.slotType === SlotType.FOLLOWUP) ??
-          waiting[0];
+        next = waiting.find((e) => e.slotType === SlotType.FOLLOWUP) ?? waiting[0];
+      } else if (followUpEvery > 0) {
+        // Normal slot with follow-up scheduling active: prefer NEW patients.
+        next = waiting.find((e) => e.slotType === SlotType.NEW) ?? waiting[0];
       } else {
-        // Normal slot. Prefer NEW patients; fall back to follow-up if no new patients.
-        next =
-          waiting.find((e) => e.slotType === SlotType.NEW) ??
-          waiting[0];
+        // No follow-up scheduling configured — serve in strict queue order.
+        next = waiting[0];
       }
     }
 
@@ -859,20 +869,22 @@ export class QueueService {
       include: { patient: true },
     });
 
-    await this.prisma.queueEvent.create({
-      data: {
-        doctorId: entry.doctorId,
+    // Audit log and snapshot broadcast are independent — run in parallel.
+    await Promise.all([
+      this.prisma.queueEvent.create({
+        data: {
+          doctorId: entry.doctorId,
+          entryId,
+          type: `entry_${next.toLowerCase()}`,
+          payload: { byUserId, from: entry.status, to: next },
+        },
+      }),
+      this.broadcast(entry.doctorId, 'queue_updated', {
         entryId,
-        type: `entry_${next.toLowerCase()}`,
-        payload: { byUserId, from: entry.status, to: next },
-      },
-    });
-
-    await this.broadcast(entry.doctorId, 'queue_updated', {
-      entryId,
-      from: entry.status,
-      to: next,
-    });
+        from: entry.status,
+        to: next,
+      }),
+    ]);
 
     this.gateway.emitToPatientRoom(updated.patientId, 'patient:queue:updated', {
       eventType: `entry_${next.toLowerCase()}`,
