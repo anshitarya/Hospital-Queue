@@ -19,14 +19,16 @@
 export const BRAND = {
   name: 'Hospital Queue',
   shortName: 'HQ',
-  tagline: 'Skip the waiting room. Arrive when it’s your turn.',
+  tagline: 'Skip the waiting room. Arrive when it\'s your turn.',
   contact: {
-    phone: '+91 93521 33655',
-    phoneTel: '+919352133655',          // for tel: links
-    phoneWhatsapp: '919352133655',      // for wa.me links
+    phone: '+91 94147 71828',
+    phoneTel: '+919414771828',          // for tel: links
+    phoneWhatsapp: '919414771828',      // for wa.me links
     email: 'anshit.arya@flipkart.com',
     hours: '9 AM–8 PM IST',
   },
+  // Replace this with your actual Google Form URL
+  doctorSurveyUrl: 'https://forms.gle/REPLACE_WITH_YOUR_FORM_ID',
 };
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -95,35 +97,45 @@ export interface FeatureItem {
 export const FEATURES: FeatureItem[] = [
   {
     iconName: 'Clock',
-    title: 'Live ETA — not guesses',
-    body: 'Each token shows minutes until your turn, recomputed every time the doctor finishes a patient.',
+    title: 'Know exactly when it\'s your turn',
+    body: 'Patients see a live countdown — "~12 minutes" — that updates every time the doctor finishes. No more guessing or asking the receptionist.',
     span: 'sm:col-span-2',
-  },
-  {
-    iconName: 'Zap',
-    title: 'Instant socket updates',
-    body: 'Patient phones and TV displays update the moment reception or the doctor acts.',
   },
   {
     iconName: 'Smartphone',
-    title: 'Works on any phone',
-    body: 'No app to install. Patients sign in with a phone number and OTP.',
+    title: 'No app to download',
+    body: 'Patients just open a link on their phone and log in with an OTP. Works on any Android or iPhone, any browser.',
   },
   {
-    iconName: 'Users',
-    title: 'Roles done right',
-    body: 'Patient, receptionist, doctor and admin — each gets a focused dashboard with the right controls.',
+    iconName: 'Zap',
+    title: 'Every screen updates live',
+    body: 'The moment a doctor calls the next patient, all phones and displays update instantly — no refresh needed.',
+  },
+  {
+    iconName: 'Bell',
+    title: 'Get notified before your turn',
+    body: 'The patient\'s screen flashes and they get an alert when they are 2–3 patients away. They can wait outside or nearby instead of crowding the room.',
     span: 'sm:col-span-2',
   },
   {
-    iconName: 'Building',
-    title: 'Multi-clinic ready',
-    body: 'One deployment serves many clinics. Admin invites receptionists; each clinic stays isolated.',
+    iconName: 'Shield',
+    title: 'Emergencies go first — always',
+    body: 'Receptionist can mark any patient as an emergency with one tap. They jump straight to the front of the queue.',
   },
   {
-    iconName: 'Shield',
-    title: 'Built for production',
-    body: 'JWT auth, rate limits, audit log, idempotent reception forms, daily backups baked in.',
+    iconName: 'Building',
+    title: 'TV display for the waiting room',
+    body: 'Connect any TV or screen to show "Now Serving: Token #FOF" in big letters. No login, no setup — just open the link.',
+  },
+  {
+    iconName: 'Heart',
+    title: 'Missed your call? Rejoin easily',
+    body: 'If a patient steps out and misses their turn, reception can add them back near the front — no need to restart from the end.',
+  },
+  {
+    iconName: 'Activity',
+    title: 'Doctor can pause or take a break',
+    body: 'Going on lunch? Doctor sets a break time and all patients instantly see the updated wait. Queue resumes the moment they\'re back.',
   },
 ];
 
@@ -133,36 +145,36 @@ export const FEATURES: FeatureItem[] = [
 
 export const FAQS: { q: string; a: string }[] = [
   {
-    q: 'How do patients sign in?',
-    a: 'Patients open the link, enter their mobile number, and receive a 6-digit OTP. After verifying, they see a live card with their token number, current serving token, people ahead, and an estimated wait time — all updating in real time without refreshing.',
+    q: 'How does a patient check their queue position?',
+    a: 'Reception registers the patient and gives them a token link or they log in with their phone number using an OTP. They\'ll see their token, how many people are ahead, and an estimated time — all live on their phone screen without needing to refresh.',
   },
   {
-    q: 'Do patients need to install an app?',
-    a: 'No. Hospital Queue runs entirely in the browser. Patients just open the link the clinic shares — works on any phone, tablet or computer.',
+    q: 'Do patients need to install any app?',
+    a: 'No — nothing to download. Patients just open the link in any browser on their phone. It works on any Android or iPhone.',
   },
   {
-    q: 'How do clinics get started?',
-    a: 'The admin creates a clinic and generates an invite code. Share the code (or the registration link) with your receptionist via WhatsApp or SMS — they sign up with their phone number, password, and the code. They can then add doctors and start managing the queue immediately.',
+    q: 'How does a clinic get set up?',
+    a: 'Contact us and we\'ll set up your clinic in minutes. You\'ll get an invite code to share with your receptionist. Once they sign in, they can add doctors and start registering patients right away.',
   },
   {
-    q: 'Can one system serve multiple clinics?',
-    a: 'Yes. Each clinic has its own receptionists, doctors and queue — fully isolated. The admin can manage many clinics from one dashboard, generating invite codes for each.',
+    q: 'What does the receptionist do?',
+    a: 'The receptionist adds patients to the queue (name + phone number), can mark emergencies that jump the queue, manage walk-ins, and see a live view of everything happening across all doctors.',
   },
   {
-    q: 'How accurate is the ETA?',
-    a: 'ETA = remaining time for the current consultation + (people ahead × the doctor’s average consult time) + any delay the doctor declares. The doctor’s average is updated automatically from real consultation durations, so it adapts to how each doctor actually works.',
+    q: 'What does the doctor see?',
+    a: 'The doctor sees who is currently in consultation, who is next, and the full waiting list with estimated times. They tap "Call next" when ready, mark the consultation complete when done, and can pause the queue or take a break at any time.',
   },
   {
-    q: 'What happens if the doctor runs late or takes a break?',
-    a: 'The doctor can pause the queue or set a delay — both update every patient’s ETA instantly so no one is misled. Patients see the new wait time on their phone within a second.',
+    q: 'How accurate is the wait time shown to patients?',
+    a: 'The app learns from each doctor\'s actual consultation times and updates the estimate automatically. If a consultation takes longer than usual, all patients\' wait times adjust within seconds.',
   },
   {
-    q: 'Can I show a waiting-room TV display?',
-    a: 'Yes — every doctor has a public display URL at /display/<doctorId>. Open it on any browser plugged into the waiting-room TV. It shows the current token in huge type plus the next five up.',
+    q: 'Can I use a TV screen in the waiting room?',
+    a: 'Yes — open the display link on any browser connected to a TV. It shows "Now Serving" in large text and the next few tokens. No login needed for the display.',
   },
   {
-    q: 'Is patient data secure?',
-    a: 'Yes. All traffic runs over HTTPS, passwords are hashed with Argon2, JWT sessions expire after 7 days, and each clinic’s data is scoped so receptionists from one clinic can never see another’s queue. Daily database backups are taken automatically.',
+    q: 'Is this free for patients?',
+    a: 'Yes, completely free for patients. They sign in with their phone number and use it at no cost.',
   },
 ];
 
@@ -171,10 +183,10 @@ export const FAQS: { q: string; a: string }[] = [
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export const HERO_STATS = [
-  { v: '< 1s', l: 'Update latency' },
-  { v: '0 apps', l: 'For patients to install' },
-  { v: '∞', l: 'Clinics per deployment' },
-  { v: '24/7', l: 'Live queue sync' },
+  { v: '0', l: 'Apps to install' },
+  { v: '< 1 min', l: 'Patient sign-in time' },
+  { v: 'Live', l: 'Queue updates' },
+  { v: 'Free', l: 'For patients' },
 ];
 
 /* ─────────────────────────────────────────────────────────────────────────── */

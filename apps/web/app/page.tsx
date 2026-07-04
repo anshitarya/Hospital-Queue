@@ -40,16 +40,16 @@ export default function HomePage() {
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 leading-[1.05]">
-                Skip the waiting room.{' '}
+                Stop waiting blindly.{' '}
                 <span className="bg-gradient-to-r from-brand-600 to-purple-600 bg-clip-text text-transparent">
-                  Arrive when it&apos;s your turn.
+                  Know exactly when it&apos;s your turn.
                 </span>
               </h1>
 
               <p className="text-lg text-slate-600 max-w-xl leading-relaxed">
-                Hospital Queue gives every patient a live token with minute-accurate ETA on
-                their phone. Doctors and reception get a focused dashboard. One deployment
-                serves many clinics.
+                Hospital Queue lets patients see their live position and wait time on their
+                phone — without downloading any app. Doctors call the next patient in one tap.
+                Reception manages everything from a single screen.
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -77,7 +77,10 @@ export default function HomePage() {
                   <Icon.Check className="h-4 w-4 text-emerald-600" /> Free for patients
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-600" /> Setup in minutes
+                  <Icon.Check className="h-4 w-4 text-emerald-600" /> No app to install
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Icon.Check className="h-4 w-4 text-emerald-600" /> Ready in minutes
                 </div>
               </div>
             </div>
@@ -108,9 +111,9 @@ export default function HomePage() {
       <section id="features" className="py-16 sm:py-24">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <SectionHeading
-            kicker="Features"
-            title="Everything a queue needs. Nothing it doesn't."
-            sub="No bloat. No medical-records baggage. Just the parts that fix waiting-room chaos."
+            kicker="What you get"
+            title="Everything that makes waiting rooms better"
+            sub="Simple for patients. Powerful for clinics. No training needed."
           />
 
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -140,8 +143,8 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <SectionHeading
             kicker="How it works"
-            title="Two flows. Both take under a minute."
-            sub="Whether you're a patient or running a clinic, you'll be using it within minutes of signing up."
+            title="Simple for everyone in the clinic"
+            sub="Patients, doctors, and reception each have a screen built exactly for them — no confusion, no clutter."
           />
 
           <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -149,18 +152,18 @@ export default function HomePage() {
               tone="brand"
               title="For patients"
               steps={[
-                { n: 1, t: 'Sign in with your phone', d: 'Get a 6-digit OTP. No app to install.' },
-                { n: 2, t: 'See your live token', d: 'Big number, current serving, people ahead, ETA in minutes.' },
-                { n: 3, t: 'Arrive when it’s your turn', d: 'Card pulses when you’re next. No more sitting around waiting.' },
+                { n: 1, t: 'Open the link — no app needed', d: 'Enter your phone number and verify with a one-time code. Takes under a minute.' },
+                { n: 2, t: 'See your live position and wait time', d: 'Your token, how many people are ahead, and how many minutes until your turn — all updating automatically.' },
+                { n: 3, t: 'Get notified when you\'re close', d: 'Your screen alerts you when it\'s almost your turn so you can stay nearby instead of sitting in a crowded room.' },
               ]}
             />
             <FlowCard
               tone="purple"
               title="For clinics"
               steps={[
-                { n: 1, t: 'Admin creates the clinic', d: 'One click; copy the invite code.' },
-                { n: 2, t: 'Receptionist registers', d: 'Uses the invite code, adds doctors and patients.' },
-                { n: 3, t: 'Doctor opens their panel', d: 'Calls next, marks complete — every screen updates live.' },
+                { n: 1, t: 'Receptionist registers patients', d: 'Adds name and phone number — done in seconds. Emergency cases jump to the front with one tap.' },
+                { n: 2, t: 'Doctor calls next when ready', d: 'One tap on "Call next" — the patient\'s phone updates instantly and the waiting room display refreshes.' },
+                { n: 3, t: 'Mark complete and move on', d: 'Doctor marks the consultation done. The queue moves forward and every patient\'s wait time is recalculated.' },
               ]}
             />
           </div>
@@ -178,9 +181,9 @@ export default function HomePage() {
       <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <SectionHeading
-            kicker="Built for everyone in the clinic"
-            title="A focused panel for every role"
-            sub="No one sees controls they don't need. Each screen does one job, well."
+            kicker="Who uses it"
+            title="A dedicated screen for every person"
+            sub="Each role sees only what they need — patients see their token, doctors see the queue, reception manages everything."
           />
 
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -188,26 +191,55 @@ export default function HomePage() {
               icon={<Icon.User className="h-5 w-5" />}
               tone="emerald"
               title="Patient"
-              points={['Token + ETA', 'Live updates', 'Visit history']}
+              points={['Live token & wait time', 'Alert when you\'re next', 'Past visit history']}
             />
             <RoleCard
               icon={<Icon.Users className="h-5 w-5" />}
               tone="brand"
               title="Receptionist"
-              points={['Add patients', 'Manage doctors', 'Mark emergencies']}
+              points={['Register patients instantly', 'Mark emergencies', 'Manage walk-ins & missed']}
             />
             <RoleCard
               icon={<Icon.Stethoscope className="h-5 w-5" />}
               tone="sky"
               title="Doctor"
-              points={['Call next', 'Mark complete', 'Pause queue']}
+              points={['Call next with one tap', 'Take a break anytime', 'Clear or pause the queue']}
             />
             <RoleCard
               icon={<Icon.Settings className="h-5 w-5" />}
               tone="purple"
-              title="Admin"
-              points={['Create clinics', 'Invite codes', 'Cross-clinic view']}
+              title="Admin / Clinic Owner"
+              points={['Set up the clinic', 'Add doctors & reception', 'See all queues together']}
             />
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* DOCTOR SURVEY                                                       */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <section className="py-10 sm:py-14">
+        <div className="mx-auto max-w-3xl px-4 sm:px-6">
+          <div className="rounded-2xl bg-amber-50 ring-1 ring-amber-200 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-6">
+            <div className="text-5xl shrink-0 leading-none">👨‍⚕️</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-amber-700 uppercase tracking-widest">For doctors</div>
+              <h3 className="mt-1 text-xl font-bold text-slate-900">Would this app help your clinic?</h3>
+              <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+                We&apos;re building this specifically for clinics like yours. Take 2 minutes to tell us
+                whether you need this and what features matter most — your feedback directly shapes
+                what we build next.
+              </p>
+            </div>
+            <a
+              href={BRAND.doctorSurveyUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white px-5 py-3 text-sm font-semibold shadow-sm transition-colors"
+            >
+              <Icon.ClipboardList className="h-4 w-4" />
+              Take the survey
+            </a>
           </div>
         </div>
       </section>
@@ -218,9 +250,9 @@ export default function HomePage() {
       <section id="faq" className="py-16 sm:py-24 bg-slate-50/60 dark:bg-slate-800/30 border-y border-slate-200/60 dark:border-slate-700/60">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <SectionHeading
-            kicker="FAQ"
-            title="Questions, answered"
-            sub="If your question isn't here, the contact details are right below."
+            kicker="Common questions"
+            title="Got questions? We have answers."
+            sub="If something isn't covered here, reach out on WhatsApp — details at the bottom of the page."
           />
           <div className="mt-10">
             <FAQ items={FAQS} />
@@ -273,25 +305,43 @@ export default function HomePage() {
               </div>
 
               <div className="lg:col-span-2">
-                <div className="rounded-2xl bg-white/10 backdrop-blur ring-1 ring-white/20 p-6 space-y-4 text-white">
+                <div className="rounded-2xl bg-white/10 backdrop-blur ring-1 ring-white/20 p-6 space-y-3 text-white">
                   <div className="text-sm font-semibold uppercase tracking-wider text-white/80">
-                    Talk to the maker
+                    Talk to us
                   </div>
+
+                  {/* Call */}
                   <a
                     href={`tel:${BRAND.contact.phoneTel}`}
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
                   >
-                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 group-hover:bg-white/25 transition-colors shrink-0">
                       <Icon.Phone className="h-5 w-5" />
                     </span>
                     <div>
-                      <div className="text-xs text-white/70">Call / WhatsApp</div>
+                      <div className="text-xs text-white/70">Call us</div>
                       <div className="font-semibold text-lg tracking-wide">{BRAND.contact.phone}</div>
                     </div>
                   </a>
+
+                  {/* WhatsApp */}
+                  <a
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Hospital%20Queue`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
+                  >
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#25D366]/30 group-hover:bg-[#25D366]/50 transition-colors shrink-0">
+                      <Icon.Whatsapp className="h-5 w-5 text-[#25D366]" />
+                    </span>
+                    <div>
+                      <div className="text-xs text-white/70">WhatsApp us</div>
+                      <div className="font-semibold tracking-wide">{BRAND.contact.phone}</div>
+                    </div>
+                  </a>
+
                   <div className="text-xs text-white/70 leading-relaxed pt-2 border-t border-white/10">
-                    Available {BRAND.contact.hours} · Reach out for setup help, custom features, or
-                    on-premise deployment.
+                    Available {BRAND.contact.hours} · Message us to set up your clinic or ask anything.
                   </div>
                 </div>
               </div>
@@ -314,6 +364,14 @@ export default function HomePage() {
           <div className="flex items-center gap-4 text-sm text-slate-500">
             <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 inline-flex items-center gap-1.5">
               <Icon.Phone className="h-4 w-4" /> {BRAND.contact.phone}
+            </a>
+            <a
+              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Hospital%20Queue`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-[#25D366] inline-flex items-center gap-1.5"
+            >
+              <Icon.Whatsapp className="h-4 w-4" /> WhatsApp
             </a>
             <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900">Sign in</Link>
           </div>
