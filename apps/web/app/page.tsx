@@ -47,8 +47,8 @@ export default function HomePage() {
               </h1>
 
               <p className="text-lg text-slate-600 max-w-xl leading-relaxed">
-                Hospital Queue lets patients see their live position and wait time on their
-                phone — without downloading any app. Doctors call the next patient in one tap.
+                Clinic Queue lets patients see their live position and wait time on their
+                phone — without downloading any app. Doctors/Receptionists call the next patient in one tap.
                 Reception manages everything from a single screen.
               </p>
 
@@ -113,7 +113,7 @@ export default function HomePage() {
           <SectionHeading
             kicker="What you get"
             title="Everything that makes waiting rooms better"
-            sub="Simple for patients. Powerful for clinics. No training needed."
+            sub="Simple for patients. Powerful for clinics."
           />
 
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -163,7 +163,7 @@ export default function HomePage() {
               steps={[
                 { n: 1, t: 'Receptionist registers patients', d: 'Adds name and phone number — done in seconds. Emergency cases jump to the front with one tap.' },
                 { n: 2, t: 'Doctor calls next when ready', d: 'One tap on "Call next" — the patient\'s phone updates instantly and the waiting room display refreshes.' },
-                { n: 3, t: 'Mark complete and move on', d: 'Doctor marks the consultation done. The queue moves forward and every patient\'s wait time is recalculated.' },
+                { n: 3, t: 'Mark complete and move on', d: 'Doctor/Receptionist marks the consultation done. The queue moves forward and every patient\'s wait time is recalculated.' },
               ]}
             />
           </div>
@@ -326,7 +326,7 @@ export default function HomePage() {
 
                   {/* WhatsApp */}
                   <a
-                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Hospital%20Queue`}
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Clinic%20Queue`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
@@ -357,16 +357,16 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 text-sm text-slate-500">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold text-xs">
-              HQ
+              CQ
             </span>
-            <span>Hospital Queue · Built with care in India.</span>
+            <span>Clinic Queue · Built with care in India.</span>
           </div>
           <div className="flex items-center gap-4 text-sm text-slate-500">
             <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 inline-flex items-center gap-1.5">
               <Icon.Phone className="h-4 w-4" /> {BRAND.contact.phone}
             </a>
             <a
-              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Hospital%20Queue`}
+              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Clinic%20Queue`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-[#25D366] inline-flex items-center gap-1.5"

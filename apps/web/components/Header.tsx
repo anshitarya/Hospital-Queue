@@ -7,11 +7,11 @@ import { DarkModeToggle } from './DarkModeToggle';
 /**
  * Shared dashboard header.
  *
- * The HQ logo is intentionally NON-interactive — clicking it does nothing.
+ * The CQ logo is intentionally NON-interactive — clicking it does nothing.
  * Navigating away from a dashboard should go through the Profile menu
  * ("Log out") or the browser's back button, never through the logo.
  */
-export function Header({ title = 'Hospital Queue', subtitle, actions }: { title?: string; subtitle?: string | null; actions?: React.ReactNode }) {
+export function Header({ title = 'Clinic Queue', subtitle, actions }: { title?: string; subtitle?: string | null; actions?: React.ReactNode }) {
   const { hydrate, loaded } = useAuth();
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export function Header({ title = 'Hospital Queue', subtitle, actions }: { title?
         {/* Logo */}
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold text-sm shadow-sm shrink-0 select-none">
-            HQ
+            CQ
           </span>
           <div className="min-w-0">
             <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 tracking-tight truncate block leading-tight">

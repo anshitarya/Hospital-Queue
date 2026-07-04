@@ -17,8 +17,8 @@
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export const BRAND = {
-  name: 'Hospital Queue',
-  shortName: 'HQ',
+  name: 'Clinic Queue',
+  shortName: 'CQ',
   tagline: 'Skip the waiting room. Arrive when it\'s your turn.',
   contact: {
     phone: '+91 94147 71828',
@@ -121,11 +121,6 @@ export const FEATURES: FeatureItem[] = [
     iconName: 'Shield',
     title: 'Emergencies go first — always',
     body: 'Receptionist can mark any patient as an emergency with one tap. They jump straight to the front of the queue.',
-  },
-  {
-    iconName: 'Building',
-    title: 'TV display for the waiting room',
-    body: 'Connect any TV or screen to show "Now Serving: Token #FOF" in big letters. No login, no setup — just open the link.',
   },
   {
     iconName: 'Heart',

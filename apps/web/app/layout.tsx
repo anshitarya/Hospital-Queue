@@ -4,15 +4,15 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: {
-    default: 'Hospital Queue — Live queue management for clinics',
-    template: '%s · Hospital Queue',
+    default: 'Clinic Queue — Live queue management for clinics',
+    template: '%s · Clinic Queue',
   },
   description:
     'Give every patient a live token with minute-accurate ETA on their phone. Doctors and reception get focused dashboards. Multi-clinic ready.',
   keywords: ['hospital queue', 'clinic queue', 'token system', 'patient ETA', 'OPD queue'],
-  authors: [{ name: 'Hospital Queue' }],
+  authors: [{ name: 'Clinic Queue' }],
   openGraph: {
-    title: 'Hospital Queue — Skip the waiting room',
+    title: 'Clinic Queue — Skip the waiting room',
     description: 'Live tokens with minute-accurate ETA. No app for patients to install.',
     type: 'website',
   },

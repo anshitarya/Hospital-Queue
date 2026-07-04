@@ -42,9 +42,9 @@ export function LandingNav() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold text-sm shadow-md group-hover:shadow-lg transition-shadow">
-            HQ
+            CQ
           </span>
-          <span className="text-base font-semibold tracking-tight dark:text-slate-100">Hospital Queue</span>
+          <span className="text-base font-semibold tracking-tight dark:text-slate-100">Clinic Queue</span>
         </Link>
 
         {/* Desktop nav */}

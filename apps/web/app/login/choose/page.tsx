@@ -70,9 +70,9 @@ export default function LoginChoosePage() {
           {/* Logo — non-interactive in this flow; brand only */}
           <div className="inline-flex items-center gap-2.5 mb-6">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md">
-              HQ
+              CQ
             </span>
-            <span className="text-xl font-semibold tracking-tight">Hospital Queue</span>
+            <span className="text-xl font-semibold tracking-tight">Clinic Queue</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
