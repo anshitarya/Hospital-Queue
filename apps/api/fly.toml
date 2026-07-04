@@ -1,6 +1,6 @@
 # Fly.io config for the NestJS API.
 # App name must be globally unique — change "hq-api" to something like "yourname-hq-api".
-app    = "hq-api"
+app    = "queue-hq-api"
 region = "bom"       # Mumbai — closest to India
 
 [build]
