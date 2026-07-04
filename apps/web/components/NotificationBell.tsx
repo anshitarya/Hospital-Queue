@@ -31,10 +31,7 @@ export function NotificationBell({
   useOutsideClick(ref, () => setOpen(false));
 
   function openBell() {
-    setOpen((o) => {
-      if (!o) onDismissAll?.();
-      return !o;
-    });
+    setOpen((o) => !o);
   }
 
   const count   = notifications.length;
