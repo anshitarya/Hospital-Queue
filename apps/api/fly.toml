@@ -38,6 +38,13 @@ region = "bom"       # Mumbai — closest to India
     hard_limit = 500
     soft_limit = 400
 
+  [[http_service.checks]]
+    grace_period = "15s"
+    interval     = "10s"
+    method       = "GET"
+    timeout      = "5s"
+    path         = "/api/health"
+
 [[vm]]
   cpu_kind  = "shared"
   cpus      = 1
