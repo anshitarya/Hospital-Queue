@@ -16,10 +16,17 @@ export async function api<T>(
   init: Omit<RequestInit, 'body'> & { body?: unknown } = {},
 ): Promise<T> {
   const isFormData = init.body instanceof FormData;
+  // Auth is primarily a Bearer token from localStorage. We ALSO send cookies
+  // (`credentials: 'include'`), but the web app and API live on different
+  // domains in production, and browsers block SameSite cross-site cookies —
+  // so the Bearer header is the reliable channel. See lib/auth.ts (`hq_token`).
+  const token =
+    typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
   const res = await fetch(`${BASE_URL}/api${path}`, {
     ...init,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers as Record<string, string> | undefined),
     },
     credentials: 'include',
@@ -33,6 +40,7 @@ export async function api<T>(
   if (!res.ok) {
     if (res.status === 401 && typeof window !== 'undefined') {
       window.localStorage.removeItem('hq_user');
+      window.localStorage.removeItem('hq_token');
     }
     const msg = (payload as { message?: string | string[] })?.message;
     throw new ApiError(

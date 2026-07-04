@@ -52,10 +52,14 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   private setSessionCookie(res: Response, token: string) {
+    const isProd = process.env.NODE_ENV === 'production';
     res.cookie('hq_session', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      // In production the web app and API are on different domains, so the
+      // cookie must be SameSite=None (and therefore Secure) to be sent on
+      // cross-site requests. In dev (same host, http) keep Lax/insecure.
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
       path: '/',
     });
@@ -145,7 +149,15 @@ export class AuthController {
   @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('hq_session', { path: '/' });
+    const isProd = process.env.NODE_ENV === 'production';
+    // clearCookie only matches (and removes) the cookie if the attributes
+    // line up with how it was set — keep these in sync with setSessionCookie.
+    res.clearCookie('hq_session', {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? 'none' : 'lax',
+      path: '/',
+    });
     return { ok: true };
   }
 

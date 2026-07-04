@@ -35,9 +35,12 @@ export function useDoctorQueue(doctorId: string | null) {
   useEffect(() => {
     if (!doctorId) return;
 
+    const token =
+      typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
     const socket = io(URL, {
       transports: ['websocket'],
       withCredentials: true,
+      auth: token ? { token } : undefined,
     });
     socketRef.current = socket;
 
@@ -90,9 +93,12 @@ export function usePatientStream(
   useEffect(() => {
     if (!enabled) return;
 
+    const token =
+      typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
     const socket = io(URL, {
       transports: ['websocket'],
       withCredentials: true,
+      auth: token ? { token } : undefined,
     });
 
     socket.on('connect', () => {

@@ -24,11 +24,16 @@ export const useAuth = create<AuthState>((set) => ({
   },
   setSession: (r: AuthResult) => {
     window.localStorage.setItem('hq_user', JSON.stringify(r.user));
+    // Only overwrite the token when we actually received one. The profile page
+    // calls setSession with token:'' just to refresh display fields — that must
+    // NOT clobber the stored auth token.
+    if (r.token) window.localStorage.setItem('hq_token', r.token);
     set({ user: r.user, loaded: true });
   },
   logout: async () => {
     try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     window.localStorage.removeItem('hq_user');
+    window.localStorage.removeItem('hq_token');
     set({ user: null });
   },
 }));
