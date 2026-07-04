@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { api, ApiError, type Doctor, type Snapshot } from '@/lib/api';
+import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue } from '@/lib/socket';
 import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
 import { useRequireRole } from '@/lib/useRequireRole';
@@ -196,6 +197,12 @@ export default function DoctorPage() {
   const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
   const nextUp = waiting[0];
   const isPaused = snapshot?.doctor?.status === 'PAUSED';
+
+  // 1-based position map for waiting patients
+  const orderMap = useMemo(
+    () => new Map(waiting.map((e, i) => [e.id, i + 1])),
+    [waiting],
+  );
   const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
   const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
 
@@ -332,7 +339,7 @@ export default function DoctorPage() {
                     {/* Patient hero */}
                     <div className="flex items-start gap-4 flex-wrap">
                       <div className="flex items-center justify-center h-14 w-14 rounded-2xl bg-emerald-100 text-emerald-700 font-bold text-xl shrink-0 shadow-inner">
-                        #{current.tokenNumber}
+                        {tokenDisplay(current.tokenNumber)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xl font-bold text-slate-900 leading-tight truncate">{current.patient?.name}</div>
@@ -376,7 +383,7 @@ export default function DoctorPage() {
                         <span className="text-slate-500">
                           Next:{' '}
                           <strong className="text-slate-800">
-                            #{nextUp.tokenNumber} — {nextUp.patient?.name}
+                            {tokenDisplay(nextUp.tokenNumber)} — {nextUp.patient?.name}
                           </strong>
                         </span>
                         <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
@@ -395,7 +402,7 @@ export default function DoctorPage() {
                           <div className="text-sm text-slate-500 mt-0.5">
                             Next:{' '}
                             <strong className="text-slate-700">
-                              #{nextUp?.tokenNumber} — {nextUp?.patient?.name}
+                              {nextUp ? tokenDisplay(nextUp.tokenNumber) : ''} — {nextUp?.patient?.name}
                             </strong>
                           </div>
                         </>
@@ -455,7 +462,7 @@ export default function DoctorPage() {
                       </div>
                       {/* Token */}
                       <div className="font-mono font-bold text-slate-800 text-base w-12 shrink-0">
-                        #{e.tokenNumber}
+                        {tokenDisplay(e.tokenNumber)}
                       </div>
                       {/* Patient info */}
                       <div className="flex-1 min-w-0">

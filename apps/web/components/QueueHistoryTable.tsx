@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type HistoryEntry } from '@/lib/api';
+import { tokenDisplay, matchesTokenSearch } from '@/lib/tokenCode';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -305,7 +306,8 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
             const byStatus = statusFilter ? entries.filter(e => e.status === statusFilter) : entries;
             const filtered = sq ? byStatus.filter(e =>
               e.patient.name.toLowerCase().includes(sq) ||
-              (e.patient.phone ?? '').includes(sq)
+              (e.patient.phone ?? '').includes(sq) ||
+              matchesTokenSearch(sq, e.tokenNumber)
             ) : byStatus;
             return (
             <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
@@ -361,7 +363,7 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono font-bold text-brand-700">
-                            #{e.tokenNumber}
+                            {tokenDisplay(e.tokenNumber)}
                           </span>
                           {e.priority > 0 && (
                             <span className="inline-flex items-center rounded-full bg-rose-100 text-rose-600 text-[10px] font-semibold px-1.5 py-0.5 ring-1 ring-rose-200">

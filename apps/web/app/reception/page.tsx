@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { api, ApiError, type QueueEntry, type Clinic, type Snapshot } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
 import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
+import { tokenDisplay, matchesTokenSearch } from '@/lib/tokenCode';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
@@ -97,6 +98,12 @@ export default function ReceptionPage() {
     [clinic],
   );
 
+  // 1-based position map for WAITING entries (in server sort order).
+  const orderMap = useMemo(() => {
+    const waiting = (snapshot?.entries ?? []).filter(e => e.status === 'WAITING');
+    return new Map(waiting.map((e, i) => [e.id, i + 1]));
+  }, [snapshot?.entries]);
+
   // Fire-and-forget action: apply optimistic patch immediately, call API in
   // the background, revert + show error toast only if the API fails.
   const callAction = useCallback((
@@ -141,12 +148,38 @@ export default function ReceptionPage() {
     setWalkin(false); setSlotType('NEW'); setInsertAtPosition('');
     document.getElementById('rec-name')?.focus();
 
-    // Fire the API in the background; show token number when confirmed
+    // Immediately add a pending entry so the patient appears in the queue now.
+    // Token is 0 (displayed as "#…") until the server confirms the real number.
+    const pendingId = `pending-${Date.now()}`;
+    applyOptimistic((s) => ({
+      ...s,
+      entries: [
+        ...s.entries,
+        {
+          id: pendingId,
+          doctorId: selectedDoctorId!,
+          patientId: 'pending',
+          serviceDay: new Date().toISOString().split('T')[0],
+          tokenNumber: 0,
+          status: 'WAITING' as const,
+          priority: body.priority ?? 0,
+          notes: body.notes ?? null,
+          joinedAt: new Date().toISOString(),
+          patient: { id: 'pending', name: capturedName, phone: body.patientPhone ?? null },
+          walkin: capturedWalkin,
+          sortOrder: null,
+          slotType: (capturedSlotType === 'FOLLOWUP' ? 'FOLLOWUP' : 'NEW') as QueueEntry['slotType'],
+        },
+      ],
+    }));
+
+    // Fire the API in the background; show token code when confirmed
     api<QueueEntry>('/queue/reception/join', { method: 'POST', body }).then((entry) => {
       const suffix = capturedWalkin ? ' (walk-in)' : capturedSlotType === 'FOLLOWUP' ? ' (follow-up)' : '';
-      setToast({ type: 'ok', msg: `Token #${entry.tokenNumber} assigned to ${capturedName}${suffix}` });
+      setToast({ type: 'ok', msg: `Token ${tokenDisplay(entry.tokenNumber)} assigned to ${capturedName}${suffix}` });
     }).catch((err) => {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add patient' });
+      revertOptimistic();
     });
   }
 
@@ -257,22 +290,60 @@ export default function ReceptionPage() {
     callAction(
       () => api(`/queue/entry/${id}/miss`, { method: 'POST' }),
       'Mark missed',
-      (s) => ({
-        ...s,
-        entries: s.entries.map(e =>
-          e.id === id ? { ...e, status: 'MISSED' as const } : e
-        ),
-      }),
+      (s) => {
+        const entry = s.entries.find(e => e.id === id);
+        return {
+          ...s,
+          // Remove from active entries list
+          entries: s.entries.filter(e => e.id !== id),
+          // Add to missed panel immediately
+          missedEntries: entry
+            ? [
+                ...(s.missedEntries ?? []),
+                {
+                  id: entry.id,
+                  tokenNumber: entry.tokenNumber,
+                  patient: entry.patient ?? null,
+                  completedAt: null,
+                  missedCount: 1,
+                },
+              ]
+            : s.missedEntries,
+        };
+      },
     );
 
   const rejoinEntry = (id: string) =>
     callAction(
       () => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }),
       'Rejoin',
-      (s) => ({
-        ...s,
-        missedEntries: (s.missedEntries ?? []).filter(e => e.id !== id),
-      }),
+      (s) => {
+        const missed = (s.missedEntries ?? []).find(e => e.id === id);
+        return {
+          ...s,
+          // Remove from missed panel immediately
+          missedEntries: (s.missedEntries ?? []).filter(e => e.id !== id),
+          // Add a pending waiting entry so they appear in the queue right away
+          entries: [
+            ...s.entries,
+            {
+              id: `pending-rejoin-${Date.now()}`,
+              doctorId: s.doctor?.id ?? '',
+              patientId: missed?.patient?.id ?? 'pending',
+              serviceDay: new Date().toISOString().split('T')[0],
+              tokenNumber: 0,
+              status: 'WAITING' as const,
+              priority: 0,
+              notes: null,
+              joinedAt: new Date().toISOString(),
+              patient: missed?.patient ? { id: missed.patient.id, name: missed.patient.name, phone: missed.patient.phone ?? null } : null,
+              walkin: false,
+              sortOrder: null,
+              slotType: 'NEW' as QueueEntry['slotType'],
+            } as QueueEntry,
+          ],
+        };
+      },
     );
 
   const moveEntry = (id: string, position: number) =>
@@ -497,7 +568,8 @@ export default function ReceptionPage() {
                   const entries = snapshot?.entries ?? [];
                   const filtered = sq ? entries.filter(e =>
                     e.patient?.name?.toLowerCase().includes(sq) ||
-                    (e.patient?.phone ?? '').includes(sq)
+                    (e.patient?.phone ?? '').includes(sq) ||
+                    matchesTokenSearch(sq, e.tokenNumber)
                   ) : entries;
                   return (
                     <div className="divide-y divide-slate-100">
@@ -506,6 +578,7 @@ export default function ReceptionPage() {
                           <QueueRow
                             key={e.id}
                             entry={e}
+                            orderNumber={orderMap.get(e.id)}
                             onComplete={() => setEntryStatus(e.id, 'complete')}
                             onCancel={() => setEntryStatus(e.id, 'cancel')}
                             onEmergency={() => markEmergency(e.id)}
@@ -759,6 +832,7 @@ export default function ReceptionPage() {
 
 function QueueRow({
   entry,
+  orderNumber,
   onComplete,
   onCancel,
   onEmergency,
@@ -766,6 +840,7 @@ function QueueRow({
   onMove,
 }: {
   entry: QueueEntry;
+  orderNumber?: number;
   onComplete: () => void;
   onCancel: () => void;
   onEmergency: () => void;
@@ -775,6 +850,7 @@ function QueueRow({
   const [movingTo, setMovingTo] = useState<number | ''>('');
   const [showMove, setShowMove] = useState(false);
   const isInConsult = entry.status === 'IN_CONSULTATION';
+  const isPending = entry.id.startsWith('pending-');
 
   function submitMove() {
     if (movingTo === '' || movingTo < 1) return;
@@ -784,15 +860,23 @@ function QueueRow({
   }
 
   return (
-    <div className={`px-4 py-3.5 transition-colors ${isInConsult ? 'bg-emerald-50/60 border-l-4 border-l-emerald-400' : 'hover:bg-slate-50/60'}`}>
+    <div className={`px-4 py-3.5 transition-colors ${isInConsult ? 'bg-emerald-50/60 border-l-4 border-l-emerald-400' : isPending ? 'bg-amber-50/40 opacity-70' : 'hover:bg-slate-50/60'}`}>
       {/* Top row — token + name + status */}
       <div className="flex items-start gap-3">
-        <div className={`font-mono font-bold text-lg shrink-0 w-12 ${isInConsult ? 'text-emerald-700' : 'text-slate-800'}`}>
-          #{entry.tokenNumber}
+        {/* Order badge */}
+        {orderNumber !== undefined && (
+          <div className="flex flex-col items-center shrink-0 w-8 pt-0.5">
+            <span className="text-[10px] leading-none text-slate-400">pos</span>
+            <span className="font-bold text-sm text-slate-600 leading-tight">{orderNumber}</span>
+          </div>
+        )}
+        <div className={`font-mono font-bold text-lg shrink-0 w-14 ${isInConsult ? 'text-emerald-700' : 'text-slate-800'}`}>
+          {isPending ? '#…' : tokenDisplay(entry.tokenNumber)}
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
             {entry.patient?.name ?? '—'}
+            {isPending && <span className="pill bg-amber-100 text-amber-700 ring-amber-200 text-[10px]">Adding…</span>}
             {entry.priority >= 100 && <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 Emergency</span>}
             {entry.walkin && <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">Walk-in</span>}
             {entry.slotType === 'FOLLOWUP' && <span className="pill bg-purple-100 text-purple-700 ring-purple-200 text-[10px]">Follow-up</span>}
@@ -802,9 +886,9 @@ function QueueRow({
             {entry.notes && <span className="text-slate-400 truncate">· {entry.notes}</span>}
           </div>
         </div>
-        {/* ETA / status on the right */}
+        {/* Order / status on the right */}
         <div className="text-right text-xs shrink-0">
-          {entry.status === 'WAITING' && (
+          {entry.status === 'WAITING' && !isPending && (
             <>
               <div className="font-semibold text-slate-700">
                 {entry.peopleAhead === 0 ? 'next up' : `${entry.peopleAhead} ahead`}

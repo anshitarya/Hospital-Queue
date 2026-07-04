@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, ApiError, type QueueEntry, type Doctor } from '@/lib/api';
+import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue, usePatientStream } from '@/lib/socket';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
@@ -478,7 +479,7 @@ function HistoryEntry({ entry }: { entry: HistoryItem }) {
         <span className={`h-2 w-2 rounded-full shrink-0 ${meta.dot}`} />
         <div className="min-w-0">
           <div className="font-medium text-sm text-slate-800 truncate">
-            <span className="font-mono text-brand-700">#{entry.tokenNumber}</span>
+            <span className="font-mono text-brand-700">{tokenDisplay(entry.tokenNumber)}</span>
             {' · '}
             {entry.doctor.user.name}
           </div>
@@ -629,7 +630,7 @@ function ActiveEntry({
           </div>
         )}
         <div className="text-sm text-slate-500 mt-1">
-          Token <span className="font-mono font-bold text-brand-700">#{entry.tokenNumber}</span> with {entry.doctor.user.name}
+          Token <span className="font-mono font-bold text-brand-700">{tokenDisplay(entry.tokenNumber)}</span> with {entry.doctor.user.name}
         </div>
       </section>
     );
@@ -691,16 +692,26 @@ function ActiveEntry({
             <div className={`text-5xl font-bold leading-none tabular-nums ${
               isInConsult ? 'text-emerald-700 dark:text-emerald-400' : isNextUp ? 'text-amber-700 dark:text-amber-400' : 'text-brand-700 dark:text-brand-400'
             }`}>
-              #{entry.tokenNumber}
+              {tokenDisplay(entry.tokenNumber)}
             </div>
           </div>
           <div className="rounded-xl p-4 text-center bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Now serving</div>
             <div className="text-5xl font-bold text-slate-800 dark:text-slate-100 leading-none tabular-nums">
-              {snapshot?.currentToken ? `#${snapshot.currentToken}` : '—'}
+              {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
             </div>
           </div>
         </div>
+
+        {/* Queue position */}
+        {status === 'WAITING' && (
+          <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Your position in queue</div>
+            <div className="text-3xl font-bold text-slate-800 dark:text-slate-100 mt-1 tabular-nums">
+              {isNextUp ? 'Next' : `#${ahead + 1}`}
+            </div>
+          </div>
+        )}
 
         {/* ETA + position */}
         {status === 'WAITING' && !isNextUp && (
