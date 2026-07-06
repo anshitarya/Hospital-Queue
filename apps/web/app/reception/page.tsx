@@ -392,7 +392,22 @@ export default function ReceptionPage() {
 
   return (
     <>
-      <Header title="Reception" subtitle={clinic?.name} />
+      <Header
+        title="Reception"
+        subtitle={clinic?.name}
+        actions={
+          <a
+            href="/clinic-admin"
+            title="Admin Dashboard"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-teal-600 dark:hover:text-teal-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+            <span className="hidden sm:inline">Dashboard</span>
+          </a>
+        }
+      />
       <main className="mx-auto max-w-7xl px-4 py-5 space-y-4 animate-fade-in">
 
         {/* Tab bar */}

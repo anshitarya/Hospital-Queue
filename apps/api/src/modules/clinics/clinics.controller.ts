@@ -53,6 +53,13 @@ export class ClinicsController {
     return this.clinics.listDepartments();
   }
 
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/dashboard')
+  getMyDashboard(@CurrentUser() user: AuthUser) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.getClinicDashboard(user.clinicId);
+  }
+
   /**
    * Add a doctor to the caller's own clinic. Allowed to RECEPTIONIST, DOCTOR,
    * and ADMIN — receptionists need this for everyday onboarding; doctors may

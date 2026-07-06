@@ -17,6 +17,8 @@ region = "bom"       # Mumbai — closest to India
   MISSED_GAP                  = "4"
   FOLLOWUP_EVERY              = "0"
   CORS_ORIGIN                 = "https://clinicqueue.fly.dev"
+  FEATURE_WHATSAPP            = "false"
+  FEATURE_SMS                 = "false"
 
 # DATABASE_URL and REDIS_URL are set as secrets by the deploy script.
 # JWT_SECRET and CORS_ORIGIN are also set as secrets.

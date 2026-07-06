@@ -15,6 +15,7 @@ import { EtaService, EnrichedEntry } from './eta.service';
 import { JoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
 import { QueueGateway } from './gateway/queue.gateway';
 import { clinicDefaults } from '../../config/clinic.config';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function tokenToCode(n: number): string {
   if (n <= 0) return '---';
@@ -48,6 +49,7 @@ export class QueueService {
     private readonly eta: EtaService,
     @Inject(forwardRef(() => QueueGateway))
     private readonly gateway: QueueGateway,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ---------- read paths ----------
@@ -201,6 +203,10 @@ export class QueueService {
       entryId: entry.id,
       doctorId: dto.doctorId,
     });
+
+    // Fire-and-forget: notify patient of their queue spot (doesn't block the response)
+    if (patient.phone) void this.notifyJoinedAsync(patient.phone, entry.tokenNumber, dto.doctorId);
+
     return entry;
   }
 
@@ -437,7 +443,7 @@ export class QueueService {
     const [doctor, rawEntries, servedToday] = await Promise.all([
       this.prisma.doctor.findUnique({
         where: { id: doctorId },
-        select: { followUpEvery: true },
+        select: { followUpEvery: true, user: { select: { name: true } } },
       }),
       this.prisma.queueEntry.findMany({
         where: {
@@ -490,10 +496,23 @@ export class QueueService {
       }
     }
 
-    return this.transition(next.id, EntryStatus.IN_CONSULTATION, byUserId, {
+    const result = await this.transition(next.id, EntryStatus.IN_CONSULTATION, byUserId, {
       calledAt: new Date(),
       startedAt: new Date(),
     });
+
+    // Fire-and-forget notifications — never block the call flow
+    const doctorName = doctor?.user?.name ?? 'the doctor';
+    if (next.patient?.phone) {
+      void this.notifications.notifyTurnNow(next.patient.phone, doctorName).catch(() => {});
+    }
+    // Notify the next patient in line: "you're almost next"
+    const nextInLine = waiting.find((e) => e.id !== next.id);
+    if (nextInLine?.patient?.phone) {
+      void this.notifications.notifyAlmostNext(nextInLine.patient.phone, doctorName).catch(() => {});
+    }
+
+    return result;
   }
 
   async complete(entryId: string, byUserId?: string) {
@@ -859,7 +878,7 @@ export class QueueService {
 
     const entries = await this.prisma.queueEntry.findMany({
       where: { doctorId, serviceDay, status: { in: statuses } },
-      select: { id: true, patientId: true },
+      select: { id: true, patientId: true, tokenNumber: true, patient: { select: { phone: true } } },
     });
 
     if (!entries.length) return { cleared: 0 };
@@ -887,6 +906,12 @@ export class QueueService {
         entryId: entry.id,
         doctorId,
       });
+      // Notify the patient that their appointment was cancelled
+      if (entry.patient?.phone) {
+        void this.notifications
+          .notifyQueueCleared(entry.patient.phone, `#${tokenToCode(entry.tokenNumber)}`)
+          .catch(() => {});
+      }
     }
 
     return { cleared: entries.length };
@@ -988,6 +1013,17 @@ export class QueueService {
     });
 
     return updated;
+  }
+
+  private async notifyJoinedAsync(phone: string, tokenNumber: number, doctorId: string) {
+    try {
+      const doctor = await this.prisma.doctor.findUnique({
+        where: { id: doctorId },
+        select: { user: { select: { name: true } } },
+      });
+      const doctorName = doctor?.user?.name ?? 'the doctor';
+      await this.notifications.notifyJoined(phone, `#${tokenToCode(tokenNumber)}`, doctorName);
+    } catch { /* never let notification errors surface to callers */ }
   }
 
   private async broadcast(doctorId: string, eventType: string, payload: unknown) {

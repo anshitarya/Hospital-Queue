@@ -3,6 +3,7 @@ import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
 import { QueueService } from './queue.service';
 import { EtaService } from './eta.service';
 import { QueueGateway } from './gateway/queue.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 
@@ -216,11 +217,20 @@ function makeService() {
   const redis = makeFakeRedis();
   const gateway = makeGatewaySpy();
   const eta = new EtaService();
+  const notifications = {
+    notifyJoined: () => Promise.resolve(),
+    notifyTurnNow: () => Promise.resolve(),
+    notifyAlmostNext: () => Promise.resolve(),
+    notifyQueueCleared: () => Promise.resolve(),
+    notifyTurnSoon: () => Promise.resolve(),
+    notifyDelayed: () => Promise.resolve(),
+  } as unknown as NotificationsService;
   const svc = new QueueService(
     prisma as unknown as PrismaService,
     redis as unknown as RedisService,
     eta,
     gateway as unknown as QueueGateway,
+    notifications,
   );
   return { svc, prisma, gateway, redis };
 }

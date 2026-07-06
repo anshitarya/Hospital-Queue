@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DoctorStatus, Role } from '@prisma/client';
+import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -354,6 +354,96 @@ export class ClinicsService {
     return this.prisma.department.findMany({ orderBy: { name: 'asc' } });
   }
 
+  /**
+   * Clinic-level dashboard stats: today's totals, per-doctor queue state,
+   * and 7-day traffic. Used by the clinic admin portal.
+   */
+  async getClinicDashboard(clinicId: string) {
+    const serviceDay = todayServiceDay();
+
+    const [clinic, doctors] = await Promise.all([
+      this.prisma.clinic.findUnique({
+        where: { id: clinicId },
+        select: { id: true, name: true, address: true },
+      }),
+      this.prisma.doctor.findMany({
+        where: { clinicId },
+        include: { user: { select: { name: true } }, department: { select: { name: true } } },
+        orderBy: { user: { name: 'asc' } },
+      }),
+    ]);
+
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    const doctorIds = doctors.map((d) => d.id);
+
+    const [todayStats, doctorQueues, weeklyEntries] = doctorIds.length
+      ? await Promise.all([
+          this.prisma.queueEntry.groupBy({
+            by: ['status'],
+            where: { doctorId: { in: doctorIds }, serviceDay },
+            _count: { _all: true },
+          }),
+          this.prisma.queueEntry.groupBy({
+            by: ['doctorId', 'status'],
+            where: { doctorId: { in: doctorIds }, serviceDay },
+            _count: { _all: true },
+          }),
+          this.prisma.queueEntry.groupBy({
+            by: ['serviceDay'],
+            where: {
+              doctorId: { in: doctorIds },
+              serviceDay: { gte: last7DaysStart() },
+              status: { in: [EntryStatus.COMPLETED, EntryStatus.SKIPPED, EntryStatus.CANCELLED] },
+            },
+            _count: { _all: true },
+          }),
+        ])
+      : [[], [], []];
+
+    // Aggregate today's clinic-wide stats
+    const today = { waiting: 0, inConsultation: 0, completed: 0, skipped: 0, cancelled: 0 };
+    for (const row of todayStats) {
+      if (row.status === EntryStatus.WAITING) today.waiting = row._count._all;
+      else if (row.status === EntryStatus.IN_CONSULTATION) today.inConsultation = row._count._all;
+      else if (row.status === EntryStatus.COMPLETED) today.completed = row._count._all;
+      else if (row.status === EntryStatus.SKIPPED) today.skipped = row._count._all;
+      else if (row.status === EntryStatus.CANCELLED) today.cancelled = row._count._all;
+    }
+
+    // Per-doctor queue snapshot
+    type CountMap = Record<string, number>;
+    const dqMap = new Map<string, CountMap>();
+    for (const row of doctorQueues) {
+      if (!dqMap.has(row.doctorId)) dqMap.set(row.doctorId, {});
+      dqMap.get(row.doctorId)![row.status] = row._count._all;
+    }
+
+    const doctorList = doctors.map((d) => ({
+      id: d.id,
+      name: d.user.name,
+      department: d.department?.name ?? '—',
+      status: d.status,
+      waiting: dqMap.get(d.id)?.[EntryStatus.WAITING] ?? 0,
+      inConsultation: dqMap.get(d.id)?.[EntryStatus.IN_CONSULTATION] ?? 0,
+      completed: dqMap.get(d.id)?.[EntryStatus.COMPLETED] ?? 0,
+    }));
+
+    // Last-7-days traffic
+    const weekMap = new Map(weeklyEntries.map((e) => [e.serviceDay, e._count._all]));
+    const weeklyTraffic = getLast7Days().map((date) => ({
+      date,
+      label: new Date(date + 'T12:00:00').toLocaleDateString('en-IN', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+      }),
+      count: weekMap.get(date) ?? 0,
+    }));
+
+    return { clinic, today, doctors: doctorList, weeklyTraffic };
+  }
+
   // ── Admin clinic management ────────────────────────────────────────────────
 
   async updateClinic(clinicId: string, dto: { name?: string; address?: string }) {
@@ -416,4 +506,24 @@ export class ClinicsService {
     if (existing && existing.id !== userId) throw new BadRequestException('Email already in use');
     return this.prisma.user.update({ where: { id: userId }, data: { email } });
   }
+}
+
+function todayServiceDay(): string {
+  const d = new Date();
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function last7DaysStart(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 6);
+  return d.toISOString().slice(0, 10);
+}
+
+function getLast7Days(): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().slice(0, 10);
+  });
 }
