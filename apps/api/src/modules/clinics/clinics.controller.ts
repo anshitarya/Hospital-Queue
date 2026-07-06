@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ClinicsService } from './clinics.service';
@@ -58,6 +59,19 @@ export class ClinicsController {
   getMyDashboard(@CurrentUser() user: AuthUser) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
     return this.clinics.getClinicDashboard(user.clinicId);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/analytics')
+  getMyAnalytics(
+    @CurrentUser() user: AuthUser,
+    @Query('period') period?: string,
+    @Query('count') count?: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    const p = period === 'monthly' ? 'monthly' : 'daily';
+    const n = count ? Math.min(Math.max(parseInt(count, 10) || 30, 7), 365) : (p === 'monthly' ? 12 : 30);
+    return this.clinics.getClinicAnalytics(user.clinicId, p, n);
   }
 
   /**

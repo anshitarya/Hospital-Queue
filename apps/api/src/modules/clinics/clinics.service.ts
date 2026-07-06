@@ -424,9 +424,12 @@ export class ClinicsService {
       name: d.user.name,
       department: d.department?.name ?? '—',
       status: d.status,
-      waiting: dqMap.get(d.id)?.[EntryStatus.WAITING] ?? 0,
+      waiting:        dqMap.get(d.id)?.[EntryStatus.WAITING]         ?? 0,
       inConsultation: dqMap.get(d.id)?.[EntryStatus.IN_CONSULTATION] ?? 0,
-      completed: dqMap.get(d.id)?.[EntryStatus.COMPLETED] ?? 0,
+      completed:      dqMap.get(d.id)?.[EntryStatus.COMPLETED]       ?? 0,
+      missed:         dqMap.get(d.id)?.[EntryStatus.MISSED]          ?? 0,
+      skipped:        dqMap.get(d.id)?.[EntryStatus.SKIPPED]         ?? 0,
+      cancelled:      dqMap.get(d.id)?.[EntryStatus.CANCELLED]       ?? 0,
     }));
 
     // Last-7-days traffic
@@ -496,6 +499,127 @@ export class ClinicsService {
     // Null out clinic link rather than deleting — preserves patient queue history.
     await this.prisma.user.update({ where: { id: userId }, data: { clinicId: null } });
     return { deleted: true };
+  }
+
+  /**
+   * Time-series analytics for the clinic admin charts.
+   *
+   *  period=daily   → last `count` days (default 30), one row per day
+   *  period=monthly → last `count` months (default 12), one row per calendar month
+   *
+   * Returned shape:
+   *   { period, points: [{ label, date, completed, missed, cancelled, skipped, total }] }
+   */
+  async getClinicAnalytics(
+    clinicId: string,
+    period: 'daily' | 'monthly' = 'daily',
+    count = 30,
+  ) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    const doctors = await this.prisma.doctor.findMany({
+      where: { clinicId },
+      select: { id: true },
+    });
+    const doctorIds = doctors.map((d) => d.id);
+
+    if (!doctorIds.length) {
+      return { period, points: [] };
+    }
+
+    const trackedStatuses = [
+      EntryStatus.COMPLETED,
+      EntryStatus.MISSED,
+      EntryStatus.CANCELLED,
+      EntryStatus.SKIPPED,
+    ] as const;
+
+    if (period === 'daily') {
+      const dates = Array.from({ length: count }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (count - 1 - i));
+        return d.toISOString().slice(0, 10);
+      });
+      const start = dates[0];
+
+      const rows = await this.prisma.queueEntry.groupBy({
+        by: ['serviceDay', 'status'],
+        where: { doctorId: { in: doctorIds }, serviceDay: { gte: start }, status: { in: [...trackedStatuses] } },
+        _count: { _all: true },
+      });
+
+      // Build a map: date → status → count
+      const dayMap = new Map<string, Record<string, number>>();
+      for (const r of rows) {
+        if (!dayMap.has(r.serviceDay)) dayMap.set(r.serviceDay, {});
+        dayMap.get(r.serviceDay)![r.status] = r._count._all;
+      }
+
+      const points = dates.map((date) => {
+        const m = dayMap.get(date) ?? {};
+        const completed = m[EntryStatus.COMPLETED]  ?? 0;
+        const missed    = m[EntryStatus.MISSED]     ?? 0;
+        const cancelled = m[EntryStatus.CANCELLED]  ?? 0;
+        const skipped   = m[EntryStatus.SKIPPED]    ?? 0;
+        return {
+          date,
+          label: new Date(date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+          completed, missed, cancelled, skipped,
+          total: completed + missed + cancelled + skipped,
+        };
+      });
+
+      return { period, points };
+    }
+
+    // Monthly — aggregate by YYYY-MM
+    const start = (() => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (count - 1));
+      d.setDate(1);
+      return d.toISOString().slice(0, 10);
+    })();
+
+    const rows = await this.prisma.queueEntry.groupBy({
+      by: ['serviceDay', 'status'],
+      where: { doctorId: { in: doctorIds }, serviceDay: { gte: start }, status: { in: [...trackedStatuses] } },
+      _count: { _all: true },
+    });
+
+    // Aggregate by YYYY-MM
+    const monthMap = new Map<string, Record<string, number>>();
+    for (const r of rows) {
+      const ym = r.serviceDay.slice(0, 7);
+      if (!monthMap.has(ym)) monthMap.set(ym, {});
+      const m = monthMap.get(ym)!;
+      m[r.status] = (m[r.status] ?? 0) + r._count._all;
+    }
+
+    // Build a list of the last `count` months (filled with zeros for months with no data)
+    const months = Array.from({ length: count }, (_, i) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - (count - 1 - i));
+      return d.toISOString().slice(0, 7); // 'YYYY-MM'
+    });
+
+    const points = months.map((ym) => {
+      const m = monthMap.get(ym) ?? {};
+      const completed = m[EntryStatus.COMPLETED]  ?? 0;
+      const missed    = m[EntryStatus.MISSED]     ?? 0;
+      const cancelled = m[EntryStatus.CANCELLED]  ?? 0;
+      const skipped   = m[EntryStatus.SKIPPED]    ?? 0;
+      const [year, mo] = ym.split('-');
+      const label = new Date(Number(year), Number(mo) - 1, 1).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+      return {
+        date: ym + '-01',
+        label,
+        completed, missed, cancelled, skipped,
+        total: completed + missed + cancelled + skipped,
+      };
+    });
+
+    return { period, points };
   }
 
   async updateStaffEmail(clinicId: string, userId: string, email: string) {

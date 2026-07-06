@@ -13,8 +13,13 @@ region = "bom"
     NEXT_PUBLIC_SOCKET_URL = "https://queue-hq-api.fly.dev"
 
 [env]
-  PORT     = "3000"
-  NODE_ENV = "production"
+  PORT               = "3000"
+  NODE_ENV           = "production"
+  # false = /admin accessible from any domain (current state — no domain yet)
+  # true  = /admin only accessible from SUPER_ADMIN_HOST (after buying domain)
+  # Flip via: fly secrets set SUPER_ADMIN_LOCKED=true -a clinicqueue
+  SUPER_ADMIN_LOCKED = "false"
+  SUPER_ADMIN_HOST   = "admin.theclinicqueue.com"
 
 [http_service]
   internal_port        = 3000

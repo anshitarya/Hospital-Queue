@@ -17,13 +17,22 @@ export default () => ({
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',
   },
-  twilio: {
-    accountSid: process.env.TWILIO_ACCOUNT_SID,
-    authToken: process.env.TWILIO_AUTH_TOKEN,
-    // For WhatsApp sandbox testing use 'whatsapp:+14155238886'.
-    // For production use your approved WhatsApp Business number.
-    whatsappFrom: process.env.TWILIO_WHATSAPP_FROM ?? 'whatsapp:+14155238886',
-    // Your Twilio SMS sender number in E.164 format, e.g. '+14155552671'.
-    smsFrom: process.env.TWILIO_SMS_FROM ?? '',
+  msg91: {
+    authKey:   process.env.MSG91_AUTH_KEY,
+    senderId:  process.env.MSG91_SENDER_ID  ?? 'CLNCQ',
+    dltEntityId: process.env.MSG91_DLT_ENTITY_ID,  // required for production DLT
+  },
+  metaWa: {
+    accessToken:   process.env.META_WA_ACCESS_TOKEN,
+    phoneNumberId: process.env.META_WA_PHONE_NUMBER_ID,
+    // false = plain text (dev/testing), true = approved templates (production)
+    useTemplates: process.env.META_WA_USE_TEMPLATES ?? 'false',
+    // Template names in Meta Business Manager (override if you used different names)
+    tmplQueueJoined:   process.env.META_WA_TMPL_QUEUE_JOINED,
+    tmplTurnSoon:      process.env.META_WA_TMPL_TURN_SOON,
+    tmplAlmostNext:    process.env.META_WA_TMPL_ALMOST_NEXT,
+    tmplTurnNow:       process.env.META_WA_TMPL_TURN_NOW,
+    tmplDoctorDelayed: process.env.META_WA_TMPL_DOCTOR_DELAYED,
+    tmplQueueCleared:  process.env.META_WA_TMPL_QUEUE_CLEARED,
   },
 });
