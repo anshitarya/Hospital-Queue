@@ -16,7 +16,7 @@ region = "bom"       # Mumbai — closest to India
   WALKIN_GAP                  = "4"
   MISSED_GAP                  = "4"
   FOLLOWUP_EVERY              = "0"
-  CORS_ORIGIN                 = "https://queue-hq-web.fly.dev"
+  CORS_ORIGIN                 = "https://clinicqueue.fly.dev"
 
 # DATABASE_URL and REDIS_URL are set as secrets by the deploy script.
 # JWT_SECRET and CORS_ORIGIN are also set as secrets.

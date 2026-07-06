@@ -1,6 +1,6 @@
 # Fly.io config for the Next.js web app.
 # App name must be globally unique — change "hq-web" to something like "yourname-hq-web".
-app    = "queue-hq-web"
+app    = "clinicqueue"
 region = "bom"
 
 [build]
