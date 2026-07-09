@@ -1,9 +1,8 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, Logger } from '@nestjs/common';
 import { EntryStatus, QueueEntry } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
 
-// Extend to include the new Doctor fields we need for ETA. Using a minimal
-// shape so we don't break if the full Doctor type isn't always available.
 type DoctorForEta = {
   avgConsultMinutes: number;
   delayMinutes: number;
@@ -12,69 +11,182 @@ type DoctorForEta = {
 };
 
 export interface EnrichedEntry extends QueueEntry {
-  // Number of waiting patients ahead in service order.
   peopleAhead: number;
-  // Minutes from now until estimated start of this patient's consultation.
   etaMinutes: number;
-  // ISO timestamp of estimated consultation start (Feature 5).
   etaAbsolute: string;
-  // The moving average (minutes/patient) used for this estimate.
   movingAvgMinutes: number;
 }
 
 export interface EtaOptions {
-  /** Pre-computed moving average from last 20 completed consultations. Falls back to doctor.avgConsultMinutes. */
   movingAvgMinutes?: number | null;
-  /** Remaining break time in minutes (Feature 4). */
   breakRemainingMinutes?: number;
 }
 
+// ─── Algorithm constants ──────────────────────────────────────────────────────
+
+/**
+ * EMA smoothing factor. α=0.3 weights recent consultations meaningfully
+ * without overreacting to a single fast or slow session.
+ *
+ * Weight breakdown with α=0.3:
+ *   Most recent:  30%
+ *   2nd recent:   21%
+ *   3rd recent:   14.7%
+ *   4th recent:   10.3%
+ *   …tailing off naturally — no hard cutoff.
+ */
+const EMA_ALPHA = 0.3;
+
+/**
+ * Window of past consultations to pull from DB.
+ * 20 gives enough data for stable IQR bounds without going too far back in time.
+ */
+const WINDOW = 20;
+
+/**
+ * IQR fence multiplier. 1.5 is the standard Tukey fence — catches "doctor
+ * went to lunch" (90 min) and "patient walked in, left, came back" outliers
+ * without being too aggressive on naturally long consultations.
+ */
+const IQR_FENCE = 1.5;
+
+/**
+ * Minimum duration (minutes) to consider a valid consultation.
+ * Filters out accidental "call next / complete immediately" sequences.
+ */
+const MIN_DURATION_MIN = 1;
+
+/** Redis TTL for cached moving average. Invalidated on every completion. */
+const CACHE_TTL_SEC = 600; // 10 minutes
+
+// ─── Service ─────────────────────────────────────────────────────────────────
+
 @Injectable()
 export class EtaService {
-  // PrismaService is optional so unit tests can instantiate EtaService(). In production
-  // it is always injected by NestJS. getMovingAvg() returns null when not available.
-  constructor(@Optional() private readonly prisma?: PrismaService) {}
+  private readonly logger = new Logger(EtaService.name);
 
-  /**
-   * Computes a moving average of consultation duration (minutes) from the
-   * last `limit` completed entries for the given doctor.
-   * Returns null if there are no completed entries yet.
-   */
-  async getMovingAvg(doctorId: string, limit = 20): Promise<number | null> {
-    if (!this.prisma) return null;
-    const entries = await this.prisma.queueEntry.findMany({
-      where: {
-        doctorId,
-        status: EntryStatus.COMPLETED,
-        completedAt: { not: null },
-        startedAt: { not: null },
-      },
-      orderBy: { completedAt: 'desc' },
-      take: limit,
-      select: { startedAt: true, completedAt: true },
-    });
+  // Both are optional so unit tests can instantiate EtaService() with no args.
+  constructor(
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly redis?: RedisService,
+  ) {}
 
-    const durations = entries
-      .filter((e) => e.startedAt && e.completedAt)
-      .map((e) => (e.completedAt!.getTime() - e.startedAt!.getTime()) / 60_000);
+  // ── Cache management ────────────────────────────────────────────────────────
 
-    if (!durations.length) return null;
-    return durations.reduce((sum, d) => sum + d, 0) / durations.length;
+  private cacheKey(doctorId: string) {
+    return `eta:avg:${doctorId}`;
   }
 
   /**
-   * Enriches a list of queue entries for a single doctor on a single service day.
-   * `entries` MUST already be filtered to (doctorId, serviceDay) and contain all
-   * WAITING + IN_CONSULTATION entries in their final sorted order — ETA math depends
-   * on a complete, ordered view.
+   * Call this whenever a consultation completes for a doctor.
+   * Removes the cached average so the next snapshot recomputes from fresh data.
+   */
+  async invalidateCache(doctorId: string): Promise<void> {
+    try {
+      await this.redis?.client.del(this.cacheKey(doctorId));
+    } catch {
+      // Cache invalidation failure is non-fatal — worst case we serve a slightly
+      // stale average until the TTL expires.
+    }
+  }
+
+  // ── Moving average ──────────────────────────────────────────────────────────
+
+  /**
+   * Returns an EMA of recent consultation durations for the given doctor.
    *
-   * The `options.movingAvgMinutes` should come from `getMovingAvg()` called by the
-   * caller once per snapshot so we avoid redundant DB round-trips.
+   * Algorithm:
+   *   1. Fetch last WINDOW completed consultations from DB (or Redis cache).
+   *   2. Strip durations below MIN_DURATION_MIN (accidental completions).
+   *   3. Apply IQR fencing (Tukey 1.5×IQR) to remove outliers.
+   *   4. Compute EMA (α=0.3, oldest→newest) on the cleaned set.
+   *   5. Cache in Redis with TTL=10min; invalidated on each completion.
+   *
+   * Returns null if there are no valid completions yet (caller falls back to
+   * doctor.avgConsultMinutes which is set at onboarding time).
+   */
+  async getMovingAvg(doctorId: string): Promise<number | null> {
+    if (!this.prisma) return null;
+
+    // ── 1. Cache read ─────────────────────────────────────────────────────────
+    const key = this.cacheKey(doctorId);
+    try {
+      const cached = await this.redis?.client.get(key);
+      if (cached !== null && cached !== undefined) {
+        const parsed = parseFloat(cached);
+        if (!isNaN(parsed)) return parsed;
+      }
+    } catch {
+      // Redis unavailable — compute fresh from DB.
+    }
+
+    // ── 2. DB read ────────────────────────────────────────────────────────────
+    const rows = await this.prisma.queueEntry.findMany({
+      where: {
+        doctorId,
+        status: EntryStatus.COMPLETED,
+        startedAt:   { not: null },
+        completedAt: { not: null },
+      },
+      orderBy: { completedAt: 'desc' },
+      take: WINDOW,
+      select: { startedAt: true, completedAt: true },
+    });
+
+    // ── 3. Duration extraction ────────────────────────────────────────────────
+    const raw = rows
+      .filter((r) => r.startedAt && r.completedAt)
+      .map((r) => (r.completedAt!.getTime() - r.startedAt!.getTime()) / 60_000)
+      .filter((d) => d >= MIN_DURATION_MIN);
+
+    if (raw.length === 0) return null;
+
+    // ── 4. IQR outlier removal ────────────────────────────────────────────────
+    const cleaned = removeOutliers(raw);
+    if (cleaned.length === 0) return null;
+
+    // ── 5. EMA (oldest → newest) ──────────────────────────────────────────────
+    // DB returns newest-first; reverse so EMA runs oldest→newest.
+    const ordered = [...cleaned].reverse();
+    const avg = ema(ordered, EMA_ALPHA);
+
+    // ── 6. Cache write ────────────────────────────────────────────────────────
+    try {
+      await this.redis?.client.set(key, avg.toFixed(4), 'EX', CACHE_TTL_SEC);
+    } catch {
+      // Non-fatal.
+    }
+
+    this.logger.debug(
+      `ETA avg for ${doctorId}: ${avg.toFixed(1)} min (${cleaned.length}/${raw.length} samples after outlier removal)`,
+    );
+
+    return avg;
+  }
+
+  // ── Enrichment ──────────────────────────────────────────────────────────────
+
+  /**
+   * Attaches ETA fields to each entry in the active queue for a single doctor.
+   *
+   * Inputs must be:
+   *   - Filtered to one (doctorId, serviceDay) pair
+   *   - Containing ALL WAITING + IN_CONSULTATION entries
+   *   - Already sorted by effective position (sortOrder ?? tokenNumber)
+   *
+   * ETA formula per patient:
+   *   eta = remainingForCurrentPatient + breakRemaining + (peopleAhead × avgMin)
+   *
+   * Where:
+   *   remainingForCurrentPatient = max(0, avgMin - elapsed)
+   *   elapsed = now - consultation.startedAt
    */
   enrich(doctor: DoctorForEta, entries: QueueEntry[], options: EtaOptions = {}): EnrichedEntry[] {
-    const avgMin = options.movingAvgMinutes ?? doctor.avgConsultMinutes;
+    const avgMin =
+      options.movingAvgMinutes != null
+        ? options.movingAvgMinutes
+        : doctor.avgConsultMinutes;
 
-    // Break remaining: how many minutes before doctor resumes (Feature 4).
     const breakRemainingMinutes =
       options.breakRemainingMinutes !== undefined
         ? options.breakRemainingMinutes
@@ -83,13 +195,14 @@ export class EtaService {
           : 0;
 
     const inProgress = entries.find((e) => e.status === EntryStatus.IN_CONSULTATION);
-    // Waiting list is already sorted by the caller (queue.service snapshot sorts
-    // by effective position: sortOrder ?? tokenNumber). We preserve that order here.
-    const waiting = entries.filter((e) => e.status === EntryStatus.WAITING);
+    const waiting    = entries.filter((e) => e.status === EntryStatus.WAITING);
 
+    // How many minutes remain for the patient currently in consultation.
+    // Clamps to 0 if the consultation has already overrun the average — we
+    // never add negative time to downstream patients' ETAs.
     const remainingForCurrent = (() => {
-      if (!inProgress || !inProgress.startedAt) return 0;
-      const elapsedMin = Math.max(0, (Date.now() - inProgress.startedAt.getTime()) / 60_000);
+      if (!inProgress?.startedAt) return 0;
+      const elapsedMin = (Date.now() - inProgress.startedAt.getTime()) / 60_000;
       return Math.max(0, avgMin - elapsedMin);
     })();
 
@@ -99,22 +212,72 @@ export class EtaService {
       if (entry.status !== EntryStatus.WAITING) {
         return {
           ...entry,
-          peopleAhead: 0,
-          etaMinutes: 0,
-          etaAbsolute: new Date().toISOString(),
+          peopleAhead:      0,
+          etaMinutes:       0,
+          etaAbsolute:      new Date().toISOString(),
           movingAvgMinutes: Math.round(avgMin),
         };
       }
-      const idx = waiting.findIndex((w) => w.id === entry.id);
-      const peopleAhead = idx;
-      const etaMin = remainingForCurrent + baseDelay + peopleAhead * avgMin;
+
+      const idx        = waiting.findIndex((w) => w.id === entry.id);
+      const peopleAhead = idx; // 0 = next in line
+      const etaMin     = remainingForCurrent + baseDelay + peopleAhead * avgMin;
+
       return {
         ...entry,
         peopleAhead,
-        etaMinutes: Math.round(etaMin),
-        etaAbsolute: new Date(Date.now() + etaMin * 60_000).toISOString(),
+        etaMinutes:       Math.round(etaMin),
+        etaAbsolute:      new Date(Date.now() + etaMin * 60_000).toISOString(),
         movingAvgMinutes: Math.round(avgMin),
       };
     });
   }
+}
+
+// ─── Pure algorithm helpers (exported for unit tests) ────────────────────────
+
+/**
+ * Removes outliers from a list of durations using Tukey's IQR fence.
+ *
+ * Works on any sample size ≥ 2. Returns the original array unchanged when
+ * there are fewer than 4 points (not enough for meaningful quartiles).
+ */
+export function removeOutliers(durations: number[]): number[] {
+  if (durations.length < 4) return durations;
+
+  const sorted = [...durations].sort((a, b) => a - b);
+  const q1  = percentile(sorted, 25);
+  const q3  = percentile(sorted, 75);
+  const iqr = q3 - q1;
+
+  const lo = q1 - IQR_FENCE * iqr;
+  const hi = q3 + IQR_FENCE * iqr;
+
+  const cleaned = durations.filter((d) => d >= lo && d <= hi);
+
+  // Safety net: if filtering removed everything (very uniform data where IQR≈0),
+  // return the original set rather than producing no data at all.
+  return cleaned.length > 0 ? cleaned : durations;
+}
+
+/**
+ * Exponential Moving Average over an ordered series (oldest index 0 → newest last).
+ *
+ * ema[0] = series[0]
+ * ema[i] = α × series[i] + (1 − α) × ema[i−1]
+ *
+ * Returns the final EMA value (the most alpha-weighted estimate).
+ */
+export function ema(series: number[], alpha: number): number {
+  if (series.length === 0) return 0;
+  return series.reduce((prev, cur) => alpha * cur + (1 - alpha) * prev);
+}
+
+/** Linear interpolation percentile on a pre-sorted array. */
+function percentile(sorted: number[], p: number): number {
+  const idx = (p / 100) * (sorted.length - 1);
+  const lo  = Math.floor(idx);
+  const hi  = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
 }

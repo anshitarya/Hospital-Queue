@@ -836,6 +836,12 @@ export class QueueService {
       include: { patient: true },
     });
 
+    // When a consultation completes, invalidate the cached ETA average so the
+    // next snapshot picks up the fresh data point immediately.
+    if (next === EntryStatus.COMPLETED) {
+      void this.eta.invalidateCache(entry.doctorId);
+    }
+
     // Audit log and snapshot broadcast are independent — run in parallel.
     await Promise.all([
       this.prisma.queueEvent.create({
