@@ -868,6 +868,29 @@ function ActiveEntry({
   const prevStatusRef = useRef<string | null>(null);
   const prevAheadRef  = useRef<number | null>(null);
 
+  // Pre-populate position data from HTTP on mount so the card shows real info
+  // immediately on page refresh, without waiting for the WebSocket to connect.
+  const [initAhead, setInitAhead]           = useState<number | null>(null);
+  const [initCurrentToken, setInitCurrentToken] = useState<number | null>(null);
+  const [initEta, setInitEta]               = useState<number>(0);
+  const [initEtaAbs, setInitEtaAbs]         = useState<string | undefined>(undefined);
+  const [initMovingAvg, setInitMovingAvg]   = useState<number | null>(null);
+  const initFetched = useRef(false);
+
+  useEffect(() => {
+    if (initFetched.current) return;
+    initFetched.current = true;
+    api<{ entry: { peopleAhead?: number; etaMinutes?: number; etaAbsolute?: string; movingAvgMinutes?: number | null }; currentToken: number | null; movingAvgMinutes?: number | null }>(
+      `/queue/entry/${entry.id}`,
+    ).then(({ entry: e, currentToken, movingAvgMinutes }) => {
+      if (e.peopleAhead !== undefined) setInitAhead(e.peopleAhead);
+      setInitCurrentToken(currentToken);
+      if (e.etaMinutes !== undefined) setInitEta(e.etaMinutes);
+      if (e.etaAbsolute !== undefined) setInitEtaAbs(e.etaAbsolute);
+      setInitMovingAvg(e.movingAvgMinutes ?? movingAvgMinutes ?? null);
+    }).catch(() => {});
+  }, [entry.id]);
+
   async function confirmCancel() {
     setShowCancelConfirm(false);
     setCancelling(true);
@@ -903,12 +926,12 @@ function ActiveEntry({
     }
   }, [snapshot, live, entry, onCompleted]);
 
-  const status     = live?.status ?? entry.status;
-  // Use null (not 0) when socket hasn't delivered data yet — prevents false "You're next" flash on refresh.
-  const ahead      = live !== undefined ? (live.peopleAhead ?? null) : null;
-  const eta        = live?.etaMinutes ?? 0;
-  const etaAbs     = live?.etaAbsolute;
-  const movingAvg  = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes;
+  // Socket data takes precedence once connected; fall back to HTTP-fetched initial values.
+  const status    = live?.status ?? entry.status;
+  const ahead     = live !== undefined ? (live.peopleAhead ?? null) : initAhead;
+  const eta       = live?.etaMinutes ?? initEta;
+  const etaAbs    = live?.etaAbsolute ?? initEtaAbs;
+  const movingAvg = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes ?? initMovingAvg;
   const isInConsult = status === 'IN_CONSULTATION';
   const isNextUp    = status === 'WAITING' && ahead === 0;
   const isUrgent    = isInConsult || isNextUp;
@@ -1034,7 +1057,7 @@ function ActiveEntry({
           <div className="rounded-xl p-4 text-center bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1.5 font-medium">Now serving</div>
             <div className="text-5xl font-bold text-slate-800 dark:text-slate-100 leading-none tabular-nums">
-              {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
+              {(snapshot?.currentToken ?? initCurrentToken) ? tokenDisplay((snapshot?.currentToken ?? initCurrentToken)!) : '—'}
             </div>
           </div>
         </div>

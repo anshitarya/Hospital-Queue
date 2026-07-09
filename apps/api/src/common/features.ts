@@ -53,4 +53,15 @@ export const FEATURES = {
    */
   WHATSAPP_USE_TEMPLATES: process.env.META_WA_USE_TEMPLATES === 'true',
 
+  // ── Queue ordering ────────────────────────────────────────────────────────
+  /**
+   * When OFF (default): legacy walk-in/follow-up gap logic. Missed patients
+   *   rejoin near current position + missedGap.
+   * When ON : strict FIFO. All patients join at the end. Emergency patients
+   *   still jump to the front. Missed patients rejoin at the END.
+   *   Walk-in gaps and follow-up interleaving are not applied.
+   * Flip via: fly secrets set FIFO_QUEUE_ORDERING=true -a queue-hq-api
+   */
+  FIFO_QUEUE_ORDERING: process.env.FIFO_QUEUE_ORDERING === 'true',
+
 } as const;
