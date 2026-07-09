@@ -47,9 +47,9 @@ const CHOICES: Choice[] = [
   {
     emoji: '⚙️',
     title: 'Admin',
-    subtitle: 'Clinic administrator',
+    subtitle: 'Administrator',
     description:
-      'Manage your clinic, create invite codes, and oversee all doctors and queues.',
+      'Not for patients, doctors or receptionists only for ADMINISTRATOR',
     href: '/login',
     accent: 'from-violet-500 to-purple-700',
   },
