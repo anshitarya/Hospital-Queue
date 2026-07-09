@@ -92,14 +92,15 @@ export class ClinicsController {
     return this.clinics.getDoctorAnalytics(user.clinicId, from ?? today, to ?? today);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
   @Get('my/history')
   getClinicHistory(
     @CurrentUser() user: AuthUser,
-    @Query('from')  from?: string,
-    @Query('to')    to?: string,
-    @Query('page')  page?: string,
-    @Query('limit') limit?: string,
+    @Query('from')      from?: string,
+    @Query('to')        to?: string,
+    @Query('page')      page?: string,
+    @Query('limit')     limit?: string,
+    @Query('doctorId')  doctorId?: string,
   ) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
     const today = new Date().toISOString().slice(0, 10);
@@ -109,7 +110,8 @@ export class ClinicsController {
       from ?? sevenAgo,
       to ?? today,
       page  ? Math.max(1, parseInt(page,  10)) : 1,
-      limit ? Math.min(100, parseInt(limit, 10)) : 50,
+      limit ? Math.min(500, parseInt(limit, 10)) : 50,
+      doctorId,
     );
   }
 

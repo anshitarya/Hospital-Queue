@@ -720,7 +720,7 @@ export class ClinicsService {
    * Paginated visit history for the clinic. Returns entries with patient/doctor info
    * plus a summary of totals for the selected date range.
    */
-  async getClinicHistory(clinicId: string, from: string, to: string, page = 1, limit = 50) {
+  async getClinicHistory(clinicId: string, from: string, to: string, page = 1, limit = 50, scopedDoctorId?: string) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
@@ -730,9 +730,12 @@ export class ClinicsService {
       return { entries: [], total: 0, page, pages: 0, summary: { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 } };
     }
 
+    // When a specific doctor is requested, verify they belong to this clinic.
+    const filteredDoctorId = scopedDoctorId && doctorIds.includes(scopedDoctorId) ? scopedDoctorId : undefined;
+
     const trackedStatuses = [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED];
     const where = {
-      doctorId: { in: doctorIds },
+      doctorId: filteredDoctorId ? filteredDoctorId : { in: doctorIds },
       serviceDay: { gte: from, lte: to },
       status: { in: trackedStatuses },
     };

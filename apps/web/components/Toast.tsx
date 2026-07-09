@@ -10,7 +10,7 @@ export type ToastMessage = {
 export function Toast({
   message,
   onDismiss,
-  duration = 4000,
+  duration = 5000,
 }: {
   message: ToastMessage | null;
   onDismiss: () => void;
@@ -18,7 +18,6 @@ export function Toast({
 }) {
   useEffect(() => {
     if (!message) return;
-    if (message.type === 'err') return; // errors stay until dismissed
     const t = setTimeout(onDismiss, duration);
     return () => clearTimeout(t);
   }, [message, duration, onDismiss]);

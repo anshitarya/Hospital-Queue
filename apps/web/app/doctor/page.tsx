@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { api, ApiError, type Doctor, type Snapshot } from '@/lib/api';
 import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue } from '@/lib/socket';
@@ -50,6 +50,14 @@ export default function DoctorPage() {
   const [recBusy, setRecBusy] = useState(false);
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
 
+  // All Records tab
+  const TODAY_STR = new Date().toISOString().slice(0, 10);
+  const SEVEN_AGO_STR = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+  const [recordsFrom, setRecordsFrom] = useState(SEVEN_AGO_STR);
+  const [recordsTo, setRecordsTo]     = useState(TODAY_STR);
+  const [recordsData, setRecordsData] = useState<RecordsResponse | null>(null);
+  const [recordsLoading, setRecordsLoading] = useState(false);
+
   const loadReceptionists = useCallback(async () => {
     try {
       const list = await api<ReceptionistRow[]>('/clinics/my/receptionists');
@@ -62,6 +70,18 @@ export default function DoctorPage() {
   useEffect(() => {
     if (ready && user?.clinicId) loadReceptionists();
   }, [ready, user?.clinicId, loadReceptionists]);
+
+  const loadRecords = useCallback(async (from: string, to: string, dId: string) => {
+    setRecordsLoading(true);
+    try {
+      const data = await api<RecordsResponse>(`/clinics/my/history?doctorId=${dId}&from=${from}&to=${to}&limit=500`);
+      setRecordsData(data);
+    } catch {
+      /* ignore */
+    } finally {
+      setRecordsLoading(false);
+    }
+  }, []);
 
   async function addReceptionist(e: React.FormEvent) {
     e.preventDefault();
@@ -97,6 +117,10 @@ export default function DoctorPage() {
       setRecBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (tab === 'history' && doctorId) void loadRecords(recordsFrom, recordsTo, doctorId);
+  }, [tab, doctorId, recordsFrom, recordsTo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!ready || !user) return;
@@ -278,7 +302,7 @@ export default function DoctorPage() {
             onClick={() => setTab('history')}
             className={'tab ' + (tab === 'history' ? 'tab-active' : 'tab-inactive')}
           >
-            History
+            All Records
           </button>
         </div>
 
@@ -676,16 +700,325 @@ export default function DoctorPage() {
           </section>
         )}
 
-        {/* ── History tab ── */}
+        {/* ── All Records tab ── */}
         {tab === 'history' && (
-          <section className="card p-5">
-            <QueueHistoryTable doctorName={snapshot?.doctor?.user?.name} />
-          </section>
+          <AllRecordsTab
+            from={recordsFrom}
+            to={recordsTo}
+            data={recordsData}
+            loading={recordsLoading}
+            onDateChange={(f, t) => { setRecordsFrom(f); setRecordsTo(t); }}
+          />
         )}
       </main>
 
       <Toast message={toast} onDismiss={() => setToast(null)} />
       <DoctorCredentialsModal credentials={creds} onClose={() => setCreds(null)} />
     </>
+  );
+}
+
+// ─── All Records tab types ────────────────────────────────────────────────────
+
+interface RecordEntry {
+  id: string; tokenNumber: number; status: string;
+  serviceDay: string; completedAt: string | null;
+  patient: { name: string; phone: string };
+  doctor: { name: string; department: string };
+}
+interface RecordSummary { completed: number; missed: number; cancelled: number; skipped: number; total: number }
+interface RecordsResponse {
+  entries: RecordEntry[]; total: number; page: number; pages: number;
+  summary: RecordSummary;
+}
+interface TrendPoint { date: string; label: string; completed: number; missed: number; cancelled: number; skipped: number; total: number }
+
+// ─── All Records tab ──────────────────────────────────────────────────────────
+
+type RecStatusFilter = 'ALL' | 'COMPLETED' | 'MISSED' | 'CANCELLED' | 'SKIPPED';
+
+function AllRecordsTab({
+  from, to, data, loading, onDateChange,
+}: {
+  from: string; to: string;
+  data: RecordsResponse | null;
+  loading: boolean;
+  onDateChange: (f: string, t: string) => void;
+}) {
+  const TODAY = new Date().toISOString().slice(0, 10);
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+
+  const [search, setSearch]             = useState('');
+  const [statusFilter, setStatusFilter] = useState<RecStatusFilter>('ALL');
+
+  const presets = [
+    { label: 'Today', from: TODAY,       to: TODAY },
+    { label: '7d',    from: daysAgo(6),  to: TODAY },
+    { label: '30d',   from: daysAgo(29), to: TODAY },
+    { label: '3 mo',  from: daysAgo(89), to: TODAY },
+  ];
+
+  const summary = data?.summary ?? { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 };
+
+  const filtered = (data?.entries ?? []).filter((e) => {
+    if (statusFilter !== 'ALL' && e.status !== statusFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!e.patient.name.toLowerCase().includes(q) && !String(e.tokenNumber).includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Build trend points from loaded entries (client-side grouping)
+  const trendPoints: TrendPoint[] = (() => {
+    const map = new Map<string, TrendPoint>();
+    for (const e of data?.entries ?? []) {
+      if (!map.has(e.serviceDay)) {
+        const d = new Date(e.serviceDay);
+        const label = d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+        map.set(e.serviceDay, { date: e.serviceDay, label, completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 });
+      }
+      const p = map.get(e.serviceDay)!;
+      p.total++;
+      if (e.status === 'COMPLETED') p.completed++;
+      else if (e.status === 'MISSED') p.missed++;
+      else if (e.status === 'CANCELLED') p.cancelled++;
+      else if (e.status === 'SKIPPED') p.skipped++;
+    }
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  })();
+
+  const statusColors: Record<string, string> = {
+    COMPLETED: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30',
+    MISSED:    'text-amber-700 bg-amber-50 dark:bg-amber-900/30',
+    CANCELLED: 'text-rose-700 bg-rose-50 dark:bg-rose-900/30',
+    SKIPPED:   'text-slate-600 bg-slate-100 dark:bg-slate-700',
+  };
+
+  const statusBtns: { value: RecStatusFilter; label: string; color: string }[] = [
+    { value: 'ALL',       label: 'All',       color: 'bg-slate-700 text-white' },
+    { value: 'COMPLETED', label: 'Completed', color: 'bg-emerald-600 text-white' },
+    { value: 'MISSED',    label: 'Missed',    color: 'bg-amber-500 text-white' },
+    { value: 'CANCELLED', label: 'Cancelled', color: 'bg-rose-500 text-white' },
+    { value: 'SKIPPED',   label: 'Skipped',   color: 'bg-slate-500 text-white' },
+  ];
+
+  const hasFilters = search || statusFilter !== 'ALL';
+
+  return (
+    <div className="p-4 space-y-4">
+
+      {/* ── Filter bar ── */}
+      <div className="card p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1">
+            {presets.map((pr) => (
+              <button key={pr.label} type="button" onClick={() => onDateChange(pr.from, pr.to)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                  from === pr.from && to === pr.to
+                    ? 'bg-teal-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}>{pr.label}</button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 ml-2">
+            <input type="date" value={from} max={to} onChange={(e) => onDateChange(e.target.value, to)}
+              className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs" />
+            <span className="text-slate-400 text-xs">→</span>
+            <input type="date" value={to} min={from} max={TODAY} onChange={(e) => onDateChange(from, e.target.value)}
+              className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs" />
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <input type="text" placeholder="Search patient…" value={search} onChange={(e) => setSearch(e.target.value)}
+              className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500" />
+            {hasFilters && (
+              <button type="button" onClick={() => { setSearch(''); setStatusFilter('ALL'); }}
+                className="text-xs text-rose-500 hover:text-rose-600 whitespace-nowrap">Clear</button>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-slate-400 font-medium">Status:</span>
+          <div className="flex gap-1 flex-wrap">
+            {statusBtns.map(({ value, label, color }) => (
+              <button key={value} type="button" onClick={() => setStatusFilter(value)}
+                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity ${
+                  statusFilter === value ? color : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                }`}>{label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Summary cards ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        {loading ? (
+          <div className="col-span-5 py-6 text-center text-slate-400 text-sm">Loading…</div>
+        ) : (
+          <>
+            <RecStatCard label="Total"     value={summary.total}     color="teal"  />
+            <RecStatCard label="Completed" value={summary.completed} color="green" />
+            <RecStatCard label="Missed"    value={summary.missed}    color="amber" />
+            <RecStatCard label="Cancelled" value={summary.cancelled} color="red"   />
+            <RecStatCard label="Skipped"   value={summary.skipped}   color="slate" />
+          </>
+        )}
+      </div>
+
+      {/* ── Trend chart ── */}
+      {!loading && trendPoints.length > 1 && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Visit Trend</h3>
+            <div className="flex items-center gap-3">
+              <RecLegendDot color="#14b8a6" label="Completed" />
+              <RecLegendDot color="#f59e0b" label="Missed"    />
+              <RecLegendDot color="#ef4444" label="Cancelled" />
+            </div>
+          </div>
+          <RecTrendChart points={trendPoints} />
+        </div>
+      )}
+
+      {/* ── Entries table ── */}
+      <div className="card overflow-hidden">
+        {loading ? (
+          <div className="py-16 text-center text-slate-400 text-sm">Loading records…</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 text-sm">
+            {hasFilters ? 'No entries match your filters.' : 'No visit records for this period.'}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 dark:bg-slate-700/40">
+                <tr>
+                  {['Token', 'Date', 'Patient', 'Phone', 'Status'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                {filtered.map((e) => (
+                  <tr key={e.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
+                    <td className="px-4 py-3 text-slate-500 font-mono text-xs">#{e.tokenNumber}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{e.serviceDay}</td>
+                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">{e.patient.name}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap font-mono">{e.patient.phone}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[e.status] ?? 'text-slate-500 bg-slate-100'}`}>
+                        {e.status.charAt(0) + e.status.slice(1).toLowerCase()}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── All Records sub-components ───────────────────────────────────────────────
+
+function RecStatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  const cls: Record<string, string> = {
+    teal:  'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800/40 text-teal-700 dark:text-teal-300',
+    green: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300',
+    amber: 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/40 text-amber-700 dark:text-amber-300',
+    red:   'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-800/40 text-rose-700 dark:text-rose-300',
+    slate: 'bg-slate-50 dark:bg-slate-700/40 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300',
+  };
+  return (
+    <div className={`rounded-xl border p-4 ${cls[color] ?? cls.slate}`}>
+      <p className="text-xs font-medium opacity-70 uppercase tracking-wide">{label}</p>
+      <p className="text-3xl font-bold mt-1">{value}</p>
+    </div>
+  );
+}
+
+function RecLegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+    </div>
+  );
+}
+
+function RecTrendChart({ points }: { points: TrendPoint[] }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [tip, setTip] = useState<{ idx: number; screenX: number; screenY: number } | null>(null);
+
+  const W = 700; const H = 200;
+  const pad = { t: 10, r: 20, b: 36, l: 36 };
+  const cW = W - pad.l - pad.r;
+  const cH = H - pad.t - pad.b;
+  const maxVal = Math.max(...points.flatMap((p) => [p.completed, p.missed, p.cancelled]), 1);
+  const step   = cW / Math.max(points.length - 1, 1);
+  const toX    = (i: number) => pad.l + i * step;
+  const toY    = (v: number) => pad.t + cH - (v / maxVal) * cH;
+  const tickCount = Math.min(maxVal, 5);
+  const yTicks = [...new Set(Array.from({ length: tickCount + 1 }, (_, i) => Math.round((maxVal * i) / tickCount)))];
+  const line = (key: 'completed' | 'missed' | 'cancelled') =>
+    points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(p[key]).toFixed(1)}`).join(' ');
+  const series: Array<{ key: 'completed' | 'missed' | 'cancelled'; color: string }> = [
+    { key: 'completed', color: '#14b8a6' },
+    { key: 'missed',    color: '#f59e0b' },
+    { key: 'cancelled', color: '#ef4444' },
+  ];
+  const labelEvery = points.length > 20 ? Math.ceil(points.length / 10) : 1;
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current || points.length < 2) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width;
+    const idx  = Math.max(0, Math.min(points.length - 1, Math.round(relX * (points.length - 1))));
+    setTip({ idx, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
+  };
+  const tipPoint = tip !== null ? points[tip.idx] : null;
+
+  return (
+    <div className="relative" onMouseLeave={() => setTip(null)}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full cursor-crosshair"
+        preserveAspectRatio="none" onMouseMove={handleMouseMove}>
+        {yTicks.map((v) => {
+          const y = toY(v);
+          return <g key={v}>
+            <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="currentColor" strokeOpacity="0.07" strokeWidth="1" />
+            <text x={pad.l - 4} y={y + 4} textAnchor="end" className="fill-slate-400" fontSize="9">{v}</text>
+          </g>;
+        })}
+        {tip !== null && (
+          <line x1={toX(tip.idx)} y1={pad.t} x2={toX(tip.idx)} y2={pad.t + cH}
+            stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="4 2" />
+        )}
+        {series.map(({ key, color }) => (
+          <path key={key} d={line(key)} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {series.map(({ key, color }) =>
+          points.map((p, i) => (
+            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r={tip?.idx === i ? 4 : 2.5}
+              fill={color} stroke="white" strokeWidth="1.5" style={{ transition: 'r 0.1s' }} />
+          ))
+        )}
+        {points.map((p, i) => i % labelEvery === 0 && (
+          <text key={p.date} x={toX(i)} y={H - 4} textAnchor="middle" className="fill-slate-400" fontSize="8">{p.label}</text>
+        ))}
+      </svg>
+      {tip !== null && tipPoint && (
+        <div className="absolute pointer-events-none z-20 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2 text-xs"
+          style={{ left: tip.screenX > 500 ? tip.screenX - 140 : tip.screenX + 12, top: Math.max(4, tip.screenY - 60) }}>
+          <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1.5">{tipPoint.label}</p>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-500" />Completed</span><span className="font-bold text-teal-600">{tipPoint.completed}</span></div>
+            <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" />Missed</span><span className="font-bold text-amber-600">{tipPoint.missed}</span></div>
+            <div className="flex items-center justify-between gap-4"><span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />Cancelled</span><span className="font-bold text-red-600">{tipPoint.cancelled}</span></div>
+            <div className="flex items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-700 pt-1 mt-1"><span className="text-slate-500">Total</span><span className="font-bold text-slate-700 dark:text-slate-200">{tipPoint.total}</span></div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

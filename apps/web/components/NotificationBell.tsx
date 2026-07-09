@@ -112,18 +112,6 @@ export function NotificationBell({
                         <p className={`text-sm font-semibold leading-snug ${meta.titleColor}`}>{n.title}</p>
                         <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{n.body}</p>
                       </div>
-                      {onDismiss && (
-                        <button
-                          type="button"
-                          onClick={() => onDismiss(n.id)}
-                          className="shrink-0 mt-0.5 text-slate-300 hover:text-slate-500 transition-colors p-0.5 rounded"
-                          aria-label="Dismiss"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      )}
                     </div>
                   );
                 })

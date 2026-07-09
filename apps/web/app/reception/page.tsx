@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { PageLoader } from '@/components/PageLoader';
 import { QueueManager } from '@/components/QueueManager';
+import { Toast, type ToastMessage } from '@/components/Toast';
+import { DepartmentPicker, type DepartmentOption } from '@/components/DepartmentPicker';
+import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
+import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,6 +122,18 @@ export default function ReceptionPage() {
   const [historyTo, setHistoryTo]     = useState(TODAY);
   const [historyPage, setHistoryPage] = useState(1);
 
+  // Add-doctor form (staff tab)
+  const [docName, setDocName]               = useState('');
+  const [docEmail, setDocEmail]             = useState('');
+  const [docPhone, setDocPhone]             = useState('');
+  const [docPhoneResult, setDocPhoneResult] = useState<PhoneValidationResult>({ ok: false });
+  const [docDeptId, setDocDeptId]           = useState('');
+  const [docAvg, setDocAvg]                 = useState(7);
+  const [docBusy, setDocBusy]               = useState(false);
+  const [departments, setDepartments]       = useState<DepartmentOption[]>([]);
+  const [creds, setCreds]                   = useState<DoctorCredentials | null>(null);
+  const [toast, setToast]                   = useState<ToastMessage | null>(null);
+
   // ── Data loaders ──────────────────────────────────────────────────────────
 
   const loadDashboard = useCallback(async (silent = false) => {
@@ -157,6 +173,12 @@ export default function ReceptionPage() {
     catch { /* ignore */ }
   }, []);
 
+  const loadDepartments = useCallback(async () => {
+    if (departments.length > 0) return;
+    try { setDepartments(await api<DepartmentOption[]>('/clinics/my/departments')); }
+    catch { /* ignore */ }
+  }, [departments.length]);
+
   // ── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -183,6 +205,11 @@ export default function ReceptionPage() {
   }, [activeTab, historyFrom, historyTo, historyPage, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!ready || activeTab !== 'staff') return;
+    void loadDepartments();
+  }, [activeTab, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
     if (!ready) return;
     const id = setInterval(() => {
       void loadDashboard(true);
@@ -190,6 +217,44 @@ export default function ReceptionPage() {
     }, 30_000);
     return () => clearInterval(id);
   }, [ready, bookingPeriod, bookingFrom, bookingTo, bookingHourlyDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function addDoctor(e: React.FormEvent) {
+    e.preventDefault();
+    if (!docEmail && !docPhoneResult.ok) {
+      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the doctor.' });
+      return;
+    }
+    setDocBusy(true);
+    try {
+      const result = await api<{
+        doctor: { id: string; user: { name: string; email: string | null; phone: string | null } };
+        tempPassword: string;
+      }>('/clinics/my/doctors', {
+        method: 'POST',
+        body: {
+          name: docName,
+          email: docEmail || undefined,
+          phone: docPhoneResult.e164 || undefined,
+          departmentId: docDeptId,
+          avgConsultMinutes: docAvg,
+        },
+      });
+      setDocName(''); setDocEmail(''); setDocPhone('');
+      setDocPhoneResult({ ok: false }); setDocDeptId(''); setDocAvg(7);
+      setCreds({
+        role: 'doctor',
+        name: result.doctor.user.name,
+        email: result.doctor.user.email,
+        phone: result.doctor.user.phone,
+        tempPassword: result.tempPassword,
+      });
+      await loadDashboard(true);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add doctor' });
+    } finally {
+      setDocBusy(false);
+    }
+  }
 
   if (!ready || loading) return <PageLoader label="Loading…" />;
 
@@ -210,6 +275,8 @@ export default function ReceptionPage() {
 
   return (
     <div className="flex h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden">
+      <DoctorCredentialsModal credentials={creds} onClose={() => setCreds(null)} />
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
       {/* ── Sidebar ── */}
       <aside className="w-16 sm:w-56 flex-shrink-0 bg-slate-900 dark:bg-slate-950 flex flex-col">
         <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700/60">
@@ -226,7 +293,7 @@ export default function ReceptionPage() {
               <span className="hidden sm:block">{label}</span>
             </button>
           ))}
-          {[{ label: 'Patients', icon: HeartIcon }, { label: 'Billing', icon: CoinIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
+          {[{ label: 'Patients', icon: HeartIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
             <button key={label} type="button" disabled className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 cursor-not-allowed">
               <Icon className="w-4 h-4 shrink-0" />
               <span className="hidden sm:block">{label}</span>
@@ -377,6 +444,33 @@ export default function ReceptionPage() {
         {/* ── Staff ── */}
         {activeTab === 'staff' && (
           <div className="p-6 space-y-6">
+
+            {/* Add doctor form */}
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+              <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-4 flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-teal-100 text-teal-700 text-xs font-bold">+</span>
+                Add doctor
+              </h2>
+              <form onSubmit={addDoctor} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-xl">
+                <input className="input sm:col-span-2" placeholder="Full name" value={docName} onChange={(e) => setDocName(e.target.value)} required />
+                <input className="input" type="email" placeholder="Email (for login)" value={docEmail} onChange={(e) => setDocEmail(e.target.value)} />
+                <PhoneInput label={null} value={docPhone} onChange={(raw, result) => { setDocPhone(raw); setDocPhoneResult(result); }} autoComplete="off" />
+                <p className="text-[11px] text-slate-400 sm:col-span-2 -mt-1">At least one of email / mobile is required.</p>
+                <div className="sm:col-span-2">
+                  <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
+                </div>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">Avg consult time:</span>
+                  <input className="input flex-1" type="number" min={1} max={120} value={docAvg}
+                    onChange={(e) => setDocAvg(Number(e.target.value))} required />
+                  <span className="text-xs text-slate-400 shrink-0">min/patient</span>
+                </label>
+                <button type="submit" className="btn-primary sm:col-span-2" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
+                  {docBusy ? 'Adding…' : 'Add doctor'}
+                </button>
+              </form>
+            </div>
+
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
               <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-4">
                 Doctors <span className="text-slate-400 font-normal">({doctors.length})</span>
