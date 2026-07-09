@@ -55,13 +55,10 @@ export const FEATURES = {
 
   // ── Queue ordering ────────────────────────────────────────────────────────
   /**
-   * When OFF (default): legacy walk-in/follow-up gap logic. Missed patients
-   *   rejoin near current position + missedGap.
-   * When ON : strict FIFO. All patients join at the end. Emergency patients
-   *   still jump to the front. Missed patients rejoin at the END.
-   *   Walk-in gaps and follow-up interleaving are not applied.
-   * Flip via: fly secrets set FIFO_QUEUE_ORDERING=true -a queue-hq-api
+   * false → legacy: walk-in gaps, follow-up interleaving, missed rejoin near current position
+   * true  → FIFO  : all patients join at end; emergency still jumps to front;
+   *                 missed patients rejoin at the END; walk-in/follow-up gaps ignored
    */
-  FIFO_QUEUE_ORDERING: process.env.FIFO_QUEUE_ORDERING === 'true',
+  FIFO_QUEUE_ORDERING: true,
 
 } as const;
