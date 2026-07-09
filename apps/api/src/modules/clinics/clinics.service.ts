@@ -505,15 +505,20 @@ export class ClinicsService {
    * Time-series analytics for the clinic admin charts.
    *
    *  period=daily   → last `count` days (default 30), one row per day
+   *               OR a custom date range when `from` + `to` are supplied
    *  period=monthly → last `count` months (default 12), one row per calendar month
+   *  period=hourly  → 24 hourly buckets for a single day (default: today)
    *
    * Returned shape:
    *   { period, points: [{ label, date, completed, missed, cancelled, skipped, total }] }
    */
   async getClinicAnalytics(
     clinicId: string,
-    period: 'daily' | 'monthly' = 'daily',
+    period: 'daily' | 'monthly' | 'hourly' = 'daily',
     count = 30,
+    dateParam?: string,
+    from?: string,
+    to?: string,
   ) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
@@ -535,21 +540,65 @@ export class ClinicsService {
       EntryStatus.SKIPPED,
     ] as const;
 
-    if (period === 'daily') {
-      const dates = Array.from({ length: count }, (_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - (count - 1 - i));
-        return d.toISOString().slice(0, 10);
+    // ── Hourly ───────────────────────────────────────────────────────────────
+    if (period === 'hourly') {
+      const targetDay = dateParam ?? todayServiceDay();
+      const entries = await this.prisma.queueEntry.findMany({
+        where: { doctorId: { in: doctorIds }, serviceDay: targetDay, status: { in: [...trackedStatuses] } },
+        select: { status: true, completedAt: true, joinedAt: true },
       });
-      const start = dates[0];
+      const hourMap = new Map<number, Record<string, number>>();
+      for (let h = 0; h < 24; h++) hourMap.set(h, {});
+      for (const e of entries) {
+        const ts = e.completedAt ?? e.joinedAt;
+        const hour = new Date(ts).getHours();
+        const hm = hourMap.get(hour)!;
+        hm[e.status] = (hm[e.status] ?? 0) + 1;
+      }
+      const points = Array.from({ length: 24 }, (_, h) => {
+        const m = hourMap.get(h) ?? {};
+        const completed = m[EntryStatus.COMPLETED] ?? 0;
+        const missed    = m[EntryStatus.MISSED]    ?? 0;
+        const cancelled = m[EntryStatus.CANCELLED] ?? 0;
+        const skipped   = m[EntryStatus.SKIPPED]   ?? 0;
+        return {
+          date: `${targetDay}T${String(h).padStart(2, '0')}:00:00`,
+          label: `${String(h).padStart(2, '0')}:00`,
+          completed, missed, cancelled, skipped,
+          total: completed + missed + cancelled + skipped,
+        };
+      });
+      return { period, points };
+    }
+
+    // ── Daily (range or count-based) ─────────────────────────────────────────
+    if (period === 'daily') {
+      let dates: string[];
+      if (from && to) {
+        // Build a day array between from and to (inclusive)
+        const start = new Date(from + 'T12:00:00');
+        const end   = new Date(to   + 'T12:00:00');
+        dates = [];
+        for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          dates.push(d.toISOString().slice(0, 10));
+        }
+        if (dates.length > 366) dates = dates.slice(-366); // safety cap
+      } else {
+        dates = Array.from({ length: count }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (count - 1 - i));
+          return d.toISOString().slice(0, 10);
+        });
+      }
+      const rangeStart = dates[0];
+      const rangeEnd   = dates[dates.length - 1];
 
       const rows = await this.prisma.queueEntry.groupBy({
         by: ['serviceDay', 'status'],
-        where: { doctorId: { in: doctorIds }, serviceDay: { gte: start }, status: { in: [...trackedStatuses] } },
+        where: { doctorId: { in: doctorIds }, serviceDay: { gte: rangeStart, lte: rangeEnd }, status: { in: [...trackedStatuses] } },
         _count: { _all: true },
       });
 
-      // Build a map: date → status → count
       const dayMap = new Map<string, Record<string, number>>();
       for (const r of rows) {
         if (!dayMap.has(r.serviceDay)) dayMap.set(r.serviceDay, {});
@@ -573,7 +622,7 @@ export class ClinicsService {
       return { period, points };
     }
 
-    // Monthly — aggregate by YYYY-MM
+    // ── Monthly ───────────────────────────────────────────────────────────────
     const start = (() => {
       const d = new Date();
       d.setMonth(d.getMonth() - (count - 1));
@@ -587,7 +636,6 @@ export class ClinicsService {
       _count: { _all: true },
     });
 
-    // Aggregate by YYYY-MM
     const monthMap = new Map<string, Record<string, number>>();
     for (const r of rows) {
       const ym = r.serviceDay.slice(0, 7);
@@ -596,11 +644,10 @@ export class ClinicsService {
       m[r.status] = (m[r.status] ?? 0) + r._count._all;
     }
 
-    // Build a list of the last `count` months (filled with zeros for months with no data)
     const months = Array.from({ length: count }, (_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - (count - 1 - i));
-      return d.toISOString().slice(0, 7); // 'YYYY-MM'
+      return d.toISOString().slice(0, 7);
     });
 
     const points = months.map((ym) => {
@@ -620,6 +667,115 @@ export class ClinicsService {
     });
 
     return { period, points };
+  }
+
+  /**
+   * Per-doctor breakdown for a date range — used by the histogram "past data" feature.
+   * Returns each doctor's completed/missed/cancelled/skipped totals between `from` and `to`.
+   */
+  async getDoctorAnalytics(clinicId: string, from: string, to: string) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    const doctors = await this.prisma.doctor.findMany({
+      where: { clinicId },
+      include: { user: { select: { name: true } }, department: { select: { name: true } } },
+      orderBy: { user: { name: 'asc' } },
+    });
+    const doctorIds = doctors.map((d) => d.id);
+    if (!doctorIds.length) return { from, to, doctors: [] };
+
+    const trackedStatuses = [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED];
+    const rows = await this.prisma.queueEntry.groupBy({
+      by: ['doctorId', 'status'],
+      where: { doctorId: { in: doctorIds }, serviceDay: { gte: from, lte: to }, status: { in: trackedStatuses } },
+      _count: { _all: true },
+    });
+
+    const docMap = new Map<string, Record<string, number>>();
+    for (const r of rows) {
+      if (!docMap.has(r.doctorId)) docMap.set(r.doctorId, {});
+      docMap.get(r.doctorId)![r.status] = r._count._all;
+    }
+
+    return {
+      from, to,
+      doctors: doctors.map((d) => {
+        const m = docMap.get(d.id) ?? {};
+        return {
+          id: d.id,
+          name: d.user.name,
+          department: d.department?.name ?? '—',
+          status: d.status,
+          completed: m[EntryStatus.COMPLETED] ?? 0,
+          missed:    m[EntryStatus.MISSED]    ?? 0,
+          cancelled: m[EntryStatus.CANCELLED] ?? 0,
+          skipped:   m[EntryStatus.SKIPPED]   ?? 0,
+        };
+      }),
+    };
+  }
+
+  /**
+   * Paginated visit history for the clinic. Returns entries with patient/doctor info
+   * plus a summary of totals for the selected date range.
+   */
+  async getClinicHistory(clinicId: string, from: string, to: string, page = 1, limit = 50) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    const doctors = await this.prisma.doctor.findMany({ where: { clinicId }, select: { id: true } });
+    const doctorIds = doctors.map((d) => d.id);
+    if (!doctorIds.length) {
+      return { entries: [], total: 0, page, pages: 0, summary: { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 } };
+    }
+
+    const trackedStatuses = [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED];
+    const where = {
+      doctorId: { in: doctorIds },
+      serviceDay: { gte: from, lte: to },
+      status: { in: trackedStatuses },
+    };
+
+    const [entries, total, summaryRows] = await Promise.all([
+      this.prisma.queueEntry.findMany({
+        where,
+        include: {
+          patient: { select: { name: true, phone: true } },
+          doctor: { include: { user: { select: { name: true } }, department: { select: { name: true } } } },
+        },
+        orderBy: [{ serviceDay: 'desc' }, { tokenNumber: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.queueEntry.count({ where }),
+      this.prisma.queueEntry.groupBy({ by: ['status'], where, _count: { _all: true } }),
+    ]);
+
+    const summary = { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 };
+    for (const r of summaryRows) {
+      if (r.status === EntryStatus.COMPLETED) summary.completed = r._count._all;
+      else if (r.status === EntryStatus.MISSED) summary.missed = r._count._all;
+      else if (r.status === EntryStatus.CANCELLED) summary.cancelled = r._count._all;
+      else if (r.status === EntryStatus.SKIPPED) summary.skipped = r._count._all;
+    }
+    summary.total = summary.completed + summary.missed + summary.cancelled + summary.skipped;
+
+    return {
+      entries: entries.map((e) => ({
+        id: e.id,
+        tokenNumber: e.tokenNumber,
+        status: e.status,
+        serviceDay: e.serviceDay,
+        completedAt: e.completedAt?.toISOString() ?? null,
+        patient: { name: e.patient.name, phone: e.patient.phone ?? '' },
+        doctor: { name: e.doctor.user.name, department: e.doctor.department?.name ?? '—' },
+      })),
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      summary,
+    };
   }
 
   async updateStaffEmail(clinicId: string, userId: string, email: string) {

@@ -66,12 +66,51 @@ export class ClinicsController {
   getMyAnalytics(
     @CurrentUser() user: AuthUser,
     @Query('period') period?: string,
-    @Query('count') count?: string,
+    @Query('count')  count?: string,
+    @Query('date')   date?: string,
+    @Query('from')   from?: string,
+    @Query('to')     to?: string,
   ) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    if (period === 'hourly') {
+      return this.clinics.getClinicAnalytics(user.clinicId, 'hourly', 24, date);
+    }
     const p = period === 'monthly' ? 'monthly' : 'daily';
-    const n = count ? Math.min(Math.max(parseInt(count, 10) || 30, 7), 365) : (p === 'monthly' ? 12 : 30);
-    return this.clinics.getClinicAnalytics(user.clinicId, p, n);
+    const n = count ? Math.min(Math.max(parseInt(count, 10) || 30, 7), 366) : (p === 'monthly' ? 12 : 30);
+    return this.clinics.getClinicAnalytics(user.clinicId, p, n, undefined, from, to);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/doctor-analytics')
+  getDoctorAnalytics(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from?: string,
+    @Query('to')   to?: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    const today = new Date().toISOString().slice(0, 10);
+    return this.clinics.getDoctorAnalytics(user.clinicId, from ?? today, to ?? today);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/history')
+  getClinicHistory(
+    @CurrentUser() user: AuthUser,
+    @Query('from')  from?: string,
+    @Query('to')    to?: string,
+    @Query('page')  page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    const today = new Date().toISOString().slice(0, 10);
+    const sevenAgo = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+    return this.clinics.getClinicHistory(
+      user.clinicId,
+      from ?? sevenAgo,
+      to ?? today,
+      page  ? Math.max(1, parseInt(page,  10)) : 1,
+      limit ? Math.min(100, parseInt(limit, 10)) : 50,
+    );
   }
 
   /**

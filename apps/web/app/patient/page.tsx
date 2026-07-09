@@ -406,7 +406,24 @@ function ClinicDropdown({
 }
 
 // ─── History view ─────────────────────────────────────────────────────────────
+type HistoryStatusFilter = 'ALL' | 'COMPLETED' | 'MISSED' | 'CANCELLED' | 'SKIPPED';
+type HistorySubTab       = 'log' | 'by-doctor';
+type HistoryPeriod       = 'all' | '30d' | '3m' | '1y' | 'custom';
+
+function daysAgoStr(n: number) {
+  return new Date(Date.now() - n * 86_400_000).toLocaleDateString('en-CA');
+}
+
 function HistoryView({ entries }: { entries: HistoryItem[] }) {
+  const TODAY = new Date().toLocaleDateString('en-CA');
+
+  const [period, setPeriod]         = useState<HistoryPeriod>('all');
+  const [customFrom, setCustomFrom] = useState(daysAgoStr(29));
+  const [customTo, setCustomTo]     = useState(TODAY);
+  const [statusFilter, setStatusFilter] = useState<HistoryStatusFilter>('ALL');
+  const [clinicFilter, setClinicFilter] = useState('ALL');
+  const [subTab, setSubTab]         = useState<HistorySubTab>('log');
+
   if (entries.length === 0) {
     return (
       <div className="card p-10 text-center">
@@ -417,11 +434,166 @@ function HistoryView({ entries }: { entries: HistoryItem[] }) {
     );
   }
 
-  const completedCount = entries.filter((e) => e.status === 'COMPLETED').length;
-  const uniqueDoctors  = new Set(entries.map((e) => e.doctorId)).size;
-  const uniqueClinics  = new Set(entries.map((e) => e.doctor.clinicId ?? 'unknown')).size;
+  // Compute date bounds for selected period
+  const dateFrom = period === 'all' ? null
+    : period === '30d'   ? daysAgoStr(29)
+    : period === '3m'    ? daysAgoStr(89)
+    : period === '1y'    ? daysAgoStr(364)
+    : customFrom;
+  const dateTo = period === 'all' ? null : period === 'custom' ? customTo : TODAY;
 
-  // Sort newest first, then group by date.
+  // Build clinic list for filter
+  const clinicMap = new Map<string, string>();
+  entries.forEach((e) => {
+    const cid = e.doctor.clinicId ?? 'unknown';
+    if (!clinicMap.has(cid)) clinicMap.set(cid, e.doctor.clinic?.name ?? 'Clinic');
+  });
+  const clinics = Array.from(clinicMap.entries());
+
+  // Filter entries
+  const filtered = entries.filter((e) => {
+    const day = e.serviceDay ?? new Date(e.joinedAt).toLocaleDateString('en-CA');
+    if (dateFrom && day < dateFrom) return false;
+    if (dateTo   && day > dateTo)   return false;
+    if (statusFilter !== 'ALL' && e.status !== statusFilter) return false;
+    if (clinicFilter !== 'ALL' && (e.doctor.clinicId ?? 'unknown') !== clinicFilter) return false;
+    return true;
+  });
+
+  // Summary stats
+  const summary = {
+    total:     filtered.length,
+    completed: filtered.filter((e) => e.status === 'COMPLETED').length,
+    missed:    filtered.filter((e) => e.status === 'MISSED').length,
+    cancelled: filtered.filter((e) => e.status === 'CANCELLED').length,
+    skipped:   filtered.filter((e) => e.status === 'SKIPPED').length,
+  };
+
+  // Build trend points from filtered entries (grouped by serviceDay)
+  const trendMap = new Map<string, { completed: number; missed: number; cancelled: number; total: number }>();
+  filtered.forEach((e) => {
+    const day = e.serviceDay ?? new Date(e.joinedAt).toLocaleDateString('en-CA');
+    if (!trendMap.has(day)) trendMap.set(day, { completed: 0, missed: 0, cancelled: 0, total: 0 });
+    const d = trendMap.get(day)!;
+    d.total++;
+    if (e.status === 'COMPLETED') d.completed++;
+    else if (e.status === 'MISSED') d.missed++;
+    else if (e.status === 'CANCELLED') d.cancelled++;
+  });
+  const trendPoints = Array.from(trendMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, vals]) => ({
+      date,
+      label: new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+      ...vals,
+    }));
+
+  const statusBtns: { value: HistoryStatusFilter; label: string; color: string }[] = [
+    { value: 'ALL',       label: 'All',       color: 'bg-slate-800 text-white' },
+    { value: 'COMPLETED', label: 'Completed', color: 'bg-emerald-600 text-white' },
+    { value: 'MISSED',    label: 'Missed',    color: 'bg-amber-500 text-white' },
+    { value: 'CANCELLED', label: 'Cancelled', color: 'bg-rose-600 text-white' },
+    { value: 'SKIPPED',   label: 'Skipped',   color: 'bg-slate-500 text-white' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* ── Period picker ── */}
+      <div className="card p-3 space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          {(['all', '30d', '3m', '1y', 'custom'] as HistoryPeriod[]).map((p) => (
+            <button key={p} type="button" onClick={() => setPeriod(p)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                period === p ? 'bg-brand-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
+              }`}>
+              {p === 'all' ? 'All Time' : p === '30d' ? 'Last 30d' : p === '3m' ? 'Last 3 mo' : p === '1y' ? 'Last year' : 'Custom'}
+            </button>
+          ))}
+        </div>
+        {period === 'custom' && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <input type="date" value={customFrom} max={customTo}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            <span className="text-xs text-slate-400">to</span>
+            <input type="date" value={customTo} min={customFrom} max={TODAY}
+              onChange={(e) => setCustomTo(e.target.value)}
+              className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-400" />
+          </div>
+        )}
+        {/* Status filter */}
+        <div className="flex flex-wrap gap-1.5">
+          {statusBtns.map(({ value, label, color }) => (
+            <button key={value} type="button" onClick={() => setStatusFilter(value)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                statusFilter === value ? color : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Clinic filter */}
+        {clinics.length > 1 && (
+          <select value={clinicFilter} onChange={(e) => setClinicFilter(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-400">
+            <option value="ALL">All clinics</option>
+            {clinics.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+        )}
+      </div>
+
+      {/* ── Summary stat cards ── */}
+      <div className="grid grid-cols-3 gap-2">
+        <PatientStatCard label="Total"     value={summary.total}     color="teal"  />
+        <PatientStatCard label="Completed" value={summary.completed} color="green" />
+        <PatientStatCard label="Missed"    value={summary.missed}    color="amber" />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <PatientStatCard label="Cancelled" value={summary.cancelled} color="red"   />
+        <PatientStatCard label="Skipped"   value={summary.skipped}   color="slate" />
+      </div>
+
+      {/* ── Trend chart ── */}
+      {trendPoints.length > 1 && (
+        <div className="card p-4">
+          <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">Visit Trend</h3>
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
+            <PatientLegendDot color="#14b8a6" label="Completed" />
+            <PatientLegendDot color="#f59e0b" label="Missed"    />
+            <PatientLegendDot color="#ef4444" label="Cancelled" />
+          </div>
+          <PatientTrendChart points={trendPoints} />
+        </div>
+      )}
+
+      {/* ── Sub-tabs ── */}
+      <div className="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
+        {([['log', `Visit Log${filtered.length > 0 ? ` (${filtered.length})` : ''}`], ['by-doctor', 'By Doctor']] as [HistorySubTab, string][]).map(([t, label]) => (
+          <button key={t} type="button" onClick={() => setSubTab(t)}
+            className={`flex-1 rounded-lg py-2 px-3 text-xs font-semibold transition-all ${
+              subTab === t ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-slate-100 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Visit Log ── */}
+      {subTab === 'log' && (
+        filtered.length === 0 ? (
+          <div className="card p-8 text-center text-slate-400 text-sm">No visits match your filters.</div>
+        ) : (
+          <HistoryDateGroupedView entries={filtered} />
+        )
+      )}
+
+      {/* ── By Doctor ── */}
+      {subTab === 'by-doctor' && <PatientByDoctorView entries={filtered} />}
+    </div>
+  );
+}
+
+function HistoryDateGroupedView({ entries }: { entries: HistoryItem[] }) {
   const sorted = [...entries].sort(
     (a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime(),
   );
@@ -431,36 +603,164 @@ function HistoryView({ entries }: { entries: HistoryItem[] }) {
     if (!byDate.has(key)) byDate.set(key, []);
     byDate.get(key)!.push(e);
   });
-
   return (
     <div className="space-y-4">
-      {/* Stats strip */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-        {[
-          { label: 'Total Visits',   value: entries.length,  icon: '📋' },
-          { label: 'Consultations',  value: completedCount,  icon: '✅' },
-          { label: 'Doctors Seen',   value: uniqueDoctors,   icon: '👨‍⚕️' },
-        ].map((s) => (
-          <div key={s.label} className="card p-3 text-center">
-            <div className="text-xl mb-1">{s.icon}</div>
-            <div className="text-2xl font-bold text-slate-800 tabular-nums">{s.value}</div>
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 font-medium mt-0.5 leading-tight">
-              {s.label}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {uniqueClinics > 1 && (
-        <p className="text-xs text-slate-400 text-center">
-          Visits across <strong className="text-slate-500">{uniqueClinics} clinics</strong>
-        </p>
-      )}
-
-      {/* Date-grouped entries */}
       {Array.from(byDate.entries()).map(([dateKey, dayEntries]) => (
         <DateGroup key={dateKey} dateKey={dateKey} entries={dayEntries} />
       ))}
+    </div>
+  );
+}
+
+function PatientByDoctorView({ entries }: { entries: HistoryItem[] }) {
+  type DRow = { name: string; department: string; completed: number; missed: number; cancelled: number; skipped: number };
+  const docMap = new Map<string, DRow>();
+  for (const e of entries) {
+    const key = e.doctor.user.name;
+    if (!docMap.has(key)) docMap.set(key, { name: key, department: e.doctor.department?.name ?? 'General', completed: 0, missed: 0, cancelled: 0, skipped: 0 });
+    const d = docMap.get(key)!;
+    if (e.status === 'COMPLETED') d.completed++;
+    else if (e.status === 'MISSED') d.missed++;
+    else if (e.status === 'CANCELLED') d.cancelled++;
+    else if (e.status === 'SKIPPED') d.skipped++;
+  }
+  const rows = Array.from(docMap.values()).sort((a, b) => (b.completed + b.missed) - (a.completed + a.missed));
+
+  if (rows.length === 0) return (
+    <div className="card p-8 text-center text-slate-400 text-sm">No data for this period.</div>
+  );
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 dark:bg-slate-700/40">
+            <tr>
+              {['Doctor', 'Department', '✅', '⚠️', '✗', 'Total'].map((h) => (
+                <th key={h} className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            {rows.map((r) => (
+              <tr key={r.name} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
+                <td className="px-3 py-3 font-medium text-slate-800 dark:text-slate-100 text-xs">{r.name}</td>
+                <td className="px-3 py-3 text-slate-400 text-xs">{r.department}</td>
+                <td className="px-3 py-3 text-center font-semibold text-emerald-600 text-xs">{r.completed}</td>
+                <td className="px-3 py-3 text-center font-semibold text-amber-600 text-xs">{r.missed}</td>
+                <td className="px-3 py-3 text-center font-semibold text-rose-600 text-xs">{r.cancelled + r.skipped}</td>
+                <td className="px-3 py-3 text-center font-semibold text-slate-700 dark:text-slate-200 text-xs">{r.completed + r.missed + r.cancelled + r.skipped}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function PatientStatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  const cls: Record<string, string> = {
+    teal:  'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800/40 text-teal-700 dark:text-teal-300',
+    green: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300',
+    amber: 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/40 text-amber-700 dark:text-amber-300',
+    red:   'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-800/40 text-rose-700 dark:text-rose-300',
+    slate: 'bg-slate-50 dark:bg-slate-700/40 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300',
+  };
+  return (
+    <div className={`rounded-xl border p-3 ${cls[color] ?? cls.slate}`}>
+      <p className="text-[10px] font-medium opacity-70 uppercase tracking-wide">{label}</p>
+      <p className="text-2xl font-bold mt-0.5 tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function PatientLegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
+    </div>
+  );
+}
+
+interface TrendPoint { date: string; label: string; completed: number; missed: number; cancelled: number; total: number }
+
+function PatientTrendChart({ points }: { points: TrendPoint[] }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [tip, setTip] = useState<{ idx: number; screenX: number; screenY: number } | null>(null);
+
+  const W = 700; const H = 180;
+  const pad = { t: 10, r: 20, b: 32, l: 32 };
+  const cW = W - pad.l - pad.r;
+  const cH = H - pad.t - pad.b;
+
+  const maxVal = Math.max(...points.flatMap((p) => [p.completed, p.missed, p.cancelled]), 1);
+  const step   = cW / Math.max(points.length - 1, 1);
+  const toX    = (i: number) => pad.l + i * step;
+  const toY    = (v: number) => pad.t + cH - (v / maxVal) * cH;
+
+  const tickCount = Math.min(maxVal, 4);
+  const yTicks = [...new Set(Array.from({ length: tickCount + 1 }, (_, i) => Math.round((maxVal * i) / tickCount)))];
+
+  const line = (key: 'completed' | 'missed' | 'cancelled') =>
+    points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${toX(i).toFixed(1)} ${toY(p[key]).toFixed(1)}`).join(' ');
+
+  const series: { key: 'completed' | 'missed' | 'cancelled'; color: string }[] = [
+    { key: 'completed', color: '#14b8a6' },
+    { key: 'missed',    color: '#f59e0b' },
+    { key: 'cancelled', color: '#ef4444' },
+  ];
+
+  const labelEvery = points.length > 14 ? Math.ceil(points.length / 7) : 1;
+  const tipPoint = tip !== null ? points[tip.idx] : null;
+
+  return (
+    <div className="relative" onMouseLeave={() => setTip(null)}>
+      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full cursor-crosshair" preserveAspectRatio="none"
+        onMouseMove={(e) => {
+          if (!svgRef.current || points.length < 2) return;
+          const rect = svgRef.current.getBoundingClientRect();
+          const relX = (e.clientX - rect.left) / rect.width;
+          const idx  = Math.max(0, Math.min(points.length - 1, Math.round(relX * (points.length - 1))));
+          setTip({ idx, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
+        }}>
+        {yTicks.map((v) => {
+          const y = toY(v);
+          return <g key={v}>
+            <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="currentColor" strokeOpacity="0.07" strokeWidth="1" />
+            <text x={pad.l - 4} y={y + 4} textAnchor="end" className="fill-slate-400" fontSize="9">{v}</text>
+          </g>;
+        })}
+        {tip !== null && (
+          <line x1={toX(tip.idx)} y1={pad.t} x2={toX(tip.idx)} y2={pad.t + cH}
+            stroke="currentColor" strokeOpacity="0.2" strokeWidth="1" strokeDasharray="4 2" />
+        )}
+        {series.map(({ key, color }) => (
+          <path key={key} d={line(key)} fill="none" stroke={color} strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {series.map(({ key, color }) =>
+          points.map((p, i) => (
+            <circle key={`${key}-${i}`} cx={toX(i)} cy={toY(p[key])} r={tip?.idx === i ? 4 : 2.5}
+              fill={color} stroke="white" strokeWidth="1.5" style={{ transition: 'r 0.1s' }} />
+          ))
+        )}
+        {points.map((p, i) => i % labelEvery === 0 && (
+          <text key={p.date} x={toX(i)} y={H - 4} textAnchor="middle" className="fill-slate-400" fontSize="8">{p.label}</text>
+        ))}
+      </svg>
+      {tip !== null && tipPoint && (
+        <div className="absolute pointer-events-none z-20 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg shadow-lg px-3 py-2 text-xs"
+          style={{ left: tip.screenX > 200 ? tip.screenX - 130 : tip.screenX + 10, top: Math.max(4, tip.screenY - 55) }}>
+          <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1">{tipPoint.label}</p>
+          <div className="space-y-0.5">
+            <div className="flex items-center justify-between gap-3"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-teal-500" />Completed</span><span className="font-bold text-teal-600">{tipPoint.completed}</span></div>
+            <div className="flex items-center justify-between gap-3"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Missed</span><span className="font-bold text-amber-600">{tipPoint.missed}</span></div>
+            <div className="flex items-center justify-between gap-3"><span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Cancelled</span><span className="font-bold text-red-600">{tipPoint.cancelled}</span></div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 dark:border-slate-700 pt-0.5 mt-0.5"><span className="text-slate-500">Total</span><span className="font-bold text-slate-700 dark:text-slate-200">{tipPoint.total}</span></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

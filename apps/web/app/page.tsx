@@ -374,6 +374,9 @@ export default function HomePage() {
               <Icon.Whatsapp className="h-4 w-4" /> WhatsApp
             </a>
             <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900">Sign in</Link>
+            <span className="text-slate-300">|</span>
+            <Link href="/terms" className="hover:text-slate-900">Terms</Link>
+            <Link href="/privacy" className="hover:text-slate-900">Privacy</Link>
           </div>
         </div>
       </footer>
