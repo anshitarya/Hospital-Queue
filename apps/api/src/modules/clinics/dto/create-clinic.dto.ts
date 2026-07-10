@@ -1,4 +1,11 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+
+enum BusinessType {
+  CLINIC = 'CLINIC',
+  SALON = 'SALON',
+  BANK = 'BANK',
+  GOVT = 'GOVT',
+}
 
 export class CreateClinicDto {
   @IsString()
@@ -8,4 +15,8 @@ export class CreateClinicDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @IsOptional()
+  @IsEnum(BusinessType)
+  businessType?: BusinessType;
 }

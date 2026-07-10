@@ -449,12 +449,16 @@ export class ClinicsService {
 
   // ── Admin clinic management ────────────────────────────────────────────────
 
-  async updateClinic(clinicId: string, dto: { name?: string; address?: string }) {
+  async updateClinic(clinicId: string, dto: { name?: string; address?: string; businessType?: string }) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
     if (!clinic) throw new NotFoundException('Clinic not found');
     return this.prisma.clinic.update({
       where: { id: clinicId },
-      data: { ...(dto.name ? { name: dto.name } : {}), ...(dto.address !== undefined ? { address: dto.address } : {}) },
+      data: {
+        ...(dto.name ? { name: dto.name } : {}),
+        ...(dto.address !== undefined ? { address: dto.address } : {}),
+        ...(dto.businessType ? { businessType: dto.businessType as any } : {}),
+      },
     });
   }
 

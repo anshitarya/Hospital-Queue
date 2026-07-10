@@ -247,7 +247,7 @@ export class ClinicsController {
 
   @Roles(Role.ADMIN)
   @Patch(':id')
-  updateClinic(@Param('id') id: string, @Body() dto: { name?: string; address?: string }) {
+  updateClinic(@Param('id') id: string, @Body() dto: { name?: string; address?: string; businessType?: string }) {
     return this.clinics.updateClinic(id, dto);
   }
 

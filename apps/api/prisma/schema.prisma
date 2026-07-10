@@ -35,13 +35,21 @@ enum SlotType {
   FOLLOWUP
 }
 
+enum BusinessType {
+  CLINIC
+  SALON
+  BANK
+  GOVT
+}
+
 // A clinic groups receptionists, doctors, and their queues.
 // Each receptionist belongs to exactly one clinic (V1 constraint).
 model Clinic {
-  id        String   @id @default(cuid())
-  name      String
-  address   String?
-  createdAt DateTime @default(now())
+  id           String       @id @default(cuid())
+  name         String
+  address      String?
+  businessType BusinessType @default(CLINIC)
+  createdAt    DateTime     @default(now())
 
   inviteCodes InviteCode[]
   users       User[] // receptionists of this clinic

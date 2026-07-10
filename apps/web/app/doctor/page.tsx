@@ -17,6 +17,7 @@ import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
+import { getLabels } from '@/lib/labels';
 
 interface ReceptionistRow {
   id: string;
@@ -164,6 +165,7 @@ export default function DoctorPage() {
   );
   const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
   const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
+  const L = getLabels(snapshot?.doctor?.clinic?.businessType);
 
   if (!ready) return <PageLoader label="Loading your panel…" />;
 
@@ -317,7 +319,7 @@ export default function DoctorPage() {
                     <span>{breakActive ? '☕' : '⏸'}</span>
                     {breakActive
                       ? `On break — returning at ~${breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
-                      : 'Queue is paused — new patients are on hold'
+                      : `Queue is paused — new ${L.customerPlural.toLowerCase()} are on hold`
                     }
                   </div>
                   <button type="button" onClick={() => doctorAction('resume')} className="btn-secondary !py-1 !px-3 text-xs shrink-0">
@@ -335,7 +337,7 @@ export default function DoctorPage() {
               {/* Section header */}
               <div className={`px-5 py-3.5 border-b border-slate-100 flex items-center justify-between ${current ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30' : 'bg-slate-50'}`}>
                 <div>
-                  <h2 className="section-title">{current ? 'In consultation' : 'Consultation'}</h2>
+                  <h2 className="section-title">{current ? L.inService : L.service}</h2>
                   {snapshot?.doctor && !isPaused && (
                     <p className="section-sub">Avg {snapshot.doctor.avgConsultMinutes} min/patient</p>
                   )}
@@ -476,7 +478,7 @@ export default function DoctorPage() {
                         disabled={waiting.length === 0}
                         className="btn-primary disabled:opacity-40 flex-1 sm:flex-none"
                       >
-                        Call next patient
+                        Call next {L.customer.toLowerCase()}
                         {waiting.length > 0 && (
                           <span className="ml-1 bg-white/20 text-white text-xs rounded-full px-1.5 py-0.5">
                             {waiting.length}
@@ -526,7 +528,7 @@ export default function DoctorPage() {
                 </div>
                 {showClearConfirm && (
                   <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 px-4 py-3 space-y-2">
-                    <p className="text-sm font-medium text-rose-800">Cancel all waiting patients?</p>
+                    <p className="text-sm font-medium text-rose-800">Cancel all waiting {L.customerPlural.toLowerCase()}?</p>
                     <p className="text-xs text-rose-600">They will appear in history as Cancelled.</p>
                     <div className="flex gap-2 flex-wrap">
                       <button type="button" onClick={() => clearQueue(false)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">

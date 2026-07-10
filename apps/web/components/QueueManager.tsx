@@ -25,6 +25,7 @@ import { Toast, type ToastMessage } from '@/components/Toast';
 import { EntryStatusPill, DoctorStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
+import { getLabels } from '@/lib/labels';
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -53,6 +54,8 @@ export function QueueManager() {
   // ── Modals / toasts ─────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
+
+  const L = getLabels(clinic?.businessType);
 
   // ── Load clinic ──────────────────────────────────────────────────────────
   const loadClinic = useCallback(async () => {
@@ -148,7 +151,7 @@ export function QueueManager() {
       const suffix = capturedWalkin ? ' (walk-in)' : capturedSlotType === 'FOLLOWUP' ? ' (follow-up)' : '';
       setToast({ type: 'ok', msg: `Token ${tokenDisplay(entry.tokenNumber)} assigned to ${capturedName}${suffix}` });
     }).catch((err) => {
-      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add patient' });
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : `Failed to add ${L.customer.toLowerCase()}` });
       revertOptimistic();
     });
   }
@@ -269,7 +272,8 @@ export function QueueManager() {
       }),
     );
     if (waitingCount + missedCount > 0) {
-      setToast({ type: 'ok', msg: `Cleared ${waitingCount + missedCount} patient${waitingCount + missedCount !== 1 ? 's' : ''}` });
+      const n = waitingCount + missedCount;
+      setToast({ type: 'ok', msg: `Cleared ${n} ${n === 1 ? L.customer.toLowerCase() : L.customerPlural.toLowerCase()}` });
     }
   };
 
@@ -295,7 +299,7 @@ export function QueueManager() {
       {allDoctors.length > 0 ? (
         <div className="card p-4">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Select doctor</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Select {L.provider.toLowerCase()}</span>
             <LiveIndicator connected={connected} />
           </div>
           <div className="flex flex-wrap gap-2">
@@ -322,7 +326,7 @@ export function QueueManager() {
         </div>
       ) : (
         <div className="card p-4 text-sm text-slate-500 text-center">
-          No doctors yet. Go to the <strong>Staff</strong> tab to add one.
+          No {L.providerPlural.toLowerCase()} yet. Go to the <strong>Staff</strong> tab to add one.
         </div>
       )}
 
@@ -330,7 +334,7 @@ export function QueueManager() {
         {/* Add-patient form */}
         <section className="card overflow-hidden lg:col-span-1">
           <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-            <h2 className="section-title">Add patient</h2>
+            <h2 className="section-title">Add {L.customer.toLowerCase()}</h2>
             {snapshot?.doctor && <DoctorStatusPill status={snapshot.doctor.status} />}
           </div>
           <div className="p-5 space-y-3">
@@ -338,7 +342,7 @@ export function QueueManager() {
               <input
                 id="qm-name"
                 className="input"
-                placeholder="Patient name"
+                placeholder={`${L.customer} name`}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -451,7 +455,7 @@ export function QueueManager() {
             </div>
             {showClearConfirm && (
               <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 px-4 py-3 space-y-2">
-                <p className="text-sm font-medium text-rose-800">Cancel all patients?</p>
+                <p className="text-sm font-medium text-rose-800">Cancel all {L.customerPlural.toLowerCase()}?</p>
                 <p className="text-xs text-rose-600">They will appear in history as Cancelled.</p>
                 <div className="flex gap-2 flex-wrap">
                   <button type="button" onClick={() => clearQueue(false)}
@@ -540,7 +544,7 @@ export function QueueManager() {
         return (
           <section className="card overflow-hidden">
             <div className="px-5 py-3.5 border-b border-rose-100 bg-rose-50 flex items-center gap-3">
-              <h2 className="section-title text-rose-700 flex-1">Missed patients</h2>
+              <h2 className="section-title text-rose-700 flex-1">Missed {L.customerPlural.toLowerCase()}</h2>
               <input type="search" placeholder="Search…" value={missedSearch}
                 onChange={(e) => setMissedSearch(e.target.value)}
                 className="input !py-1 w-full sm:!w-36 text-xs" />
@@ -572,7 +576,7 @@ export function QueueManager() {
                 </div>
               )) : (
                 <div className="py-8 text-center text-sm text-slate-400">
-                  No missed patients match &ldquo;{missedSearch}&rdquo;
+                  No missed {L.customerPlural.toLowerCase()} match &ldquo;{missedSearch}&rdquo;
                 </div>
               )}
             </div>

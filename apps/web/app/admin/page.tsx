@@ -13,6 +13,7 @@ import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
+import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
 
 export default function AdminPage() {
   const { ready } = useRequireRole(['ADMIN']);
@@ -36,6 +37,7 @@ export default function AdminPage() {
 
   const [clinicName, setClinicName] = useState('');
   const [clinicAddress, setClinicAddress] = useState('');
+  const [clinicBusinessType, setClinicBusinessType] = useState('CLINIC');
   const [createBusy, setCreateBusy] = useState(false);
 
   // Add-doctor form (admin-side, scoped to the currently selected clinic)
@@ -80,6 +82,7 @@ export default function AdminPage() {
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editClinicName, setEditClinicName] = useState('');
   const [editClinicAddress, setEditClinicAddress] = useState('');
+  const [editClinicBusinessType, setEditClinicBusinessType] = useState('CLINIC');
   const [editClinicBusy, setEditClinicBusy] = useState(false);
 
   // Inline email edit state for staff (doctors + receptionists)
@@ -352,6 +355,7 @@ export default function AdminPage() {
     setEditingClinicId(c.id);
     setEditClinicName(c.name);
     setEditClinicAddress(c.address ?? '');
+    setEditClinicBusinessType(c.businessType ?? 'CLINIC');
   }
 
   async function saveEditClinic(clinicId: string) {
@@ -360,12 +364,12 @@ export default function AdminPage() {
     try {
       await api(`/clinics/${clinicId}`, {
         method: 'PATCH',
-        body: { name: editClinicName, address: editClinicAddress || undefined },
+        body: { name: editClinicName, address: editClinicAddress || undefined, businessType: editClinicBusinessType },
       });
       setEditingClinicId(null);
       setToast({ type: 'ok', msg: 'Clinic updated.' });
       if (selectedClinic?.id === clinicId) {
-        setSelectedClinic((prev) => prev ? { ...prev, name: editClinicName, address: editClinicAddress || prev.address } : prev);
+        setSelectedClinic((prev) => prev ? { ...prev, name: editClinicName, address: editClinicAddress || prev.address, businessType: editClinicBusinessType } : prev);
       }
       await Promise.all([loadClinics(), loadStats()]);
     } catch (err) {
@@ -458,10 +462,11 @@ export default function AdminPage() {
     try {
       await api<Clinic>('/clinics', {
         method: 'POST',
-        body: { name: clinicName, address: clinicAddress || undefined },
+        body: { name: clinicName, address: clinicAddress || undefined, businessType: clinicBusinessType },
       });
       setClinicName('');
       setClinicAddress('');
+      setClinicBusinessType('CLINIC');
       setToast({ type: 'ok', msg: `Clinic "${clinicName}" created.` });
       await Promise.all([loadClinics(), loadStats()]);
     } catch (err) {
@@ -582,6 +587,11 @@ export default function AdminPage() {
                   value={clinicAddress}
                   onChange={(e) => setClinicAddress(e.target.value)}
                 />
+                <select className="input" value={clinicBusinessType} onChange={(e) => setClinicBusinessType(e.target.value)}>
+                  {BUSINESS_TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
                 <button type="submit" className="btn-primary w-full" disabled={createBusy}>
                   {createBusy ? 'Creating…' : 'Create clinic'}
                 </button>
@@ -633,6 +643,11 @@ export default function AdminPage() {
                               onChange={(e) => setEditClinicAddress(e.target.value)}
                             />
                           </div>
+                          <select className="input !py-1.5 text-xs" value={editClinicBusinessType} onChange={(e) => setEditClinicBusinessType(e.target.value)}>
+                            {BUSINESS_TYPE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
                           <div className="flex gap-2 justify-end">
                             <button type="button" onClick={() => setEditingClinicId(null)} className="btn-ghost !py-1.5 !px-3 text-xs">Cancel</button>
                             <button type="button" onClick={() => saveEditClinic(c.id)} disabled={editClinicBusy || !editClinicName.trim()} className="btn-primary !py-1.5 !px-3 text-xs">
@@ -655,10 +670,15 @@ export default function AdminPage() {
                               )}
                             </div>
                             {c.address && <div className="text-xs text-slate-500 truncate mt-0.5">{c.address}</div>}
-                            <div className="text-xs text-slate-400 mt-0.5 flex gap-2">
+                            <div className="text-xs text-slate-400 mt-0.5 flex gap-2 items-center">
                               <span>{c._count?.users ?? 0} rcp</span>
                               <span>·</span>
                               <span>{c._count?.doctors ?? 0} dr</span>
+                              {c.businessType && c.businessType !== 'CLINIC' && (
+                                <span className="pill bg-violet-100 text-violet-700 ring-violet-200 text-[10px]">
+                                  {BUSINESS_TYPE_OPTIONS.find((o) => o.value === c.businessType)?.label ?? c.businessType}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">

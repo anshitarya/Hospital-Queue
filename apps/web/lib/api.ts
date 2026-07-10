@@ -63,6 +63,7 @@ export interface Clinic {
   id: string;
   name: string;
   address?: string | null;
+  businessType?: string | null;
   createdAt: string;
   doctors?: Doctor[];
   _count?: { users: number; doctors: number };
@@ -105,7 +106,7 @@ export interface Doctor {
   // patient history endpoints so dashboards can show clinic + doctor in
   // their headers without an extra fetch.
   clinicId?: string;
-  clinic?: { id: string; name: string; address?: string | null };
+  clinic?: { id: string; name: string; address?: string | null; businessType?: string | null };
   avgConsultMinutes: number;
   delayMinutes: number;
   status: DoctorStatus;

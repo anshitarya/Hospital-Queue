@@ -10,6 +10,7 @@ import { PageLoader } from '@/components/PageLoader';
 import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
+import { getLabels } from '@/lib/labels';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
@@ -206,7 +207,7 @@ export default function PatientPage() {
           ? `It's your turn — ${e.doctor.user.name}`
           : `Almost your turn with ${e.doctor.user.name}`,
         body: isNext
-          ? `Please proceed to the consultation room now.${e.doctor.clinic?.name ? ` · ${e.doctor.clinic.name}` : ''}`
+          ? `Please proceed to the ${getLabels(e.doctor.clinic?.businessType).serviceRoom} now.${e.doctor.clinic?.name ? ` · ${e.doctor.clinic.name}` : ''}`
           : `${pos} ${pos === 1 ? 'person' : 'people'} ahead of you — please be ready nearby.${e.doctor.clinic?.name ? ` · ${e.doctor.clinic.name}` : ''}`,
       };
     }),
@@ -214,7 +215,7 @@ export default function PatientPage() {
       id:    `missed-${e.id}`,
       type:  'missed',
       title: `Missed — ${e.doctor.user.name}`,
-      body:  `You were marked as missed${e.doctor.clinic?.name ? ` at ${e.doctor.clinic.name}` : ''}. Please reach out to the reception desk if you need to be re-added.`,
+      body:  `You were marked as missed${e.doctor.clinic?.name ? ` at ${e.doctor.clinic.name}` : ''}. Please reach out to the ${getLabels(e.doctor.clinic?.businessType).receptionDesk} if you need to be re-added.`,
     })),
   ];
   // Filter out dismissed ones so the bell only shows unread notifications.
