@@ -66,15 +66,23 @@ echo "▶ Step 3 — Prod Pack should be Disabled (check Upstash dashboard if no
 flyctl redis status "$CANONICAL_REDIS" | grep -i prod || true
 echo ""
 
-echo "▶ Step 4 — Redeploy API in BOM (fixes stuck health checks after bad secret)"
+echo "▶ Step 4 — Redeploy API in BOM"
 echo "    cd apps/api && flyctl deploy --remote-only --app $API_APP --primary-region bom --ha=false"
+echo "    If BOM has no capacity, add: --skip-release-command"
+echo "    Then run migrations manually after deploy:"
+echo "      flyctl ssh console -a $API_APP -C \"npx prisma migrate deploy\""
 echo ""
 read -r -p "Run deploy now? [Y/n] " do_deploy
 do_deploy=${do_deploy:-Y}
 if [[ "$do_deploy" =~ ^[Yy]$ ]]; then
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   cd "$SCRIPT_DIR/../apps/api"
-  flyctl deploy --remote-only --app "$API_APP" --primary-region bom --ha=false
+  read -r -p "Skip release_command (use if BOM capacity error)? [y/N] " skip_release
+  if [[ "$skip_release" =~ ^[Yy]$ ]]; then
+    flyctl deploy --remote-only --app "$API_APP" --primary-region bom --ha=false --skip-release-command
+  else
+    flyctl deploy --remote-only --app "$API_APP" --primary-region bom --ha=false
+  fi
   cd - >/dev/null
 fi
 echo ""

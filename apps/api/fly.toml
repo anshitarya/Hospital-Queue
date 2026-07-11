@@ -30,10 +30,10 @@ primary_region = "bom"   # Mumbai — keep API near Redis + users
 # DATABASE_URL and REDIS_URL are set as secrets by the deploy script.
 # JWT_SECRET and CORS_ORIGIN are also set as secrets.
 
-# release_command runs once before traffic switches to the new machines.
-# It has full access to secrets and the image filesystem.
+# Migrations only — seed is idempotent but not compiled to dist/; run manually if needed:
+#   flyctl ssh console -a turnos-api-hq -C "npx ts-node prisma/seed.ts"
 [deploy]
-  release_command = "npx prisma migrate deploy && node dist/prisma/seed.js"
+  release_command = "npx prisma migrate deploy"
 
 [http_service]
   internal_port       = 4000
