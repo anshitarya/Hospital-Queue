@@ -21,7 +21,7 @@ export default () => ({
   },
   msg91: {
     authKey:     process.env.MSG91_AUTH_KEY,
-    senderId:    process.env.MSG91_SENDER_ID ?? 'CLNCQ',
+    senderId:    process.env.MSG91_SENDER_ID ?? 'TURNOS',
     dltEntityId: process.env.MSG91_DLT_ENTITY_ID,
   },
   metaWa: {
