@@ -157,7 +157,7 @@ export function PatientDemo() {
           <div className="text-center mb-4">
             <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-              Patient sign-in
+              Customer sign-in
             </div>
           </div>
 
@@ -308,7 +308,7 @@ export function ReceptionDemo() {
 
       {/* Add patient form */}
       <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="text-xs font-semibold text-slate-700 mb-3">Add patient to queue</div>
+        <div className="text-xs font-semibold text-slate-700 mb-3">Add customer to queue</div>
         <div className="flex gap-2 relative">
           <div className="flex-1 relative rounded-lg border-2 border-brand-400 bg-white px-3 py-2 flex items-center min-h-[40px]">
             <span className="text-sm text-slate-900 font-medium">{displayedName}</span>
@@ -373,7 +373,7 @@ export function ReceptionDemo() {
         </div>
         {step >= 4 && (
           <div className="mt-2 text-[11px] text-brand-600 font-medium text-center animate-fade-in">
-            Token #{DEMO_DATA.reception.newTokenNumber} assigned · All patients notified ✓
+            Token #{DEMO_DATA.reception.newTokenNumber} assigned · All customers notified ✓
           </div>
         )}
       </div>
@@ -418,7 +418,7 @@ export function DoctorDemo() {
       <div className="text-center">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse inline-block" />
-          Doctor panel
+          Provider panel
         </div>
       </div>
 
@@ -448,7 +448,7 @@ export function DoctorDemo() {
             </div>
           </>
         ) : step === 0 ? (
-          <div className="text-center py-2 text-sm text-slate-500">Ready · {DEMO_DATA.doctor.initialQueue.length} patients waiting</div>
+          <div className="text-center py-2 text-sm text-slate-500">Ready · {DEMO_DATA.doctor.initialQueue.length} customers waiting</div>
         ) : (
           <div className="text-center py-2 text-sm text-slate-600 font-medium">
             ✓ Completed · Avg consult {DEMO_DATA.doctor.avgConsultMinutes} min
@@ -486,7 +486,7 @@ export function DoctorDemo() {
         {step === 0 && (
           <div className="relative mt-3">
             <button className="w-full rounded-lg py-2 text-xs font-semibold text-white bg-gradient-to-r from-purple-500 to-purple-700 shadow">
-              Call next patient
+              Call next customer
             </button>
             <TouchRipple active={tapOnCallNext} x="50%" y="50%" label="Tap Call next" />
           </div>

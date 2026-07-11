@@ -17,13 +17,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     config: ConfigService,
     private readonly prisma: PrismaService,
   ) {
+    const secret = config.get<string>('jwt.secret');
+    if (!secret) throw new Error('JWT_SECRET env var is required — set it before starting the server');
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         (req: Request) => (req as any)?.cookies?.hq_session ?? null,
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('jwt.secret') ?? 'dev-secret-change-me',
+      secretOrKey: secret,
     });
   }
 

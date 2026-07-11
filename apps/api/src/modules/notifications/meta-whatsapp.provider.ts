@@ -50,12 +50,12 @@ export class MetaWhatsappProvider implements NotificationProvider {
     this.phoneNumberId = config.get<string>('metaWa.phoneNumberId');
     this.useTemplates = config.get<string>('metaWa.useTemplates') === 'true';
     this.templates = {
-      queue_joined:    config.get<string>('metaWa.tmplQueueJoined')    ?? 'cq_queue_joined',
-      turn_soon:       config.get<string>('metaWa.tmplTurnSoon')       ?? 'cq_turn_soon',
-      almost_next:     config.get<string>('metaWa.tmplAlmostNext')     ?? 'cq_almost_next',
-      turn_now:        config.get<string>('metaWa.tmplTurnNow')        ?? 'cq_turn_now',
-      doctor_delayed:  config.get<string>('metaWa.tmplDoctorDelayed')  ?? 'cq_doctor_delayed',
-      queue_cleared:   config.get<string>('metaWa.tmplQueueCleared')   ?? 'cq_queue_cleared',
+      queue_joined:    config.get<string>('metaWa.tmplQueueJoined')    ?? 'turnos_queue_joined',
+      turn_soon:       config.get<string>('metaWa.tmplTurnSoon')       ?? 'turnos_turn_soon',
+      almost_next:     config.get<string>('metaWa.tmplAlmostNext')     ?? 'turnos_almost_next',
+      turn_now:        config.get<string>('metaWa.tmplTurnNow')        ?? 'turnos_turn_now',
+      doctor_delayed:  config.get<string>('metaWa.tmplDoctorDelayed')  ?? 'turnos_doctor_delayed',
+      queue_cleared:   config.get<string>('metaWa.tmplQueueCleared')   ?? 'turnos_queue_cleared',
     };
   }
 
@@ -163,17 +163,17 @@ export class MetaWhatsappProvider implements NotificationProvider {
  *       This token never expires.
  *
  * D. Set Fly.io secrets
- *    fly secrets set META_WA_ACCESS_TOKEN=<token>      -a queue-hq-api
- *    fly secrets set META_WA_PHONE_NUMBER_ID=<id>      -a queue-hq-api
- *    fly secrets set FEATURE_WHATSAPP=true             -a queue-hq-api
+ *    fly secrets set META_WA_ACCESS_TOKEN=<token>      -a turnos-api
+ *    fly secrets set META_WA_PHONE_NUMBER_ID=<id>      -a turnos-api
+ *    fly secrets set FEATURE_WHATSAPP=true             -a turnos-api
  *
  * E. Register message templates (for production / META_WA_USE_TEMPLATES=true)
  *    Go to Meta Business Manager → WhatsApp Manager → Message Templates → Create
  *    Create templates with these names (or override with META_WA_TMPL_* env vars):
- *      cq_queue_joined    — "You have joined the queue for {{1}}. Token: {{2}}."
- *      cq_almost_next     — "You are up next for {{1}}. Please head to the room."
- *      cq_turn_now        — "It's your turn! {{1}} is ready to see you now."
- *      cq_queue_cleared   — "Appointment {{1}} was cancelled. Contact the clinic."
+ *      turnos_queue_joined    — "You have joined the queue for {{1}}. Token: {{2}}."
+ *      turnos_almost_next     — "You are up next for {{1}}. Please head to the room."
+ *      turnos_turn_now        — "It's your turn! {{1}} is ready to see you now."
+ *      turnos_queue_cleared   — "Appointment {{1}} was cancelled. Contact the clinic."
  *    Templates take 1–3 business days to get approved.
  *
  * F. Testing

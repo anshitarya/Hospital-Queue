@@ -16,7 +16,7 @@
  *     insertAtPosition and reorder/move are unchanged in both modes.
  *
  * To switch to FIFO on Fly.io:
- *   fly secrets set FIFO_QUEUE_ORDERING=true -a queue-hq-api
+ *   fly secrets set FIFO_QUEUE_ORDERING=true -a turnos-api
  */
 
 import { EntryStatus, PrismaClient, SlotType } from '@prisma/client';

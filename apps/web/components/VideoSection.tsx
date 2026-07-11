@@ -16,12 +16,12 @@ interface DemoCard {
 const DEMOS: DemoCard[] = [
   {
     id: 'patient',
-    badge: 'Patients',
+    badge: 'Customers',
     badgeColor: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     accentBar: 'from-emerald-400 to-teal-500',
     title: 'Sign in · Get your token · Go home',
     subtitle:
-      'Patient enters their phone number, gets an OTP, then sees a live token card with real-time ETA that ticks down automatically.',
+      'Customer enters their phone number, gets an OTP, then sees a live token card with real-time ETA that ticks down automatically.',
     demo: <PatientDemo />,
   },
   {
@@ -29,19 +29,19 @@ const DEMOS: DemoCard[] = [
     badge: 'Receptionist',
     badgeColor: 'bg-brand-50 text-brand-700 ring-brand-200',
     accentBar: 'from-brand-400 to-indigo-500',
-    title: 'Add patient · Queue updates instantly',
+    title: 'Add customer · Queue updates instantly',
     subtitle:
-      'Type a name, assign a doctor, hit Add — the patient gets their token in under a second and the live queue list updates for everyone.',
+      'Type a name, assign a provider, hit Add — the customer gets their token in under a second and the live queue list updates for everyone.',
     demo: <ReceptionDemo />,
   },
   {
     id: 'doctor',
-    badge: 'Doctor',
+    badge: 'Provider',
     badgeColor: 'bg-purple-50 text-purple-700 ring-purple-200',
     accentBar: 'from-purple-400 to-pink-500',
-    title: 'Call next · Consult · Complete · Repeat',
+    title: 'Call next · Serve · Complete · Repeat',
     subtitle:
-      'Doctor calls the next patient, a consultation timer starts, and the moment they mark complete every patient\'s ETA recalculates live.',
+      'Provider calls the next customer, a service timer starts, and the moment they mark complete every customer\'s ETA recalculates live.',
     demo: <DoctorDemo />,
   },
 ];

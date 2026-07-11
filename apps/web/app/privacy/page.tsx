@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { BRAND } from '@/lib/config';
 
-export const metadata = { title: 'Privacy Policy · ClinicQueue' };
+export const metadata = { title: 'Privacy Policy · Turnos' };
 
 const EFFECTIVE_DATE = '7 July 2026';
 
@@ -29,10 +29,10 @@ export default function PrivacyPage() {
 
         <Section title="1. The Short Version">
           <p>
-            ClinicQueue is a queue management tool for clinics. We collect the minimum information
-            needed to make queues work — patient names and phone numbers for receptionists to add
-            someone to a queue, and your phone number when you log in as a patient. We do not sell
-            your data. We do not store medical records.
+            Turnos is a queue management tool for businesses. We collect the minimum information
+            needed to make queues work — customer names and phone numbers when staff add someone to a
+            queue, and your phone number when you log in as a customer. We do not sell your data.
+            We do not store sensitive business records beyond queue coordination.
           </p>
           <p>
             This policy is intended to comply with the{' '}
@@ -42,48 +42,48 @@ export default function PrivacyPage() {
 
         <Section title="2. What We Collect and Why">
 
-          <SubSection title="2.1 When a patient logs in">
+          <SubSection title="2.1 When a customer logs in">
             <p>
-              Patients log in using their phone number and a one-time password (OTP). We store the
-              phone number and a name (optionally provided) to identify the patient across visits and
+              Customers log in using their phone number and a one-time password (OTP). We store the
+              phone number and a name (optionally provided) to identify the customer across visits and
               to show them their own queue history. We do not store the OTP after it is used.
             </p>
           </SubSection>
 
-          <SubSection title="2.2 When reception adds a patient to the queue">
+          <SubSection title="2.2 When staff add a customer to the queue">
             <p>
-              Receptionists enter a patient&apos;s name and phone number to register them in a doctor&apos;s
-              queue. This creates a queue entry with a token number, a timestamp, and the assigned
-              doctor. The phone number is used to send SMS or WhatsApp notifications about queue
-              status (e.g., "2 people ahead of you", "it&apos;s your turn").
+              Front-desk staff enter a customer&apos;s name and phone number to register them in a
+              provider&apos;s queue. This creates a queue entry with a token number, a timestamp, and the
+              assigned provider. The phone number is used to send SMS or WhatsApp notifications about
+              queue status (e.g., &quot;2 people ahead of you&quot;, &quot;it&apos;s your turn&quot;).
             </p>
           </SubSection>
 
-          <SubSection title="2.3 Clinic staff and admin accounts">
+          <SubSection title="2.3 Business staff and admin accounts">
             <p>
-              When a clinic owner registers, we collect their name, email address, and phone number.
-              Doctors and staff are added by invitation — we store their name, email, and role within
-              the clinic. Passwords are hashed using bcrypt and never stored in plain text.
+              When a business owner registers, we collect their name, email address, and phone number.
+              Providers and staff are added by invitation — we store their name, email, phone, and role
+              within the business. Passwords are hashed and never stored in plain text.
             </p>
           </SubSection>
 
           <SubSection title="2.4 Queue and visit data">
             <p>
-              We record each queue entry: the token number, which doctor it was for, when the patient
-              joined, their position transitions (waiting → in consultation → completed/missed/skipped),
-              and the final outcome. This data powers the analytics dashboard for clinic admins and
-              the visit history shown to patients.
+              We record each queue entry: the token number, which provider it was for, when the customer
+              joined, their position transitions (waiting → in service → completed/missed/skipped),
+              and the final outcome. This data powers the analytics dashboard for business admins and
+              the visit history shown to customers.
             </p>
             <p>
-              <strong>We do not record consultations.</strong> No prescription, diagnosis, clinical note,
-              or medical record passes through ClinicQueue.
+              <strong>We do not record the service itself.</strong> No prescription, diagnosis, financial
+              record, or other sensitive business document passes through Turnos.
             </p>
           </SubSection>
 
           <SubSection title="2.5 Notifications">
             <p>
               SMS and WhatsApp notifications are sent via MSG91 and Meta&apos;s WhatsApp Business API.
-              When we send a message, the patient&apos;s phone number is passed to these providers. Their
+              When we send a message, the customer&apos;s phone number is passed to these providers. Their
               own privacy policies govern how they handle that data.
             </p>
           </SubSection>
@@ -99,8 +99,8 @@ export default function PrivacyPage() {
 
         <Section title="3. Real-Time Features">
           <p>
-            ClinicQueue uses WebSockets (Socket.IO) to push live queue updates to all connected
-            devices — patients see their position update in real time, and reception sees the full
+            Turnos uses WebSockets (Socket.IO) to push live queue updates to all connected
+            devices — customers see their position update in real time, and staff see the full
             queue state live. The current queue state is held in Redis (an in-memory store) for
             speed; it is also persisted to our PostgreSQL database (hosted on Neon) for history and
             analytics.
@@ -114,23 +114,23 @@ export default function PrivacyPage() {
         <Section title="4. Who Can See What">
           <ul>
             <li>
-              <strong>Patients</strong> can see only their own queue entries and visit history — not
+              <strong>Customers</strong> can see only their own queue entries and visit history — not
               anyone else&apos;s.
             </li>
             <li>
-              <strong>Doctors</strong> can see the queue for their own sessions and their own
-              consultation history.
+              <strong>Service providers</strong> can see the queue for their own sessions and their own
+              service history.
             </li>
             <li>
-              <strong>Receptionists / Staff</strong> can see the full active queue and add or manage
-              patients within their clinic.
+              <strong>Front-desk staff</strong> can see the full active queue and add or manage
+              customers within their business.
             </li>
             <li>
-              <strong>Clinic Admins</strong> can see analytics, full visit history, and manage staff
-              within their clinic only. They cannot see data from other clinics.
+              <strong>Business admins</strong> can see analytics, full visit history, and manage staff
+              within their business only. They cannot see data from other businesses.
             </li>
             <li>
-              <strong>ClinicQueue team</strong> can access data only for debugging or support
+              <strong>Turnos team</strong> can access data only for debugging or support
               purposes, and only with a legitimate reason.
             </li>
           </ul>
@@ -148,7 +148,7 @@ export default function PrivacyPage() {
               <strong>Redis (Upstash or self-hosted)</strong> — In-memory store for live queue state.
             </li>
             <li>
-              <strong>MSG91</strong> — SMS and WhatsApp notifications sent to patients.
+              <strong>MSG91</strong> — SMS and WhatsApp notifications sent to customers.
             </li>
             <li>
               <strong>Meta WhatsApp Business API</strong> — WhatsApp message delivery.
@@ -162,15 +162,15 @@ export default function PrivacyPage() {
         <Section title="6. Data Retention">
           <ul>
             <li>
-              <strong>Queue / visit history</strong> — retained indefinitely to power the analytics
+              <strong>Queue / visit history</strong> — retained to power the analytics
               dashboard. You may request deletion at any time.
             </li>
             <li>
-              <strong>Patient accounts</strong> — retained until you request deletion.
+              <strong>Customer accounts</strong> — retained until you request deletion.
             </li>
             <li>
-              <strong>Clinic accounts</strong> — retained for 30 days after subscription cancellation,
-              then permanently deleted.
+              <strong>Business accounts</strong> — retained for 30 days after access ends,
+              then permanently deleted unless a longer period is required by law or your agreement.
             </li>
             <li>
               <strong>Server logs</strong> — retained for 30 days, then purged.
@@ -195,13 +195,13 @@ export default function PrivacyPage() {
           </p>
           <p>
             To stop receiving SMS or WhatsApp notifications, you can reply STOP to any message or
-            contact the clinic reception who added you.
+            contact the business front desk that added you.
           </p>
         </Section>
 
         <Section title="8. Security">
           <p>
-            All traffic is encrypted over HTTPS/TLS. Passwords are bcrypt-hashed. Database access
+            All traffic is encrypted over HTTPS/TLS. Passwords are cryptographically hashed. Database access
             is restricted to the application and is not publicly reachable. We review dependencies
             regularly for known vulnerabilities.
           </p>
@@ -213,7 +213,7 @@ export default function PrivacyPage() {
 
         <Section title="9. Changes to This Policy">
           <p>
-            If we make material changes to how we handle your data, we will notify clinic admins by
+            If we make material changes to how we handle your data, we will notify business admins by
             email before the changes take effect. The effective date at the top of this page will
             always reflect the current version.
           </p>

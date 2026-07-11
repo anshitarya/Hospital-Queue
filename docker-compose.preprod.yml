@@ -78,7 +78,7 @@ services:
       FEATURE_WHATSAPP:            ${FEATURE_WHATSAPP:-false}
       # ── Notification providers (fill in .env.preprod to test) ────────────
       MSG91_AUTH_KEY:              ${MSG91_AUTH_KEY:-}
-      MSG91_SENDER_ID:             ${MSG91_SENDER_ID:-CLNCQ}
+      MSG91_SENDER_ID:             ${MSG91_SENDER_ID:-TURNOS}
       META_WA_ACCESS_TOKEN:        ${META_WA_ACCESS_TOKEN:-}
       META_WA_PHONE_NUMBER_ID:     ${META_WA_PHONE_NUMBER_ID:-}
       META_WA_USE_TEMPLATES:       ${META_WA_USE_TEMPLATES:-false}
@@ -108,7 +108,7 @@ services:
     environment:
       NODE_ENV:            production
       SUPER_ADMIN_LOCKED:  ${SUPER_ADMIN_LOCKED:-false}
-      SUPER_ADMIN_HOST:    ${SUPER_ADMIN_HOST:-admin.theclinicqueue.com}
+      SUPER_ADMIN_HOST:    ${SUPER_ADMIN_HOST:-admin.turnos.com}
     depends_on:
       api:
         condition: service_healthy

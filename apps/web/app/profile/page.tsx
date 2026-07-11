@@ -124,7 +124,7 @@ function IdentityCard({ profile }: { profile: UserProfile }) {
     profile.role === 'RECEPTIONIST' ? 'from-emerald-500 to-emerald-700' :
     'from-slate-500 to-slate-700';
 
-  const roleLabel = profile.role.charAt(0) + profile.role.slice(1).toLowerCase();
+  const roleLabel = displayRole(profile.role);
   const memberSince = new Date(profile.createdAt).toLocaleDateString(undefined, {
     year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -212,7 +212,7 @@ function PersonalDetails({
         </Field>
 
         <Field label="Role">
-          <input className="input bg-slate-50 cursor-not-allowed" value={profile.role} disabled />
+          <input className="input bg-slate-50 cursor-not-allowed" value={displayRole(profile.role)} disabled />
         </Field>
 
         {/* Phone — visible but locked. Show a "Verified" pill since phone is
@@ -237,7 +237,7 @@ function PersonalDetails({
           </div>
         </Field>
 
-        <Field label="Clinic">
+        <Field label="Business">
           <input
             className="input bg-slate-50 cursor-not-allowed"
             value={profile.clinic?.name ?? '—'}
@@ -596,6 +596,11 @@ function Security({
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Helpers                                                                    */
 /* ─────────────────────────────────────────────────────────────────────────── */
+
+function displayRole(role: UserProfile['role']) {
+  if (role === 'PATIENT') return '—';
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
 
 function Field({
   label,

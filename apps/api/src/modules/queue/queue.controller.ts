@@ -19,11 +19,19 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class QueueController {
   constructor(private readonly queue: QueueService) {}
 
-  // No auth — used by the TV display board and by anyone with a token link.
+  // No auth — used by the TV display board. Patient phone/email stripped from response.
   @Public()
   @Get('snapshot/:doctorId')
-  snapshot(@Param('doctorId') doctorId: string) {
-    return this.queue.snapshot(doctorId);
+  async snapshot(@Param('doctorId') doctorId: string) {
+    const snap = await this.queue.snapshot(doctorId);
+    const stripPhone = (p: { id: string; name: string } | null | undefined) =>
+      p ? { id: p.id, name: p.name } : null;
+    return {
+      ...snap,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      entries:       snap.entries.map((e) => ({ ...e, patient: stripPhone((e as any).patient) })),
+      missedEntries: snap.missedEntries?.map((e) => ({ ...e, patient: stripPhone(e.patient) })),
+    };
   }
 
   @Get('entry/:id')
@@ -41,6 +49,7 @@ export class QueueController {
     return this.queue.joinByReception(
       { ...dto, idempotencyKey: dto.idempotencyKey ?? headerKey },
       user.id,
+      user.clinicId,
     );
   }
 
@@ -53,7 +62,7 @@ export class QueueController {
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
   @Post('doctor/:doctorId/call-next')
   callNext(@Param('doctorId') doctorId: string, @CurrentUser() user: AuthUser) {
-    return this.queue.callNext(doctorId, user.id);
+    return this.queue.callNext(doctorId, user.id, user.clinicId);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
@@ -68,10 +77,10 @@ export class QueueController {
     return this.queue.skip(id, user.id);
   }
 
-  // Any authenticated user can cancel (patient cancels own; staff cancels any).
+  // Patients can only cancel their own entry; staff can cancel any entry in their clinic.
   @Post('entry/:id/cancel')
   cancel(@Param('id') id: string, @CurrentUser() user: AuthUser) {
-    return this.queue.cancel(id, user.id);
+    return this.queue.cancel(id, user);
   }
 
   /** Mark a called patient as missed (they didn't appear). Feature 2. */
@@ -141,7 +150,7 @@ export class QueueController {
     @Body() dto: ClearQueueDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.queue.clearQueue(doctorId, dto, user.id);
+    return this.queue.clearQueue(doctorId, dto, user.id, user.clinicId);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)

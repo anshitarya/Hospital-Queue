@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Icon } from './Icons';
+import { Icon, TurnosIcon } from './Icons';
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: 'features', label: 'Features' },
@@ -41,10 +41,8 @@ export function LandingNav() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6 flex items-center justify-between h-16">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold text-sm shadow-md group-hover:shadow-lg transition-shadow">
-            CQ
-          </span>
-          <span className="text-base font-semibold tracking-tight dark:text-slate-100">Clinic Queue</span>
+          <TurnosIcon className="h-9 w-9 shadow-md group-hover:shadow-lg transition-shadow" />
+          <span className="text-base font-semibold tracking-tight dark:text-slate-100">Turnos</span>
         </Link>
 
         {/* Desktop nav */}

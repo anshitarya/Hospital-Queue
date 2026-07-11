@@ -51,10 +51,10 @@ const WINDOW = 20;
 const IQR_FENCE = 1.5;
 
 /**
- * Minimum duration (minutes) to consider a valid consultation.
- * Filters out accidental "call next / complete immediately" sequences.
+ * Minimum service duration (seconds) to count toward the moving average.
+ * Filters accidental double-click completions, not real fast sessions.
  */
-const MIN_DURATION_MIN = 1;
+const MIN_DURATION_SEC = 1;
 
 /** Redis TTL for cached moving average. Invalidated on every completion. */
 const CACHE_TTL_SEC = 600; // 10 minutes
@@ -73,21 +73,35 @@ export class EtaService {
 
   // ── Cache management ────────────────────────────────────────────────────────
 
-  private cacheKey(doctorId: string) {
-    return `eta:avg:${doctorId}`;
+  private cacheKey(doctorId: string, serviceDay?: string) {
+    return serviceDay ? `eta:avg:${doctorId}:${serviceDay}` : `eta:avg:${doctorId}`;
   }
 
   /**
    * Call this whenever a consultation completes for a doctor.
    * Removes the cached average so the next snapshot recomputes from fresh data.
    */
-  async invalidateCache(doctorId: string): Promise<void> {
+  async invalidateCache(doctorId: string, serviceDay?: string): Promise<void> {
     try {
+      await this.redis?.client.del(this.cacheKey(doctorId, serviceDay));
+      // Legacy key (pre serviceDay scoping)
       await this.redis?.client.del(this.cacheKey(doctorId));
     } catch {
       // Cache invalidation failure is non-fatal — worst case we serve a slightly
       // stale average until the TTL expires.
     }
+  }
+
+  /**
+   * Elapsed minutes for the patient currently in service. Used as a live estimate
+   * when no completed consultations exist yet (e.g. first customer of the day).
+   */
+  inProgressAvg(entry: { startedAt?: Date | null; calledAt?: Date | null } | undefined): number | null {
+    if (!entry) return null;
+    const start = entry.startedAt ?? entry.calledAt;
+    if (!start) return null;
+    const elapsed = (Date.now() - start.getTime()) / 60_000;
+    return elapsed >= MIN_DURATION_SEC / 60 ? elapsed : null;
   }
 
   // ── Moving average ──────────────────────────────────────────────────────────
@@ -105,19 +119,26 @@ export class EtaService {
    * Returns null if there are no valid completions yet (caller falls back to
    * doctor.avgConsultMinutes which is set at onboarding time).
    */
-  async getMovingAvg(doctorId: string): Promise<number | null> {
+  async getMovingAvg(
+    doctorId: string,
+    options: { skipCache?: boolean; serviceDay?: string } = {},
+  ): Promise<number | null> {
     if (!this.prisma) return null;
 
+    const { skipCache = false, serviceDay } = options;
+
     // ── 1. Cache read ─────────────────────────────────────────────────────────
-    const key = this.cacheKey(doctorId);
-    try {
-      const cached = await this.redis?.client.get(key);
-      if (cached !== null && cached !== undefined) {
-        const parsed = parseFloat(cached);
-        if (!isNaN(parsed)) return parsed;
+    const key = this.cacheKey(doctorId, serviceDay);
+    if (!skipCache) {
+      try {
+        const cached = await this.redis?.client.get(key);
+        if (cached !== null && cached !== undefined) {
+          const parsed = parseFloat(cached);
+          if (!isNaN(parsed)) return parsed;
+        }
+      } catch {
+        // Redis unavailable — compute fresh from DB.
       }
-    } catch {
-      // Redis unavailable — compute fresh from DB.
     }
 
     // ── 2. DB read ────────────────────────────────────────────────────────────
@@ -125,19 +146,23 @@ export class EtaService {
       where: {
         doctorId,
         status: EntryStatus.COMPLETED,
-        startedAt:   { not: null },
         completedAt: { not: null },
+        OR: [{ startedAt: { not: null } }, { calledAt: { not: null } }],
+        ...(serviceDay ? { serviceDay } : {}),
       },
       orderBy: { completedAt: 'desc' },
       take: WINDOW,
-      select: { startedAt: true, completedAt: true },
+      select: { startedAt: true, calledAt: true, completedAt: true },
     });
 
     // ── 3. Duration extraction ────────────────────────────────────────────────
     const raw = rows
-      .filter((r) => r.startedAt && r.completedAt)
-      .map((r) => (r.completedAt!.getTime() - r.startedAt!.getTime()) / 60_000)
-      .filter((d) => d >= MIN_DURATION_MIN);
+      .map((r) => {
+        const start = r.startedAt ?? r.calledAt;
+        if (!start || !r.completedAt) return null;
+        return (r.completedAt.getTime() - start.getTime()) / 60_000;
+      })
+      .filter((d): d is number => d !== null && d >= MIN_DURATION_SEC / 60);
 
     if (raw.length === 0) return null;
 
@@ -201,8 +226,10 @@ export class EtaService {
     // Clamps to 0 if the consultation has already overrun the average — we
     // never add negative time to downstream patients' ETAs.
     const remainingForCurrent = (() => {
-      if (!inProgress?.startedAt) return 0;
-      const elapsedMin = (Date.now() - inProgress.startedAt.getTime()) / 60_000;
+      if (!inProgress) return 0;
+      const start = inProgress.startedAt ?? inProgress.calledAt;
+      if (!start) return 0;
+      const elapsedMin = (Date.now() - start.getTime()) / 60_000;
       return Math.max(0, avgMin - elapsedMin);
     })();
 

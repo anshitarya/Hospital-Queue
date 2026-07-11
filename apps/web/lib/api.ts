@@ -159,6 +159,8 @@ export interface Snapshot {
   missedEntries?: MissedEntry[];
   /** Moving average minutes/patient used for ETA. null = no history yet. Feature 3. */
   movingAvgMinutes?: number | null;
+  /** True if at least one entry has been called today (callNext fired). Used to suppress "queue not started" after all are done. */
+  hasStartedToday?: boolean;
 }
 
 /**

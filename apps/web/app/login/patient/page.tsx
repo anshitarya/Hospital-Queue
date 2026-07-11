@@ -2,6 +2,7 @@
 
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Icon, TurnosIcon } from '@/components/Icons';
 import Link from 'next/link';
 import {
   requestOtp,
@@ -158,9 +159,9 @@ export default function PatientLoginPage() {
         <div className="text-center mb-6">
           <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md">
-              CQ
+            <TurnosIcon className="h-7 w-7" />
             </span>
-            <span className="text-lg font-semibold">Clinic Queue</span>
+            <span className="text-lg font-semibold">Turnos</span>
           </Link>
         </div>
 

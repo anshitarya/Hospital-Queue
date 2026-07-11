@@ -14,13 +14,13 @@ import {
  *
  * Required Fly.io secrets (queue-hq-api):
  *   MSG91_AUTH_KEY   — from msg91.com → API → API Key
- *   MSG91_SENDER_ID  — 6-char DLT-registered sender ID, e.g. CLNCQ
+ *   MSG91_SENDER_ID  — 6-char DLT-registered sender ID, e.g. TURNOS
  *
  * India DLT requirement (mandatory for production):
  *   Before going live you must register on any telecom's DLT portal
  *   (Airtel, JioTrueConnect, BSNL, TRAI TAFCOP) and obtain:
  *     1. Principal Entity ID  → register at the DLT portal
- *     2. Sender ID            → e.g. CLNCQ (6 chars)
+ *     2. Sender ID            → e.g. TURNOS (6 chars)
  *     3. Template IDs         → one per message type (register each template text)
  *   Then add MSG91_DLT_ENTITY_ID and per-template IDs as secrets (see below).
  *
@@ -40,7 +40,7 @@ export class Msg91SmsProvider implements NotificationProvider {
 
   constructor(config: ConfigService) {
     this.authKey = config.get<string>('msg91.authKey');
-    this.senderId = config.get<string>('msg91.senderId') ?? 'CLNCQ';
+    this.senderId = config.get<string>('msg91.senderId') ?? 'TURNOS';
     this.dltEntityId = config.get<string>('msg91.dltEntityId');
   }
 

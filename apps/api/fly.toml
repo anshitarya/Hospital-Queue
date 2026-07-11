@@ -1,6 +1,6 @@
 # Fly.io config for the NestJS API.
 # App name must be globally unique — change "hq-api" to something like "yourname-hq-api".
-app    = "queue-hq-api"
+app    = "turnos-api-hq"
 region = "bom"       # Mumbai — closest to India
 
 [build]
@@ -16,7 +16,7 @@ region = "bom"       # Mumbai — closest to India
   WALKIN_GAP                  = "4"
   MISSED_GAP                  = "4"
   FOLLOWUP_EVERY              = "0"
-  CORS_ORIGIN                 = "https://clinicqueue.fly.dev"
+  CORS_ORIGIN                 = "https://turnos.fly.dev,https://turnos-hq.fly.dev"
   # ── Notification feature flags (flip to "true" when ready) ──────────────────
   FEATURE_SMS                 = "false"   # flip after MSG91 secrets are set
   FEATURE_WHATSAPP            = "false"   # flip after Meta WA secrets are set

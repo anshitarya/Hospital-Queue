@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { LandingNav } from '@/components/LandingNav';
 import { FAQ } from '@/components/FAQ';
-import { Icon } from '@/components/Icons';
+import { Icon, TurnosIcon } from '@/components/Icons';
 import { VideoSection } from '@/components/VideoSection';
 import { BRAND, FEATURES, FAQS, HERO_STATS } from '@/lib/config';
 
@@ -36,7 +36,7 @@ export default function HomePage() {
             <div className="space-y-6 animate-fade-in">
               <div className="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-800/70 backdrop-blur ring-1 ring-slate-200 dark:ring-slate-600 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm">
                 <span className="live-dot" />
-                Live ETA · No app needed · Multi-clinic
+                Live ETA · No app needed
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 leading-[1.05]">
@@ -47,9 +47,9 @@ export default function HomePage() {
               </h1>
 
               <p className="text-lg text-slate-600 max-w-xl leading-relaxed">
-                Clinic Queue lets patients see their live position and wait time on their
-                phone — without downloading any app. Doctors/Receptionists call the next patient in one tap.
-                Reception manages everything from a single screen.
+                Turnos lets customers see their live position and wait time on their
+                phone — without downloading any app. Providers call the next customer in one tap.
+                Staff manages everything from a single screen.
               </p>
 
               <div className="flex flex-wrap items-center gap-3">
@@ -74,7 +74,7 @@ export default function HomePage() {
 
               <div className="flex items-center gap-6 text-sm text-slate-500 pt-2">
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-600" /> Free for patients
+                  <Icon.Check className="h-4 w-4 text-emerald-600" /> Free for customers
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Icon.Check className="h-4 w-4 text-emerald-600" /> No app to install
@@ -113,7 +113,7 @@ export default function HomePage() {
           <SectionHeading
             kicker="What you get"
             title="Everything that makes waiting rooms better"
-            sub="Simple for patients. Powerful for clinics."
+            sub="Simple for customers. Powerful for any business with a queue."
           />
 
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -143,14 +143,14 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <SectionHeading
             kicker="How it works"
-            title="Simple for everyone in the clinic"
-            sub="Patients, doctors, and reception each have a screen built exactly for them — no confusion, no clutter."
+            title="Simple for everyone involved"
+            sub="Customers, providers, and staff each have a screen built exactly for them — no confusion, no clutter."
           />
 
           <div className="mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6">
             <FlowCard
               tone="brand"
-              title="For patients"
+              title="For customers"
               steps={[
                 { n: 1, t: 'Open the link — no app needed', d: 'Enter your phone number and verify with a one-time code. Takes under a minute.' },
                 { n: 2, t: 'See your live position and wait time', d: 'Your token, how many people are ahead, and how many minutes until your turn — all updating automatically.' },
@@ -159,11 +159,11 @@ export default function HomePage() {
             />
             <FlowCard
               tone="purple"
-              title="For clinics"
+              title="For businesses"
               steps={[
-                { n: 1, t: 'Receptionist registers patients', d: 'Adds name and phone number — done in seconds. Emergency cases jump to the front with one tap.' },
-                { n: 2, t: 'Doctor calls next when ready', d: 'One tap on "Call next" — the patient\'s phone updates instantly and the waiting room display refreshes.' },
-                { n: 3, t: 'Mark complete and move on', d: 'Doctor/Receptionist marks the consultation done. The queue moves forward and every patient\'s wait time is recalculated.' },
+                { n: 1, t: 'Staff registers the customer', d: 'Adds name and phone number — done in seconds. Urgent cases jump to the front with one tap.' },
+                { n: 2, t: 'Provider calls next when ready', d: 'One tap on "Call next" — the customer\'s phone updates instantly and the waiting area display refreshes.' },
+                { n: 3, t: 'Mark complete and move on', d: 'Provider or staff marks the session done. The queue moves forward and every customer\'s wait time is recalculated.' },
               ]}
             />
           </div>
@@ -183,33 +183,33 @@ export default function HomePage() {
           <SectionHeading
             kicker="Who uses it"
             title="A dedicated screen for every person"
-            sub="Each role sees only what they need — patients see their token, doctors see the queue, reception manages everything."
+            sub="Each role sees only what they need — customers see their token, providers see the queue, staff manages everything."
           />
 
           <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <RoleCard
               icon={<Icon.User className="h-5 w-5" />}
               tone="emerald"
-              title="Patient"
+              title="Customer"
               points={['Live token & wait time', 'Alert when you\'re next', 'Past visit history']}
             />
             <RoleCard
               icon={<Icon.Users className="h-5 w-5" />}
               tone="brand"
-              title="Receptionist"
-              points={['Register patients instantly', 'Mark emergencies', 'Manage walk-ins & missed']}
+              title="Front-desk Staff"
+              points={['Register customers instantly', 'Mark urgent cases', 'Manage walk-ins & missed']}
             />
             <RoleCard
               icon={<Icon.Stethoscope className="h-5 w-5" />}
               tone="sky"
-              title="Doctor"
+              title="Service Provider"
               points={['Call next with one tap', 'Take a break anytime', 'Clear or pause the queue']}
             />
             <RoleCard
               icon={<Icon.Settings className="h-5 w-5" />}
               tone="purple"
-              title="Admin / Clinic Owner"
-              points={['Set up the clinic', 'Add doctors & reception', 'See all queues together']}
+              title="Admin / Owner"
+              points={['Set up your business', 'Add providers & staff', 'See all queues together']}
             />
           </div>
         </div>
@@ -221,13 +221,13 @@ export default function HomePage() {
       <section className="py-10 sm:py-14">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
           <div className="rounded-2xl bg-amber-50 ring-1 ring-amber-200 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            <div className="text-5xl shrink-0 leading-none">👨‍⚕️</div>
+            <div className="text-5xl shrink-0 leading-none">💬</div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-amber-700 uppercase tracking-widest">For doctors</div>
-              <h3 className="mt-1 text-xl font-bold text-slate-900">Would this app help your clinic?</h3>
+              <div className="text-xs font-semibold text-amber-700 uppercase tracking-widest">For businesses</div>
+              <h3 className="mt-1 text-xl font-bold text-slate-900">Would this help your business?</h3>
               <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-                We&apos;re building this specifically for clinics like yours. Take 2 minutes to tell us
-                whether you need this and what features matter most — your feedback directly shapes
+                We&apos;re building this for clinics, salons, banks, and any business with a queue. Take 2 minutes
+                to tell us whether you need this and what features matter most — your feedback directly shapes
                 what we build next.
               </p>
             </div>
@@ -279,8 +279,8 @@ export default function HomePage() {
                   Ready to turn your waiting room into a thing of the past?
                 </h2>
                 <p className="text-white/85 max-w-2xl">
-                  Sign in to get started, or reach out to set up your clinic — we&apos;ll help you
-                  configure invite codes, doctors and the patient flow.
+                  Sign in to get started, or reach out — we&apos;ll help you
+                  configure invite codes, providers, and your customer flow.
                 </p>
 
                 <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -326,7 +326,7 @@ export default function HomePage() {
 
                   {/* WhatsApp */}
                   <a
-                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Clinic%20Queue`}
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
@@ -341,7 +341,7 @@ export default function HomePage() {
                   </a>
 
                   <div className="text-xs text-white/70 leading-relaxed pt-2 border-t border-white/10">
-                    Available {BRAND.contact.hours} · Message us to set up your clinic or ask anything.
+                    Available {BRAND.contact.hours} · Message us to set up your business or ask anything.
                   </div>
                 </div>
               </div>
@@ -356,17 +356,15 @@ export default function HomePage() {
       <footer className="border-t border-slate-200 py-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 text-sm text-slate-500">
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold text-xs">
-              CQ
-            </span>
-            <span>Clinic Queue · Built with care in India.</span>
+            <TurnosIcon className="h-7 w-7" />
+            <span>Turnos · Built with care in India.</span>
           </div>
           <div className="flex items-center gap-4 text-sm text-slate-500">
             <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 inline-flex items-center gap-1.5">
               <Icon.Phone className="h-4 w-4" /> {BRAND.contact.phone}
             </a>
             <a
-              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Clinic%20Queue`}
+              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-[#25D366] inline-flex items-center gap-1.5"
@@ -501,8 +499,8 @@ function HeroMock() {
       <div className="relative card p-6 shadow-xl ring-2 ring-brand-200/60 z-10 rotate-[-1deg]">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="font-semibold text-slate-900">Dr. Anjali Sharma</div>
-            <div className="text-xs text-slate-500">General Medicine</div>
+            <div className="font-semibold text-slate-900">Anjali Sharma</div>
+            <div className="text-xs text-slate-500">Serving now</div>
           </div>
           <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
             <span className="live-dot" /> Live
@@ -521,7 +519,7 @@ function HeroMock() {
         </div>
 
         <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-emerald-800 text-sm text-center font-medium animate-pulse-slow">
-          It&apos;s your turn — head to the consultation room
+          It&apos;s your turn — head to the service area
         </div>
       </div>
 

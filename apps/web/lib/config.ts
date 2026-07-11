@@ -17,15 +17,15 @@
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export const BRAND = {
-  name: 'Clinic Queue',
-  shortName: 'CQ',
-  tagline: 'Skip the waiting room. Arrive when it\'s your turn.',
+  name: 'Turnos',
+  shortName: 'T',
+  tagline: 'Skip the wait. Arrive when it\'s your turn.',
   contact: {
     phone: '+91 94147 71828',
     phoneTel: '+919414771828',          // for tel: links
     phoneWhatsapp: '919414771828',      // for wa.me links
     email: 'anshit.arya@flipkart.com',
-    legalEmail: 'hello@theclinicqueue.com', // shown on legal pages — update when domain is live
+    legalEmail: 'hello@turnos.fly.dev', // shown on legal pages — update when domain is live
     hours: '9 AM–8 PM IST',
   },
   // Replace this with your actual Google Form URL
@@ -99,39 +99,39 @@ export const FEATURES: FeatureItem[] = [
   {
     iconName: 'Clock',
     title: 'Know exactly when it\'s your turn',
-    body: 'Patients see a live countdown — "~12 minutes" — that updates every time the doctor finishes. No more guessing or asking the receptionist.',
+    body: 'Customers see a live countdown — "~12 minutes" — that updates every time the provider finishes. No more guessing or asking the front desk.',
     span: 'sm:col-span-2',
   },
   {
     iconName: 'Smartphone',
     title: 'No app to download',
-    body: 'Patients just open a link on their phone and log in with an OTP. Works on any Android or iPhone, any browser.',
+    body: 'Customers just open a link on their phone and log in with an OTP. Works on any Android or iPhone, any browser.',
   },
   {
     iconName: 'Zap',
     title: 'Every screen updates live',
-    body: 'The moment a doctor calls the next patient, all phones and displays update instantly — no refresh needed.',
+    body: 'The moment a provider calls the next customer, all phones and displays update instantly — no refresh needed.',
   },
   {
     iconName: 'Bell',
     title: 'Get notified before your turn',
-    body: 'The patient\'s screen flashes and they get an alert when they are 2–3 patients away. They can wait outside or nearby instead of crowding the room.',
+    body: 'The customer\'s screen flashes and they get an alert when they are 2–3 spots away. They can wait outside or nearby instead of crowding the room.',
     span: 'sm:col-span-2',
   },
   {
     iconName: 'Shield',
-    title: 'Emergencies go first — always',
-    body: 'Receptionist can mark any patient as an emergency with one tap. They jump straight to the front of the queue.',
+    title: 'Urgent cases go first — always',
+    body: 'Staff can mark any entry as urgent with one tap. They jump straight to the front of the queue.',
   },
   {
     iconName: 'Heart',
     title: 'Missed your call? Rejoin easily',
-    body: 'If a patient steps out and misses their turn, reception can add them back near the front — no need to restart from the end.',
+    body: 'If a customer steps out and misses their turn, staff can add them back near the front — no need to restart from the end.',
   },
   {
     iconName: 'Activity',
-    title: 'Doctor can pause or take a break',
-    body: 'Going on lunch? Doctor sets a break time and all patients instantly see the updated wait. Queue resumes the moment they\'re back.',
+    title: 'Provider can pause or take a break',
+    body: 'Going on lunch? The provider sets a break time and all customers instantly see the updated wait. Queue resumes the moment they\'re back.',
   },
 ];
 
@@ -141,36 +141,36 @@ export const FEATURES: FeatureItem[] = [
 
 export const FAQS: { q: string; a: string }[] = [
   {
-    q: 'How does a patient check their queue position?',
-    a: 'Reception registers the patient and gives them a token link or they log in with their phone number using an OTP. They\'ll see their token, how many people are ahead, and an estimated time — all live on their phone screen without needing to refresh.',
+    q: 'How does a customer check their queue position?',
+    a: 'Staff registers the customer and gives them a token link, or they log in with their phone number using an OTP. They\'ll see their token, how many people are ahead, and an estimated time — all live on their phone screen without needing to refresh.',
   },
   {
-    q: 'Do patients need to install any app?',
-    a: 'No — nothing to download. Patients just open the link in any browser on their phone. It works on any Android or iPhone.',
+    q: 'Do customers need to install any app?',
+    a: 'No — nothing to download. Customers just open the link in any browser on their phone. It works on any Android or iPhone.',
   },
   {
-    q: 'How does a clinic get set up?',
-    a: 'Contact us and we\'ll set up your clinic in minutes. You\'ll get an invite code to share with your receptionist. Once they sign in, they can add doctors and start registering patients right away.',
+    q: 'How does a business get set up?',
+    a: 'Contact us and we\'ll set up your account in minutes. You\'ll get an invite code to share with your front-desk staff. Once they sign in, they can add providers and start registering customers right away.',
   },
   {
-    q: 'What does the receptionist do?',
-    a: 'The receptionist adds patients to the queue (name + phone number), can mark emergencies that jump the queue, manage walk-ins, and see a live view of everything happening across all doctors.',
+    q: 'What does the front-desk staff do?',
+    a: 'Staff adds customers to the queue (name + phone number), can mark urgent cases that jump the queue, manage walk-ins, and see a live view of everything happening across all providers.',
   },
   {
-    q: 'What does the doctor see?',
-    a: 'The doctor sees who is currently in consultation, who is next, and the full waiting list with estimated times. They tap "Call next" when ready, mark the consultation complete when done, and can pause the queue or take a break at any time.',
+    q: 'What does the service provider see?',
+    a: 'The provider sees who is currently being served, who is next, and the full waiting list with estimated times. They tap "Call next" when ready, mark the session complete when done, and can pause the queue or take a break at any time.',
   },
   {
-    q: 'How accurate is the wait time shown to patients?',
-    a: 'The app learns from each doctor\'s actual consultation times and updates the estimate automatically. If a consultation takes longer than usual, all patients\' wait times adjust within seconds.',
+    q: 'How accurate is the wait time shown to customers?',
+    a: 'The app learns from each provider\'s actual service times and updates the estimate automatically. If a session takes longer than usual, all customers\' wait times adjust within seconds.',
   },
   {
-    q: 'Can I use a TV screen in the waiting room?',
+    q: 'Can I use a TV screen in the waiting area?',
     a: 'Yes — open the display link on any browser connected to a TV. It shows "Now Serving" in large text and the next few tokens. No login needed for the display.',
   },
   {
-    q: 'Is this free for patients?',
-    a: 'Yes, completely free for patients. They sign in with their phone number and use it at no cost.',
+    q: 'Is this free for customers?',
+    a: 'Yes, completely free for customers. They sign in with their phone number and use it at no cost.',
   },
 ];
 
@@ -180,9 +180,9 @@ export const FAQS: { q: string; a: string }[] = [
 
 export const HERO_STATS = [
   { v: '0', l: 'Apps to install' },
-  { v: '< 1 min', l: 'Patient sign-in time' },
+  { v: '< 1 min', l: 'Customer sign-in time' },
   { v: 'Live', l: 'Queue updates' },
-  { v: 'Free', l: 'For patients' },
+  { v: 'Free', l: 'For Users' },
 ];
 
 /* ─────────────────────────────────────────────────────────────────────────── */

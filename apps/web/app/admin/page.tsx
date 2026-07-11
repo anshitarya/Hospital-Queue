@@ -13,7 +13,8 @@ import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
-import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
+import { BUSINESS_TYPE_OPTIONS, getLabels, DEPARTMENT_PRESETS, type BusinessType } from '@/lib/labels';
+import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
 
 export default function AdminPage() {
   const { ready } = useRequireRole(['ADMIN']);
@@ -151,13 +152,17 @@ export default function AdminPage() {
     }
   }
 
-  async function loadDepartments() {
-    // Departments are global — same list shown in the receptionist UI.
-    // We load them lazily the first time a clinic is opened.
-    if (departments.length > 0) return;
+  async function loadDepartments(businessType?: string | null) {
     try {
-      const list = await api<DepartmentOption[]>('/clinics/my/departments');
-      setDepartments(list);
+      const btype = (businessType ?? 'CLINIC') as BusinessType;
+      const presets = DEPARTMENT_PRESETS[btype] ?? [];
+      if (btype !== 'CLINIC' && presets.length > 0) {
+        // Non-clinic: show only business-specific presets, not medical DB ones
+        setDepartments(presets.map((p) => ({ id: `__new__${p}`, name: p })));
+      } else {
+        const fromDb = await api<DepartmentOption[]>('/clinics/my/departments');
+        setDepartments(fromDb.length > 0 ? fromDb : HOSPITAL_DEPARTMENTS.map((n) => ({ id: `__new__${n}`, name: n })));
+      }
     } catch {
       // Ignore — the picker will show an empty state.
     }
@@ -173,6 +178,7 @@ export default function AdminPage() {
     setDocPhoneResult({ ok: false });
     setDocDeptId('');
     setDocAvg(7);
+    setDepartments([]);
     // Same for the add-receptionist form.
     setRecName('');
     setRecEmail('');
@@ -182,7 +188,7 @@ export default function AdminPage() {
       loadInviteCodes(clinic.id),
       loadClinicDoctors(clinic.id),
       loadClinicReceptionists(clinic.id),
-      loadDepartments(),
+      loadDepartments(clinic.businessType),
     ]);
   }
 
@@ -304,6 +310,16 @@ export default function AdminPage() {
 
     setDocBusy(true);
     try {
+      let deptId = docDeptId;
+      if (deptId.startsWith('__new__')) {
+        const deptName = deptId.replace('__new__', '');
+        const created = await api<{ id: string; name: string }>('/clinics/my/departments', {
+          method: 'POST',
+          body: { name: deptName },
+        });
+        deptId = created.id;
+        setDepartments((prev) => prev.map((d) => d.id === docDeptId ? { ...d, id: created.id } : d));
+      }
       const result = await api<{
         doctor: { id: string; user: { name: string; email: string | null; phone: string | null } };
         tempPassword: string;
@@ -313,7 +329,7 @@ export default function AdminPage() {
           name: docName,
           email: docEmail || undefined,
           phone: docPhoneResult.e164 || undefined,
-          departmentId: docDeptId,
+          departmentId: deptId,
           avgConsultMinutes: docAvg,
         },
       });
@@ -511,7 +527,7 @@ export default function AdminPage() {
             onClick={() => setTab('manage')}
             className={'tab ' + (tab === 'manage' ? 'tab-active' : 'tab-inactive')}
           >
-            Manage clinics
+            Manage businesses
             <span className="ml-1.5 opacity-70 text-xs">({clinics.length})</span>
           </button>
           <button
@@ -526,25 +542,25 @@ export default function AdminPage() {
         {tab === 'overview' && (
           <>
             <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <StatCard label="Clinics"       value={stats?.totals.clinics}       icon="🏥" accent="from-brand-500 to-brand-700" />
-              <StatCard label="Doctors"       value={stats?.totals.doctors}       icon="🩺" accent="from-sky-500 to-sky-700" />
-              <StatCard label="Receptionists" value={stats?.totals.receptionists} icon="👤" accent="from-emerald-500 to-teal-600" />
-              <StatCard label="Patients"      value={stats?.totals.patients}      icon="👨‍⚕️" accent="from-violet-500 to-purple-700" />
+              <StatCard label="Businesses"    value={stats?.totals.clinics}       icon="🏢" accent="from-brand-500 to-brand-700" />
+              <StatCard label="Providers"     value={stats?.totals.doctors}       icon="👤" accent="from-sky-500 to-sky-700" />
+              <StatCard label="Staff"         value={stats?.totals.receptionists} icon="🧑‍💼" accent="from-emerald-500 to-teal-600" />
+              <StatCard label="Customers"     value={stats?.totals.patients}      icon="🙋" accent="from-violet-500 to-purple-700" />
             </section>
 
             {stats && stats.perClinic.length > 0 && (
               <section className="card overflow-hidden">
                 <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-                  <h2 className="section-title">Per-clinic breakdown</h2>
-                  <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{stats.perClinic.length} clinic(s)</span>
+                  <h2 className="section-title">Per-business breakdown</h2>
+                  <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{stats.perClinic.length} business(es)</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100 bg-slate-50/50">
-                        <th className="px-5 py-2.5 font-medium">Clinic</th>
-                        <th className="px-5 py-2.5 font-medium">Doctors</th>
-                        <th className="px-5 py-2.5 font-medium">Receptionists</th>
+                        <th className="px-5 py-2.5 font-medium">Business</th>
+                        <th className="px-5 py-2.5 font-medium">Providers</th>
+                        <th className="px-5 py-2.5 font-medium">Staff</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -570,13 +586,13 @@ export default function AdminPage() {
           <section className="card overflow-hidden lg:col-span-2 h-fit">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
               <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-100 text-brand-700 text-xs font-bold">+</span>
-              <h2 className="section-title">New clinic</h2>
+              <h2 className="section-title">New business</h2>
             </div>
             <div className="p-5">
               <form onSubmit={createClinic} className="space-y-2.5">
                 <input
                   className="input"
-                  placeholder="Clinic name"
+                  placeholder="Business name"
                   value={clinicName}
                   onChange={(e) => setClinicName(e.target.value)}
                   required
@@ -593,7 +609,7 @@ export default function AdminPage() {
                   ))}
                 </select>
                 <button type="submit" className="btn-primary w-full" disabled={createBusy}>
-                  {createBusy ? 'Creating…' : 'Create clinic'}
+                  {createBusy ? 'Creating…' : 'Create business'}
                 </button>
               </form>
             </div>
@@ -602,7 +618,7 @@ export default function AdminPage() {
           {/* Clinic list */}
           <section className="card overflow-hidden lg:col-span-3">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <h2 className="section-title">All clinics</h2>
+              <h2 className="section-title">All businesses</h2>
               <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinics.length}</span>
             </div>
 
@@ -610,8 +626,8 @@ export default function AdminPage() {
               <div className="py-10 text-center text-sm text-slate-500">Loading…</div>
             ) : clinics.length === 0 ? (
               <div className="py-12 text-center">
-                <div className="text-4xl mb-2">🏥</div>
-                <p className="text-sm text-slate-500">No clinics yet. Create one to get started.</p>
+                <div className="text-4xl mb-2">🏢</div>
+                <p className="text-sm text-slate-500">No businesses yet. Create one to get started.</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
@@ -632,7 +648,7 @@ export default function AdminPage() {
                             <input
                               autoFocus
                               className="input !py-1.5 flex-1"
-                              placeholder="Clinic name"
+                              placeholder="Business name"
                               value={editClinicName}
                               onChange={(e) => setEditClinicName(e.target.value)}
                             />
@@ -725,7 +741,7 @@ export default function AdminPage() {
                   Invite codes — <span className="text-brand-700">{selectedClinic.name}</span>
                 </h2>
                 <p className="section-sub">
-                  Each code lets one receptionist self-register. Expires in 48h.
+                  Each code lets one staff member self-register. Expires in 48h.
                 </p>
               </div>
               <button
@@ -773,12 +789,14 @@ export default function AdminPage() {
           </section>
         )}
 
-        {/* Receptionists panel */}
-        {selectedClinic && (
+        {/* Staff / Receptionists panel */}
+        {selectedClinic && (() => {
+          const RL = getLabels(selectedClinic.businessType);
+          return (
           <section className="card overflow-hidden animate-fade-in">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="section-title">Receptionists — <span className="text-brand-700">{selectedClinic.name}</span></h2>
+                <h2 className="section-title">{RL.staff}s — <span className="text-brand-700">{selectedClinic.name}</span></h2>
                 <p className="section-sub">Add directly with a temp password, or share an invite code above.</p>
               </div>
               <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinicReceptionists.length}</span>
@@ -788,21 +806,21 @@ export default function AdminPage() {
                 <form onSubmit={addReceptionist} className="space-y-2.5 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
                   <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs font-bold">+</span>
-                    New receptionist
+                    New {RL.staff.toLowerCase()}
                   </h3>
                   <input className="input" placeholder="Full name" value={recName} onChange={(e) => setRecName(e.target.value)} required />
                   <input className="input" type="email" placeholder="Email (for login)" value={recEmail} onChange={(e) => setRecEmail(e.target.value)} />
                   <PhoneInput label={null} value={recPhone} onChange={(raw, result) => { setRecPhone(raw); setRecPhoneResult(result); }} autoComplete="off" />
                   <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
                   <button type="submit" className="btn-primary w-full" disabled={recBusy || (!recEmail && !recPhoneResult.ok)}>
-                    {recBusy ? 'Adding…' : 'Add receptionist'}
+                    {recBusy ? 'Adding…' : `Add ${RL.staff.toLowerCase()}`}
                   </button>
                 </form>
                 <div className="lg:col-span-3">
                   {clinicReceptionists.length === 0 ? (
                     <div className="py-12 text-center rounded-xl ring-1 ring-slate-200 bg-slate-50">
                       <div className="text-4xl mb-2">👤</div>
-                      <p className="text-sm text-slate-500">No receptionists yet.</p>
+                      <p className="text-sm text-slate-500">No {RL.staff.toLowerCase()}s yet.</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
@@ -856,14 +874,17 @@ export default function AdminPage() {
               </div>
             </div>
           </section>
-        )}
+          );
+        })()}
 
         {/* Doctors panel */}
-        {selectedClinic && (
+        {selectedClinic && (() => {
+          const SL = getLabels(selectedClinic.businessType);
+          return (
           <section className="card overflow-hidden animate-fade-in">
             <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
               <div>
-                <h2 className="section-title">Doctors — <span className="text-brand-700">{selectedClinic.name}</span></h2>
+                <h2 className="section-title">{SL.providerPlural} — <span className="text-brand-700">{selectedClinic.name}</span></h2>
                 <p className="section-sub">Temporary password is generated and shown once — copy before closing.</p>
               </div>
               <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinicDoctors.length}</span>
@@ -873,7 +894,7 @@ export default function AdminPage() {
                 <form onSubmit={addDoctor} className="space-y-2.5 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
                   <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs font-bold">+</span>
-                    New doctor
+                    New {SL.provider.toLowerCase()}
                   </h3>
                   <input className="input" placeholder="Full name" value={docName} onChange={(e) => setDocName(e.target.value)} required />
                   <input className="input" type="email" placeholder="Email (for login)" value={docEmail} onChange={(e) => setDocEmail(e.target.value)} />
@@ -881,19 +902,19 @@ export default function AdminPage() {
                   <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
                   <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
                   <label className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-600 whitespace-nowrap shrink-0">Avg consult:</span>
+                    <span className="text-slate-600 whitespace-nowrap shrink-0">Avg {SL.service.toLowerCase()}:</span>
                     <input className="input flex-1" type="number" min={1} max={120} value={docAvg} onChange={(e) => setDocAvg(Number(e.target.value))} required />
-                    <span className="text-xs text-slate-400 shrink-0">min</span>
+                    <span className="text-xs text-slate-400 shrink-0">{SL.perCustomer}</span>
                   </label>
                   <button type="submit" className="btn-primary w-full" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
-                    {docBusy ? 'Adding…' : 'Add doctor'}
+                    {docBusy ? 'Adding…' : `Add ${SL.provider.toLowerCase()}`}
                   </button>
                 </form>
                 <div className="lg:col-span-3">
                   {clinicDoctors.length === 0 ? (
                     <div className="py-12 text-center rounded-xl ring-1 ring-slate-200 bg-slate-50">
                       <div className="text-4xl mb-2">🩺</div>
-                      <p className="text-sm text-slate-500">No doctors yet.</p>
+                      <p className="text-sm text-slate-500">No {SL.providerPlural.toLowerCase()} yet.</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
@@ -945,7 +966,8 @@ export default function AdminPage() {
               </div>
             </div>
           </section>
-        )}
+          );
+        })()}
 
           </>
         )}

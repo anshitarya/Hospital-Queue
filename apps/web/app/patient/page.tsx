@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type QueueEntry, type Doctor } from '@/lib/api';
 import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue, usePatientStream } from '@/lib/socket';
@@ -11,6 +11,7 @@ import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
 import { getLabels } from '@/lib/labels';
+import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
@@ -81,8 +82,10 @@ export default function PatientPage() {
   const [positionsMap, setPositionsMap]     = useState<Record<string, number>>({});
   const [refreshing, setRefreshing]         = useState(false);
   const [lastSync, setLastSync]             = useState<Date | null>(null);
-  const [selectedClinicId, setSelectedClinicId] = useState<string | null>(null);
   const [activeTab, setActiveTab]           = useState<'active' | 'history'>('active');
+  // Persistent "You were missed" banners (shown until dismissed, survive component unmount)
+  const [missedBanners, setMissedBanners]   = useState<HistoryItem[]>([]);
+  const missedNotifiedRef = useRef<Set<string>>(new Set());
   // Dismissed notification IDs, persisted for the session so refresh doesn't re-show them.
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(() => {
     try {
@@ -96,6 +99,23 @@ export default function PatientPage() {
     setRefreshing(true);
     try {
       const items = await api<HistoryItem[]>(`/patients/${user.id}/history`);
+      // Detect newly-MISSED entries and fire notification + show persistent banner.
+      // This runs in fetchHistory (triggered by usePatientStream) so it works even
+      // if ActiveEntry unmounts before the socket snapshot updates.
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      items
+        .filter((e) => e.status === 'MISSED' && e.serviceDay === todayStr)
+        .forEach((entry) => {
+          if (missedNotifiedRef.current.has(entry.id)) return;
+          missedNotifiedRef.current.add(entry.id);
+          sendBrowserNotif(
+            '⚠️ You were missed',
+            `Please approach the reception desk to be re-added — ${entry.doctor.user.name}`,
+          );
+          playChime(false);
+          vibrate(false);
+          setMissedBanners((prev) => [...prev, entry]);
+        });
       setHistory(items);
       setLastSync(new Date());
     } catch {
@@ -113,6 +133,18 @@ export default function PatientPage() {
   }, [ready, fetchHistory]);
 
   const { connected: streamConnected } = usePatientStream(ready, fetchHistory);
+
+  // Auto-clear missed banners when the customer rejoins (i.e. entry is back to WAITING/IN_CONSULTATION)
+  useEffect(() => {
+    if (missedBanners.length === 0) return;
+    const liveDoctorIds = new Set(
+      history
+        .filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION')
+        .map((e) => e.doctor?.id)
+        .filter(Boolean),
+    );
+    setMissedBanners((prev) => prev.filter((b) => !liveDoctorIds.has(b.doctor?.id)));
+  }, [history]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePositionUpdate = useCallback((entryId: string, ahead: number) => {
     setPositionsMap((prev) => (prev[entryId] === ahead ? prev : { ...prev, [entryId]: ahead }));
@@ -164,15 +196,6 @@ export default function PatientPage() {
     (e) => e.status !== 'WAITING' && e.status !== 'IN_CONSULTATION',
   );
 
-  // Build clinic list from history only — no separate state → no race.
-  const clinicMap = new Map<string, { id: string; name: string }>();
-  history.forEach((e) => {
-    const cid = e.doctor.clinicId ?? 'unknown';
-    if (!clinicMap.has(cid)) clinicMap.set(cid, { id: cid, name: e.doctor.clinic?.name ?? 'Clinic' });
-  });
-  const clinics        = Array.from(clinicMap.values());
-  const activeClinicId = selectedClinicId ?? clinics[0]?.id ?? null;
-
   // Upcoming alerts — real-time position from socket, across ALL clinics.
   const upcomingAlerts = liveEntries.filter((e) => {
     const pos = positionsMap[e.id];
@@ -183,15 +206,6 @@ export default function PatientPage() {
   const todayLocal     = new Date().toLocaleDateString('en-CA');
   const missedTodayAll = pastEntries.filter(
     (e) => e.status === 'MISSED' && e.serviceDay === todayLocal,
-  );
-
-  // Entries scoped to selected clinic tab.
-  const clinicLive   = liveEntries.filter((e) => (e.doctor.clinicId ?? 'unknown') === activeClinicId);
-  const clinicMissed = missedTodayAll.filter((e) => (e.doctor.clinicId ?? 'unknown') === activeClinicId);
-
-  // Live count per clinic (for dropdown badge).
-  const liveCountByClinic = Object.fromEntries(
-    clinics.map((c) => [c.id, liveEntries.filter((e) => (e.doctor.clinicId ?? 'unknown') === c.id).length]),
   );
 
   // Build notification list: use position-versioned IDs so a previously-dismissed
@@ -230,7 +244,7 @@ export default function PatientPage() {
       ))}
 
       <Header
-        title="My Queue"
+        title="Turnos"
         actions={
           <NotificationBell
             notifications={notifications}
@@ -255,23 +269,6 @@ export default function PatientPage() {
           </button>
         </div>
 
-        {/* Per-doctor missed for active clinic (kept inline — scoped, not global) */}
-        {clinicMissed.map((e) => (
-          <div key={e.id} className="rounded-xl bg-rose-50 border-2 border-rose-400 text-rose-800 text-center font-medium py-3 px-4 text-sm">
-            ⚠️ You were missed by <strong>{e.doctor.user.name}</strong>. Please reach out to the reception desk.
-          </div>
-        ))}
-
-        {/* ── Clinic selector ───────────────────────────────────────────────── */}
-        {clinics.length > 1 && (
-          <ClinicDropdown
-            clinics={clinics}
-            activeClinicId={activeClinicId}
-            liveCountByClinic={liveCountByClinic}
-            onChange={setSelectedClinicId}
-          />
-        )}
-
         {/* ── Active / History tab bar ──────────────────────────────────────── */}
         <div className="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
           {(['active', 'history'] as const).map((tab) => (
@@ -290,8 +287,25 @@ export default function PatientPage() {
         {/* ── Active tab ───────────────────────────────────────────────────── */}
         {activeTab === 'active' && (
           <>
+            {/* Persistent missed banners — shown until dismissed, survive card unmount */}
+            {missedBanners.map((entry) => (
+              <div key={entry.id} className="rounded-xl bg-rose-50 dark:bg-rose-900/30 border-2 border-rose-400 dark:border-rose-600 text-rose-800 dark:text-rose-300 px-4 py-3 flex items-start gap-3">
+                <span className="text-lg shrink-0 mt-0.5">⚠️</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm">You were missed — {entry.doctor.user.name}</div>
+                  <div className="text-xs mt-0.5 opacity-80">Please approach the reception desk to be re-added to the queue.</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMissedBanners((prev) => prev.filter((e) => e.id !== entry.id))}
+                  className="shrink-0 text-rose-400 hover:text-rose-600 text-lg leading-none"
+                  aria-label="Dismiss"
+                >×</button>
+              </div>
+            ))}
+
             {/* Empty state */}
-            {clinicLive.length === 0 && clinicMissed.length === 0 && (
+            {liveEntries.length === 0 && missedTodayAll.length === 0 && missedBanners.length === 0 && (
               <div className="card p-10 text-center">
                 <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-brand-50 to-brand-100 flex items-center justify-center text-3xl mb-4 shadow-inner">
                   🏥
@@ -303,8 +317,8 @@ export default function PatientPage() {
               </div>
             )}
 
-            {/* Live entries */}
-            {clinicLive.map((entry) => (
+            {/* All live entries — all clinics, scrollable */}
+            {liveEntries.map((entry) => (
               <ActiveEntry
                 key={entry.id}
                 entry={entry}
@@ -877,6 +891,12 @@ function ActiveEntry({
   const [initEtaAbs, setInitEtaAbs]         = useState<string | undefined>(undefined);
   const [initMovingAvg, setInitMovingAvg]   = useState<number | null>(null);
   const initFetched = useRef(false);
+  const [avgTick, setAvgTick] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setAvgTick((t) => t + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (initFetched.current) return;
@@ -904,20 +924,21 @@ function ActiveEntry({
     }
   }
 
-  const live = snapshot?.entries.find((e) => e.id === entry.id);
+  const live     = snapshot?.entries.find((e) => e.id === entry.id);
+  // Inline missed state: entry moved to missedEntries but can be rejoined.
+  // Notification is fired top-level in fetchHistory (more reliable — avoids race
+  // where ActiveEntry unmounts before this socket update arrives).
+  const isMissedInQueue = snapshot !== null && (snapshot.missedEntries?.some((e) => e.id === entry.id) ?? false);
 
+  // Detect permanent termination (completed/cancelled/skipped/permanently missed)
   useEffect(() => {
     if (completedFired.current) return;
+    if (isMissedInQueue) return; // still in missed queue — not terminal yet
     if (snapshot !== null && !live) {
       completedFired.current = true;
       api<{ entry: QueueEntry }>(`/queue/entry/${entry.id}`)
         .then(({ entry: updated }) => {
           setFinalStatus(updated.status);
-          if (updated.status === 'MISSED') {
-            sendBrowserNotif('⚠️ You were missed', `Please contact reception to be re-added — ${entry.doctor.user.name}`);
-            playChime(false);
-            vibrate(false);
-          }
           setTimeout(() => onCompleted({ ...entry, status: updated.status as HistoryItem['status'] }), 4000);
         })
         .catch(() => {
@@ -925,19 +946,34 @@ function ActiveEntry({
           setTimeout(() => onCompleted(entry), 4000);
         });
     }
-  }, [snapshot, live, entry, onCompleted]);
+  }, [snapshot, live, isMissedInQueue, entry, onCompleted]);
 
   // Socket data takes precedence once connected; fall back to HTTP-fetched initial values.
   const status    = live?.status ?? entry.status;
   const ahead     = live !== undefined ? (live.peopleAhead ?? null) : initAhead;
   const eta       = live?.etaMinutes ?? initEta;
   const etaAbs    = live?.etaAbsolute ?? initEtaAbs;
-  const movingAvg = live?.movingAvgMinutes ?? snapshot?.movingAvgMinutes ?? initMovingAvg;
+  const avgDisplay = useMemo(() => {
+    if (snapshot) return resolveAvgMinutes(snapshot);
+    if (initMovingAvg != null) {
+      const value = initMovingAvg;
+      return { value, label: formatAvgMinutes(value), live: true };
+    }
+    if (entry.doctor.avgConsultMinutes) {
+      const value = entry.doctor.avgConsultMinutes;
+      return { value, label: formatAvgMinutes(value), live: false };
+    }
+    return null;
+  }, [snapshot, initMovingAvg, entry.doctor.avgConsultMinutes, avgTick]);
+  const L = getLabels(entry.doctor.clinic?.businessType);
   const isInConsult = status === 'IN_CONSULTATION';
   const isNextUp    = status === 'WAITING' && ahead === 0;
   const isUrgent    = isInConsult || isNextUp;
-  const breakUntil  = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
-  const breakActive = snapshot?.doctor?.status === 'PAUSED' && breakUntil && breakUntil.getTime() > Date.now();
+  const breakUntil    = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
+  const breakActive   = snapshot?.doctor?.status === 'PAUSED' && breakUntil && breakUntil.getTime() > Date.now();
+  // Queue not started: queue hasn't had a single callNext today yet.
+  // Don't show after all are done — use hasStartedToday to distinguish "never started" from "all done".
+  const queueNotStarted = snapshot !== null && snapshot.hasStartedToday === false && status === 'WAITING';
 
   // Detect status / position transitions and fire browser notifications.
   useEffect(() => {
@@ -986,7 +1022,7 @@ function ActiveEntry({
         </div>
         {finalStatus === 'MISSED' && (
           <div className="text-sm text-rose-600 mt-2">
-            Please reach out to the reception desk if you need to be re-added.
+            Please approach the {getLabels(entry.doctor.clinic?.businessType).receptionDesk} to be re-added to the queue.
           </div>
         )}
         <div className="text-sm text-slate-500 mt-1">
@@ -1028,14 +1064,19 @@ function ActiveEntry({
             ⚡ You&apos;re next — please be ready outside
           </div>
         )}
-        {(finalStatus === 'MISSED' || status === 'MISSED') && (
+        {(isMissedInQueue || finalStatus === 'MISSED' || status === 'MISSED') && (
           <div className="rounded-xl bg-rose-50 dark:bg-rose-900/30 border-2 border-rose-400 dark:border-rose-600 text-rose-800 dark:text-rose-300 text-center font-medium py-3 px-4">
-            ⚠️ You were previously missed. Please reach out to the reception desk if you need to be re-added.
+            ⚠️ You were missed — please approach the {getLabels(entry.doctor.clinic?.businessType).receptionDesk} to be re-added
+          </div>
+        )}
+        {queueNotStarted && (
+          <div className="rounded-xl bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 text-center">
+            ⏳ Queue hasn&apos;t started yet — you&apos;re registered and will be called when the session begins
           </div>
         )}
         {breakActive && (
           <div className="rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 text-center">
-            ☕ Doctor is on a short break — returning at{' '}
+            ☕ Provider is on a short break — returning at{' '}
             <strong>{breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong>
             {snapshot?.doctor?.breakNote && ` · ${snapshot.doctor.breakNote}`}
           </div>
@@ -1064,7 +1105,7 @@ function ActiveEntry({
         </div>
 
         {/* Queue position */}
-        {status === 'WAITING' && ahead !== null && (
+        {status === 'WAITING' && ahead !== null && !queueNotStarted && (
           <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
             <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium">Your position in queue</div>
             <div className="text-3xl font-bold text-slate-800 dark:text-slate-100 mt-1 tabular-nums">
@@ -1074,7 +1115,7 @@ function ActiveEntry({
         )}
 
         {/* ETA + position */}
-        {status === 'WAITING' && !isNextUp && ahead !== null && (
+        {status === 'WAITING' && !isNextUp && ahead !== null && !queueNotStarted && (
           <>
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-slate-50 dark:bg-slate-800 ring-1 ring-slate-100 dark:ring-slate-700 p-3.5 text-center">
@@ -1091,8 +1132,12 @@ function ActiveEntry({
                     your turn ~{new Date(etaAbs).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 )}
-                {movingAvg != null && (
-                  <div className="text-[10px] text-slate-400 mt-0.5">avg {Math.round(movingAvg)} min/patient</div>
+                {avgDisplay && (
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    {avgDisplay.live
+                      ? `avg ${avgDisplay.label} ${L.perCustomer} (live)`
+                      : `avg ${avgDisplay.label} ${L.perCustomer} (default)`}
+                  </div>
                 )}
               </div>
             </div>

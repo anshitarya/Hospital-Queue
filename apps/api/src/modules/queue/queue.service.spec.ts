@@ -381,7 +381,7 @@ describe('QueueService — transitions notify the patient', () => {
     );
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.cancel(e.id, 'r-1');
+    await svc.cancel(e.id, { id: 'r-1', role: 'RECEPTIONIST' });
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { BRAND } from '@/lib/config';
 
-export const metadata = { title: 'Terms & Conditions · ClinicQueue' };
+export const metadata = { title: 'Terms & Conditions · Turnos' };
 
 const EFFECTIVE_DATE = '7 July 2026';
 
@@ -29,51 +29,52 @@ export default function TermsPage() {
 
         <Section title="1. Who These Terms Apply To">
           <p>
-            These Terms &amp; Conditions govern your use of ClinicQueue ("the Platform", "we", "us"), a
-            digital queue management service for clinics and OPDs in India. By creating an account or
-            using any part of the platform — whether as a clinic owner, receptionist, doctor, or patient
-            — you agree to these Terms.
+            These Terms &amp; Conditions govern your use of Turnos (&quot;the Platform&quot;, &quot;we&quot;, &quot;us&quot;),
+            a digital queue management service for businesses in India. By creating an account or
+            using any part of the platform — whether as a business owner, staff member, service provider,
+            or customer — you agree to these Terms.
           </p>
           <p>
-            If you are registering a clinic on behalf of an organisation, you confirm that you have the
+            If you are registering a business on behalf of an organisation, you confirm that you have the
             authority to bind that organisation to these Terms.
           </p>
         </Section>
 
-        <Section title="2. What ClinicQueue Does">
+        <Section title="2. What Turnos Does">
           <p>
-            ClinicQueue replaces paper token systems with a live, browser-based queue. Here is what
+            Turnos replaces paper token systems with a live, browser-based queue. Here is what
             the platform actually does:
           </p>
           <ul>
             <li>
-              <strong>Patients</strong> log in with their phone number (OTP-based) and can see their live
+              <strong>Customers</strong> log in with their phone number (OTP-based) and can see their live
               queue position, estimated wait time, and get notified via SMS or WhatsApp when their turn
               is near — without installing an app.
             </li>
             <li>
-              <strong>Receptionists</strong> register patients into a doctor&apos;s queue, manage walk-ins,
+              <strong>Front-desk staff</strong> register customers into a provider&apos;s queue, manage walk-ins,
               and get a live dashboard showing the full queue state.
             </li>
             <li>
-              <strong>Doctors</strong> can call the next patient, skip, mark as missed, pause their queue,
-              and view their own consultation history.
+              <strong>Service providers</strong> can call the next customer, skip, mark as missed, pause their queue,
+              and view their own service history.
             </li>
             <li>
-              <strong>Clinic Admins</strong> get an analytics dashboard — booking trends, doctor-wise
+              <strong>Business admins</strong> get an analytics dashboard — booking trends, provider-wise
               completion rates, and visit history with filters.
             </li>
           </ul>
           <p>
-            ClinicQueue is a queue management tool only. We do not store prescriptions, diagnoses,
-            lab reports, or any clinical medical records.
+            Turnos is a queue coordination tool only. We do not store prescriptions, diagnoses,
+            financial transaction records, or any other sensitive business records beyond what is
+            needed to run the queue.
           </p>
         </Section>
 
         <Section title="3. Accounts &amp; Access">
           <p>
-            Clinic staff accounts are created by invitation. Clinic admins invite doctors and staff;
-            patients create their own accounts using their phone number. You are responsible for:
+            Business staff accounts are created by invitation. Business admins invite providers and staff;
+            customers create their own accounts using their phone number. You are responsible for:
           </p>
           <ul>
             <li>Keeping your login credentials confidential</li>
@@ -86,51 +87,45 @@ export default function TermsPage() {
           </p>
         </Section>
 
-        <Section title="4. Subscription &amp; Billing">
+        <Section title="4. Business Access &amp; Fees">
           <p>
-            ClinicQueue is free for patients. Clinics subscribe to use the platform. The current plan
-            is <strong>₹899/month per clinic</strong>, which includes one clinic workspace, one doctor
-            queue, two staff seats, the patient-facing queue, real-time updates, SMS/WhatsApp
-            notifications, and the analytics dashboard.
+            Turnos is free for customers. Businesses pay to use the platform. Pricing, plan limits,
+            and billing terms are agreed when your business is onboarded — contact us to get started.
           </p>
           <p>
-            Additional staff seats are available at <strong>₹100/month per seat</strong>. All new clinic
-            registrations include a <strong>14-day free trial</strong> with no payment details required
-            upfront.
-          </p>
-          <p>
-            Billing is monthly. You may cancel at any time; access continues until the end of the
-            current billing period. We do not issue refunds for partial months.
+            Unless otherwise agreed in writing, access continues for the period you have paid for.
+            You may request cancellation at any time; we will confirm the effective end date.
+            Refunds, if any, are handled per your onboarding agreement.
           </p>
         </Section>
 
         <Section title="5. Fair Use">
           <p>You agree not to misuse the platform. Specifically, you must not:</p>
           <ul>
-            <li>Use ClinicQueue for anything other than legitimate clinic queue management</li>
-            <li>Add fake patients or generate fraudulent queue entries to manipulate analytics</li>
-            <li>Attempt to access another clinic&apos;s data, queues, or admin panel</li>
+            <li>Use Turnos for anything other than legitimate business queue management</li>
+            <li>Add fake customers or generate fraudulent queue entries to manipulate analytics</li>
+            <li>Attempt to access another business&apos;s data, queues, or admin panel</li>
             <li>Scrape, reverse-engineer, or copy any part of the platform</li>
             <li>Overload the system with automated requests</li>
           </ul>
         </Section>
 
-        <Section title="6. Patient Data Responsibility">
+        <Section title="6. Customer Data Responsibility">
           <p>
-            When your clinic uses ClinicQueue, you collect patient names and phone numbers to register
-            them in the queue. As the clinic owner, you are the data fiduciary for that data under the
+            When your business uses Turnos, you collect customer names and phone numbers to register
+            them in the queue. As the business owner, you are the data fiduciary for that data under the
             Digital Personal Data Protection Act, 2023. You are responsible for:
           </p>
           <ul>
-            <li>Informing patients that their name and phone number will be used for queue management</li>
+            <li>Informing customers that their name and phone number will be used for queue management</li>
             <li>Obtaining any consent required under applicable law</li>
-            <li>Not using ClinicQueue to collect more patient information than is necessary for queue management</li>
+            <li>Not using Turnos to collect more customer information than is necessary for queue management</li>
           </ul>
         </Section>
 
         <Section title="7. Uptime &amp; Reliability">
           <p>
-            We host ClinicQueue on Fly.io with a PostgreSQL database (Neon) and Redis for real-time
+            We host Turnos on Fly.io with a PostgreSQL database (Neon) and Redis for real-time
             queue state. We aim for high availability but do not guarantee 100% uptime. Scheduled
             maintenance will be communicated in advance where possible.
           </p>
@@ -142,8 +137,8 @@ export default function TermsPage() {
 
         <Section title="8. Limitation of Liability">
           <p>
-            ClinicQueue is a queue coordination tool. We are not liable for clinical outcomes, missed
-            patients due to connectivity issues, or disputes between clinic staff and patients. Our
+            Turnos is a queue coordination tool. We are not liable for service outcomes, missed
+            customers due to connectivity issues, or disputes between business staff and customers. Our
             total liability for any claim is capped at the fees you paid us in the 3 months preceding
             the claim.
           </p>
@@ -151,12 +146,12 @@ export default function TermsPage() {
 
         <Section title="9. Intellectual Property">
           <p>
-            Everything on the ClinicQueue platform — the software, design, branding, and dashboards —
+            Everything on the Turnos platform — the software, design, branding, and dashboards —
             belongs to us. You may not copy, resell, white-label, or build derivative products from it
             without written permission.
           </p>
           <p>
-            Your clinic&apos;s data (patient records, queue history, analytics) belongs to you. We process
+            Your business&apos;s data (customer queue entries, visit history, analytics) belongs to you. We process
             it on your behalf.
           </p>
         </Section>
@@ -164,7 +159,7 @@ export default function TermsPage() {
         <Section title="10. Changes to These Terms">
           <p>
             We may update these Terms as the product evolves. For significant changes, we will email
-            registered clinic admins at least 7 days in advance. Continued use after that date
+            registered business admins at least 7 days in advance. Continued use after that date
             constitutes acceptance of the updated Terms.
           </p>
         </Section>

@@ -65,11 +65,12 @@ export class QueueService {
     currentToken: number | null;
     missedEntries: Array<{ id: string; tokenNumber: number; patient: { id: string; name: string; phone?: string | null } | null; completedAt: string | null; missedCount: number }>;
     movingAvgMinutes: number | null;
+    hasStartedToday: boolean;
   }> {
     const serviceDay = todayKey();
 
-    // Run all four independent reads in parallel to cut snapshot latency ~4×.
-    const [doctor, rawEntries, missedRaw, movingAvgMinutes] = await Promise.all([
+    // Run all five independent reads in parallel to cut snapshot latency.
+    const [doctor, rawEntries, missedRaw, movingAvgMinutes, calledToday] = await Promise.all([
       this.prisma.doctor.findUnique({
         where: { id: doctorId },
         include: { user: true, department: true, clinic: true },
@@ -88,7 +89,8 @@ export class QueueService {
         include: { patient: { select: { id: true, name: true, phone: true } } },
         orderBy: { completedAt: 'desc' },
       }),
-      this.eta.getMovingAvg(doctorId),
+      this.eta.getMovingAvg(doctorId, { skipCache: true, serviceDay }),
+      this.prisma.queueEntry.count({ where: { doctorId, serviceDay, calledAt: { not: null } } }),
     ]);
 
     if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
@@ -110,15 +112,30 @@ export class QueueService {
       ? Math.max(0, (doctor.breakUntil.getTime() - Date.now()) / 60_000)
       : 0;
 
+    // Use in-progress elapsed for ETA when no completed history yet.
+    let effectiveAvg = movingAvgMinutes;
+    if (effectiveAvg === null) {
+      const inProgress = entries.find((e) => e.status === EntryStatus.IN_CONSULTATION);
+      effectiveAvg = this.eta.inProgressAvg(inProgress);
+    }
+
     const enriched = this.eta.enrich(doctor, entries, {
-      movingAvgMinutes,
+      movingAvgMinutes: effectiveAvg,
       breakRemainingMinutes,
     });
 
     const current =
       entries.find((e) => e.status === EntryStatus.IN_CONSULTATION)?.tokenNumber ?? null;
 
-    return { doctor, entries: enriched, currentToken: current, missedEntries, movingAvgMinutes };
+    return {
+      doctor,
+      entries: enriched,
+      currentToken: current,
+      missedEntries,
+      // Only completed-history average; client derives in-progress estimate for display.
+      movingAvgMinutes,
+      hasStartedToday: calledToday > 0,
+    };
   }
 
   async getEntry(entryId: string) {
@@ -147,7 +164,8 @@ export class QueueService {
 
   // ---------- write paths ----------
 
-  async joinByReception(dto: JoinQueueDto, createdById?: string) {
+  async joinByReception(dto: JoinQueueDto, createdById?: string, callerClinicId?: string | null) {
+    await this.verifyDoctorBelongsToClinic(dto.doctorId, callerClinicId);
     if (dto.idempotencyKey) {
       const cached = await this.redis.client.get(`idem:${dto.idempotencyKey}`);
       if (cached) return this.getEntry(cached);
@@ -299,7 +317,8 @@ export class QueueService {
 
   // ---------- transitions ----------
 
-  async callNext(doctorId: string, byUserId?: string) {
+  async callNext(doctorId: string, byUserId?: string, callerClinicId?: string | null) {
+    await this.verifyDoctorBelongsToClinic(doctorId, callerClinicId);
     const serviceDay = todayKey();
 
     // Fetch all three needed facts in parallel — skip missed/movingAvg (not needed here).
@@ -388,8 +407,13 @@ export class QueueService {
     return this.transition(entryId, EntryStatus.SKIPPED, byUserId, { completedAt: new Date() });
   }
 
-  async cancel(entryId: string, byUserId?: string) {
-    return this.transition(entryId, EntryStatus.CANCELLED, byUserId, { completedAt: new Date() });
+  async cancel(entryId: string, caller: { id: string; role: string }) {
+    if (caller.role === Role.PATIENT) {
+      const entry = await this.prisma.queueEntry.findUnique({ where: { id: entryId }, select: { patientId: true } });
+      if (!entry) throw new NotFoundException('Entry not found');
+      if (entry.patientId !== caller.id) throw new ForbiddenException('Cannot cancel another patient\'s entry');
+    }
+    return this.transition(entryId, EntryStatus.CANCELLED, caller.id, { completedAt: new Date() });
   }
 
   /** Mark a patient as missed (called but didn't appear). Feature 2. */
@@ -690,8 +714,11 @@ export class QueueService {
     return raw.map((e) => {
       const waitMs =
         e.calledAt && e.joinedAt ? e.calledAt.getTime() - e.joinedAt.getTime() : null;
+      const serviceStart = e.startedAt ?? e.calledAt;
       const consultMs =
-        e.completedAt && e.calledAt ? e.completedAt.getTime() - e.calledAt.getTime() : null;
+        e.status === EntryStatus.COMPLETED && e.completedAt && serviceStart
+          ? e.completedAt.getTime() - serviceStart.getTime()
+          : null;
 
       return {
         id: e.id,
@@ -720,7 +747,8 @@ export class QueueService {
 
   // ---------- bulk operations ----------
 
-  async clearQueue(doctorId: string, options: { includeMissed?: boolean }, byUserId?: string) {
+  async clearQueue(doctorId: string, options: { includeMissed?: boolean }, byUserId?: string, callerClinicId?: string | null) {
+    await this.verifyDoctorBelongsToClinic(doctorId, callerClinicId);
     const serviceDay = todayKey();
     const statuses: EntryStatus[] = [EntryStatus.WAITING];
     if (options.includeMissed) statuses.push(EntryStatus.MISSED);
@@ -834,10 +862,9 @@ export class QueueService {
       include: { patient: true },
     });
 
-    // When a consultation completes, invalidate the cached ETA average so the
-    // next snapshot picks up the fresh data point immediately.
+    // Invalidate before broadcast so the fresh snapshot never reads a stale cache.
     if (next === EntryStatus.COMPLETED) {
-      void this.eta.invalidateCache(entry.doctorId);
+      await this.eta.invalidateCache(entry.doctorId, entry.serviceDay);
     }
 
     // Audit log must complete before returning; broadcast is fire-and-forget.
@@ -875,6 +902,17 @@ export class QueueService {
       const doctorName = doctor?.user?.name ?? 'the doctor';
       await this.notifications.notifyJoined(phone, `#${tokenToCode(tokenNumber)}`, doctorName);
     } catch { /* never let notification errors surface to callers */ }
+  }
+
+  /** Throws ForbiddenException if the doctor does not belong to the caller's clinic.
+   *  ADMINs have no clinicId (null) and are always allowed to operate cross-clinic.
+   */
+  private async verifyDoctorBelongsToClinic(doctorId: string, callerClinicId: string | null | undefined) {
+    if (!callerClinicId) return;
+    const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId }, select: { clinicId: true } });
+    if (!doctor || doctor.clinicId !== callerClinicId) {
+      throw new ForbiddenException('Not authorized: doctor belongs to a different clinic');
+    }
   }
 
   private async broadcast(doctorId: string, eventType: string, payload: unknown) {

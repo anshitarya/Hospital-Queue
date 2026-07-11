@@ -57,7 +57,7 @@ export class NotificationsService {
       phone,
       'queue_joined',
       { tokenCode, doctorName },
-      `You have joined the queue for ${doctorName}. Your token: ${tokenCode}. Track your position live at https://clinicqueue.fly.dev`,
+      `You have joined the queue for ${doctorName}. Your token: ${tokenCode}. Track your position live at https://turnos.fly.dev`,
     );
   }
 

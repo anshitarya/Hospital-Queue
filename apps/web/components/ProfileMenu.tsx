@@ -42,7 +42,9 @@ export function ProfileMenu() {
     .map((n) => n[0]?.toUpperCase() ?? '')
     .join('') || 'U';
 
-  const roleLabel = user.role.charAt(0) + user.role.slice(1).toLowerCase();
+  const roleLabel =
+    user.role === 'PATIENT' ? '—' :
+    user.role.charAt(0) + user.role.slice(1).toLowerCase();
   const roleColor =
     user.role === 'ADMIN' ? 'from-purple-500 to-purple-700' :
     user.role === 'DOCTOR' ? 'from-sky-500 to-sky-700' :
@@ -103,7 +105,7 @@ export function ProfileMenu() {
             </MenuItem>
             {user.role === 'ADMIN' && (
               <MenuItem onClick={() => { setOpen(false); router.push('/admin'); }} icon={<Icon.Settings className="h-4 w-4" />}>
-                Manage clinics
+                Manage businesses
               </MenuItem>
             )}
           </div>

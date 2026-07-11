@@ -1,25 +1,22 @@
 # Fly.io config for the Next.js web app.
-# App name must be globally unique — change "hq-web" to something like "yourname-hq-web".
-app    = "clinicqueue"
+app    = "turnos"
 region = "bom"
 
 [build]
   dockerfile = "Dockerfile.prod"
 
-  # NEXT_PUBLIC_* vars are baked into the browser bundle at build time.
-  # These must match the API app name above (replace "hq-api" if you renamed it).
   [build.args]
-    NEXT_PUBLIC_API_URL    = "https://queue-hq-api.fly.dev"
-    NEXT_PUBLIC_SOCKET_URL = "https://queue-hq-api.fly.dev"
+    NEXT_PUBLIC_API_URL    = "https://turnos-api-hq.fly.dev"
+    NEXT_PUBLIC_SOCKET_URL = "https://turnos-api-hq.fly.dev"
 
 [env]
   PORT               = "3000"
   NODE_ENV           = "production"
   # false = /admin accessible from any domain (current state — no domain yet)
   # true  = /admin only accessible from SUPER_ADMIN_HOST (after buying domain)
-  # Flip via: fly secrets set SUPER_ADMIN_LOCKED=true -a clinicqueue
+  # Flip via: fly secrets set SUPER_ADMIN_LOCKED=true -a turnos
   SUPER_ADMIN_LOCKED = "false"
-  SUPER_ADMIN_HOST   = "admin.theclinicqueue.com"
+  SUPER_ADMIN_HOST   = "admin.turnos.fly.dev"
 
 [http_service]
   internal_port        = 3000

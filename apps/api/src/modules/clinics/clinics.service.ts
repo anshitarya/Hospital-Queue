@@ -354,6 +354,53 @@ export class ClinicsService {
     return this.prisma.department.findMany({ orderBy: { name: 'asc' } });
   }
 
+  async findOrCreateDepartment(name: string) {
+    const trimmed = name.trim();
+    const existing = await this.prisma.department.findFirst({ where: { name: { equals: trimmed, mode: 'insensitive' } } });
+    if (existing) return existing;
+    return this.prisma.department.create({ data: { name: trimmed } });
+  }
+
+  async lookupPatient(clinicId: string, phone: string) {
+    if (!phone) return null;
+    const patient = await this.prisma.user.findUnique({ where: { phone } });
+    if (!patient) return null;
+
+    const where = { patientId: patient.id, doctor: { clinicId }, status: EntryStatus.COMPLETED };
+    const [totalVisits, entries] = await Promise.all([
+      this.prisma.queueEntry.count({ where }),
+      // Fetch enough to cover unique dates and providers across all officers in the clinic
+      this.prisma.queueEntry.findMany({
+        where,
+        orderBy: { joinedAt: 'desc' },
+        take: 50,
+        select: { serviceDay: true, doctor: { include: { user: { select: { name: true } } } } },
+      }),
+    ]);
+
+    if (totalVisits === 0) return null;
+
+    // Group visits by provider
+    const byProvider = new Map<string, { name: string; count: number; dates: string[] }>();
+    for (const e of entries) {
+      const provName = e.doctor?.user?.name;
+      if (!provName) continue;
+      if (!byProvider.has(provName)) byProvider.set(provName, { name: provName, count: 0, dates: [] });
+      const rec = byProvider.get(provName)!;
+      rec.count++;
+      const day = e.serviceDay;
+      if (day && !rec.dates.includes(day)) rec.dates.push(day);
+    }
+    // count in byProvider only covers the last 50 entries; use totalVisits-proportional counts for display
+    const providers = [...byProvider.values()].map((p) => ({ name: p.name, count: p.count, dates: p.dates.slice(0, 10) }));
+
+    return {
+      name: patient.name,
+      totalVisits,
+      providers,
+    };
+  }
+
   /**
    * Clinic-level dashboard stats: today's totals, per-doctor queue state,
    * and 7-day traffic. Used by the clinic admin portal.
@@ -364,7 +411,7 @@ export class ClinicsService {
     const [clinic, doctors] = await Promise.all([
       this.prisma.clinic.findUnique({
         where: { id: clinicId },
-        select: { id: true, name: true, address: true },
+        select: { id: true, name: true, address: true, businessType: true },
       }),
       this.prisma.doctor.findMany({
         where: { clinicId },
@@ -751,7 +798,7 @@ export class ClinicsService {
           patient: { select: { name: true, phone: true } },
           doctor: { include: { user: { select: { name: true } }, department: { select: { name: true } } } },
         },
-        orderBy: [{ serviceDay: 'desc' }, { tokenNumber: 'desc' }],
+        orderBy: [{ serviceDay: 'asc' }, { tokenNumber: 'asc' }],
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -769,20 +816,44 @@ export class ClinicsService {
     summary.total = summary.completed + summary.missed + summary.cancelled + summary.skipped;
 
     return {
-      entries: entries.map((e) => ({
-        id: e.id,
-        tokenNumber: e.tokenNumber,
-        status: e.status,
-        serviceDay: e.serviceDay,
-        completedAt: e.completedAt?.toISOString() ?? null,
-        patient: { name: e.patient.name, phone: e.patient.phone ?? '' },
-        doctor: { name: e.doctor.user.name, department: e.doctor.department?.name ?? '—' },
-      })),
+      entries: entries.map((e) => {
+        const serviceStart = e.startedAt ?? e.calledAt;
+        const consultMs =
+          e.status === EntryStatus.COMPLETED && e.completedAt && serviceStart
+            ? e.completedAt.getTime() - serviceStart.getTime()
+            : null;
+
+        return {
+          id: e.id,
+          tokenNumber: e.tokenNumber,
+          status: e.status,
+          serviceDay: e.serviceDay,
+          joinedAt: e.joinedAt.toISOString(),
+          completedAt: e.completedAt?.toISOString() ?? null,
+          consultMinutes: consultMs !== null ? Math.round(consultMs / 60_000) : null,
+          patient: { name: e.patient.name, phone: e.patient.phone ?? '' },
+          doctor: { name: e.doctor.user.name, department: e.doctor.department?.name ?? '—' },
+        };
+      }),
       total,
       page,
       pages: Math.ceil(total / limit),
       summary,
     };
+  }
+
+  async deleteClinicHistory(clinicId: string, from: string, to: string) {
+    const doctors = await this.prisma.doctor.findMany({ where: { clinicId }, select: { id: true } });
+    const doctorIds = doctors.map((d) => d.id);
+    if (!doctorIds.length) return { deleted: 0 };
+    const result = await this.prisma.queueEntry.deleteMany({
+      where: {
+        doctorId: { in: doctorIds },
+        serviceDay: { gte: from, lte: to },
+        status: { in: [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED] },
+      },
+    });
+    return { deleted: result.count };
   }
 
   async updateStaffEmail(clinicId: string, userId: string, email: string) {

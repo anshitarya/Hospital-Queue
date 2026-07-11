@@ -48,10 +48,23 @@ export class ClinicsController {
     return this.clinics.getMyClinic(user.clinicId);
   }
 
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/patient-lookup')
+  lookupPatient(@CurrentUser() user: AuthUser, @Query('phone') phone: string) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.lookupPatient(user.clinicId, phone);
+  }
+
   @Roles(Role.RECEPTIONIST, Role.DOCTOR, Role.ADMIN)
   @Get('my/departments')
   listDepartments() {
     return this.clinics.listDepartments();
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.DOCTOR, Role.ADMIN)
+  @Post('my/departments')
+  findOrCreateDepartment(@Body('name') name: string) {
+    return this.clinics.findOrCreateDepartment(name);
   }
 
   @Roles(Role.RECEPTIONIST, Role.ADMIN)
@@ -113,6 +126,18 @@ export class ClinicsController {
       limit ? Math.min(500, parseInt(limit, 10)) : 50,
       doctorId,
     );
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Delete('my/history')
+  deleteClinicHistory(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    if (!from || !to) throw new ForbiddenException('from and to dates are required');
+    return this.clinics.deleteClinicHistory(user.clinicId, from, to);
   }
 
   /**

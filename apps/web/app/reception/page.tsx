@@ -1,7 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { ProfileMenu } from '@/components/ProfileMenu';
+import { DarkModeToggle } from '@/components/DarkModeToggle';
+import { getLabels, DEPARTMENT_PRESETS, type BusinessType } from '@/lib/labels';
+import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { PageLoader } from '@/components/PageLoader';
 import { QueueManager } from '@/components/QueueManager';
@@ -9,6 +14,7 @@ import { Toast, type ToastMessage } from '@/components/Toast';
 import { DepartmentPicker, type DepartmentOption } from '@/components/DepartmentPicker';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
+import { TurnosIcon } from '@/components/Icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,17 +37,102 @@ interface DoctorAnalyticsRow {
 }
 interface HistoryEntry {
   id: string; tokenNumber: number; status: string;
-  serviceDay: string; completedAt: string | null;
+  serviceDay: string; joinedAt: string; completedAt: string | null;
+  consultMinutes: number | null;
   patient: { name: string; phone: string };
   doctor: { name: string; department: string };
 }
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(2);
+  return `${dd}/${mm}/${yy}`;
+}
+
+function fmtTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function fmtDuration(mins: number | null | undefined): string {
+  if (mins == null) return '—';
+  if (mins < 1) return '<1 min';
+  return `${mins} min`;
+}
+
+const HISTORY_STATUS_COLORS: Record<string, string> = {
+  COMPLETED: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30',
+  MISSED:    'text-amber-700 bg-amber-50 dark:bg-amber-900/30',
+  CANCELLED: 'text-rose-700 bg-rose-50 dark:bg-rose-900/30',
+  SKIPPED:   'text-slate-600 bg-slate-100 dark:bg-slate-700',
+};
+
+function HistoryEntriesTable({
+  entries,
+  labels: L,
+  showProvider = true,
+}: {
+  entries: HistoryEntry[];
+  labels: ReturnType<typeof getLabels>;
+  showProvider?: boolean;
+}) {
+  const columns = [
+    'Token', 'Date', 'Time', L.customer, 'Phone',
+    ...(showProvider ? [L.provider] : []),
+    'Time taken', 'Status',
+  ];
+
+  if (entries.length === 0) {
+    return (
+      <div className="py-12 text-center text-slate-400 text-sm">No visit records.</div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 dark:bg-slate-700/40">
+          <tr>
+            {columns.map((h) => (
+              <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {entries.map((e) => (
+            <tr key={e.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
+              <td className="px-4 py-3 text-slate-500 font-mono text-xs">#{e.tokenNumber}</td>
+              <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{fmtDate(e.serviceDay)}</td>
+              <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{fmtTime(e.joinedAt)}</td>
+              <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">{e.patient.name}</td>
+              <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap font-mono">{e.patient.phone}</td>
+              {showProvider && (
+                <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{e.doctor.name}</td>
+              )}
+              <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{fmtDuration(e.consultMinutes)}</td>
+              <td className="px-4 py-3">
+                <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${HISTORY_STATUS_COLORS[e.status] ?? 'text-slate-500 bg-slate-100'}`}>
+                  {e.status.charAt(0) + e.status.slice(1).toLowerCase()}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface HistorySummary { completed: number; missed: number; cancelled: number; skipped: number; total: number }
 interface HistoryResponse {
   entries: HistoryEntry[]; total: number; page: number; pages: number;
   summary: HistorySummary;
 }
 interface ClinicDashboard {
-  clinic: { id: string; name: string; address?: string };
+  clinic: { id: string; name: string; address?: string; businessType?: string | null };
   today: { waiting: number; inConsultation: number; completed: number; skipped: number; cancelled: number };
   doctors: DashboardDoctor[];
   weeklyTraffic: TrafficPoint[];
@@ -72,16 +163,17 @@ type DocPeriod     = '7d' | '30d' | '3m' | '12m' | 'today'  | 'custom';
 
 export default function ReceptionPage() {
   const { ready } = useRequireRole(['RECEPTIONIST', 'ADMIN']);
+  const { user } = useAuth();
 
   // ── Tab — persisted in localStorage so refresh keeps the user here ──
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   useEffect(() => {
-    const saved = localStorage.getItem('cq_reception_tab');
+    const saved = localStorage.getItem('turnos_reception_tab');
     if (saved && VALID_TABS.includes(saved as Tab)) setActiveTab(saved as Tab);
   }, []);
   const handleTabChange = (tab: Tab) => {
     setActiveTab(tab);
-    localStorage.setItem('cq_reception_tab', tab);
+    localStorage.setItem('turnos_reception_tab', tab);
   };
 
   const [data, setData]                         = useState<ClinicDashboard | null>(null);
@@ -175,9 +267,19 @@ export default function ReceptionPage() {
 
   const loadDepartments = useCallback(async () => {
     if (departments.length > 0) return;
-    try { setDepartments(await api<DepartmentOption[]>('/clinics/my/departments')); }
-    catch { /* ignore */ }
-  }, [departments.length]);
+    try {
+      const btype = (data?.clinic?.businessType ?? 'CLINIC') as BusinessType;
+      const presets = DEPARTMENT_PRESETS[btype] ?? [];
+      if (btype !== 'CLINIC' && presets.length > 0) {
+        // Non-clinic: show only business-specific presets, not medical DB ones
+        setDepartments(presets.map((p) => ({ id: `__new__${p}`, name: p })));
+      } else {
+        // CLINIC: fetch from DB (seeded medical departments)
+        const fromDb = await api<DepartmentOption[]>('/clinics/my/departments');
+        setDepartments(fromDb.length > 0 ? fromDb : HOSPITAL_DEPARTMENTS.map((n) => ({ id: `__new__${n}`, name: n })));
+      }
+    } catch { /* ignore */ }
+  }, [departments.length, data?.clinic?.businessType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Effects ───────────────────────────────────────────────────────────────
 
@@ -226,6 +328,16 @@ export default function ReceptionPage() {
     }
     setDocBusy(true);
     try {
+      let deptId = docDeptId;
+      if (deptId.startsWith('__new__')) {
+        const deptName = deptId.replace('__new__', '');
+        const created = await api<{ id: string; name: string }>('/clinics/my/departments', {
+          method: 'POST',
+          body: { name: deptName },
+        });
+        deptId = created.id;
+        setDepartments((prev) => prev.map((d) => d.id === docDeptId ? { ...d, id: created.id } : d));
+      }
       const result = await api<{
         doctor: { id: string; user: { name: string; email: string | null; phone: string | null } };
         tempPassword: string;
@@ -235,7 +347,7 @@ export default function ReceptionPage() {
           name: docName,
           email: docEmail || undefined,
           phone: docPhoneResult.e164 || undefined,
-          departmentId: docDeptId,
+          departmentId: deptId,
           avgConsultMinutes: docAvg,
         },
       });
@@ -257,6 +369,8 @@ export default function ReceptionPage() {
   }
 
   if (!ready || loading) return <PageLoader label="Loading…" />;
+
+  const L = getLabels(data?.clinic?.businessType);
 
   const today   = data?.today ?? { waiting: 0, inConsultation: 0, completed: 0, skipped: 0, cancelled: 0 };
   const doctors = data?.doctors ?? [];
@@ -280,8 +394,8 @@ export default function ReceptionPage() {
       {/* ── Sidebar ── */}
       <aside className="w-16 sm:w-56 flex-shrink-0 bg-slate-900 dark:bg-slate-950 flex flex-col">
         <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700/60">
-          <div className="w-8 h-8 bg-teal-500 rounded-lg flex items-center justify-center font-bold text-white text-sm shrink-0">CQ</div>
-          <span className="hidden sm:block font-semibold text-white text-sm leading-tight">{data?.clinic?.name ?? 'Clinic Queue'}</span>
+          <TurnosIcon className="w-8 h-8 shrink-0" />
+          <span className="hidden sm:block font-semibold text-white text-sm leading-tight">{data?.clinic?.name ?? 'Turnos'}</span>
         </div>
         <nav className="flex-1 py-4 space-y-0.5 px-2">
           {NAV.map(({ label, tab, icon: Icon }) => (
@@ -293,7 +407,7 @@ export default function ReceptionPage() {
               <span className="hidden sm:block">{label}</span>
             </button>
           ))}
-          {[{ label: 'Patients', icon: HeartIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
+          {[{ label: L.customerPlural, icon: HeartIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
             <button key={label} type="button" disabled className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 cursor-not-allowed">
               <Icon className="w-4 h-4 shrink-0" />
               <span className="hidden sm:block">{label}</span>
@@ -302,10 +416,7 @@ export default function ReceptionPage() {
           ))}
         </nav>
         <div className="p-3 border-t border-slate-700/60">
-          <a href="/" className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-slate-300 transition-colors">
-            <ArrowLeftIcon className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:block">Back to home</span>
-          </a>
+          <div className="px-3 py-2 text-xs text-slate-500 truncate hidden sm:block">{user?.name}</div>
         </div>
       </aside>
 
@@ -316,11 +427,15 @@ export default function ReceptionPage() {
             <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{tabLabel[activeTab]}</h1>
             <p className="text-xs text-slate-500 mt-0.5">{todayDate}</p>
           </div>
-          <button type="button" onClick={refresh} disabled={refreshing}
-            className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium disabled:opacity-50">
-            <RefreshIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:block">Refresh</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={refresh} disabled={refreshing}
+              className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium disabled:opacity-50">
+              <RefreshIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:block">Refresh</span>
+            </button>
+            <DarkModeToggle />
+            <ProfileMenu />
+          </div>
         </div>
 
         {/* ── Dashboard ── */}
@@ -328,7 +443,7 @@ export default function ReceptionPage() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <StatCard label="Waiting"         value={today.waiting}        color="teal"  />
-              <StatCard label="In Consultation"  value={today.inConsultation} color="blue"  />
+              <StatCard label={L.inService}      value={today.inConsultation} color="blue"  />
               <StatCard label="Completed"        value={today.completed}      color="green" />
               <StatCard label="Skipped"          value={today.skipped}        color="amber" />
               <StatCard label="Cancelled"        value={today.cancelled}      color="red"   />
@@ -385,8 +500,8 @@ export default function ReceptionPage() {
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div>
-                  <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Breakdown by Doctor</h2>
-                  <p className="text-xs text-slate-400 mt-0.5">Completed / Missed / Cancelled / Skipped per doctor</p>
+                  <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Breakdown by {L.provider}</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">Completed / Missed / Cancelled / Skipped per {L.provider.toLowerCase()}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
@@ -438,6 +553,8 @@ export default function ReceptionPage() {
             data={history} trendPoints={historyAnalytics?.points ?? []}
             onDateChange={(f, t) => { setHistoryFrom(f); setHistoryTo(t); setHistoryPage(1); }}
             onPageChange={setHistoryPage}
+            onRefresh={() => { void loadHistory(historyFrom, historyTo, historyPage); void loadHistoryAnalytics(historyFrom, historyTo); }}
+            labels={L}
           />
         )}
 
@@ -449,7 +566,7 @@ export default function ReceptionPage() {
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
               <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-4 flex items-center gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-md bg-teal-100 text-teal-700 text-xs font-bold">+</span>
-                Add doctor
+                Add {L.provider.toLowerCase()}
               </h2>
               <form onSubmit={addDoctor} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-xl">
                 <input className="input sm:col-span-2" placeholder="Full name" value={docName} onChange={(e) => setDocName(e.target.value)} required />
@@ -460,23 +577,23 @@ export default function ReceptionPage() {
                   <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
                 </div>
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                  <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">Avg consult time:</span>
+                  <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">Avg {L.service.toLowerCase()} time:</span>
                   <input className="input flex-1" type="number" min={1} max={120} value={docAvg}
                     onChange={(e) => setDocAvg(Number(e.target.value))} required />
-                  <span className="text-xs text-slate-400 shrink-0">min/patient</span>
+                  <span className="text-xs text-slate-400 shrink-0">{L.perCustomer}</span>
                 </label>
                 <button type="submit" className="btn-primary sm:col-span-2" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
-                  {docBusy ? 'Adding…' : 'Add doctor'}
+                  {docBusy ? 'Adding…' : `Add ${L.provider.toLowerCase()}`}
                 </button>
               </form>
             </div>
 
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
               <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-4">
-                Doctors <span className="text-slate-400 font-normal">({doctors.length})</span>
+                {L.providerPlural} <span className="text-slate-400 font-normal">({doctors.length})</span>
               </h2>
               {doctors.length === 0 ? (
-                <p className="text-slate-400 text-sm">No doctors yet.</p>
+                <p className="text-slate-400 text-sm">No {L.providerPlural.toLowerCase()} yet.</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {doctors.map((doc) => (
@@ -502,7 +619,7 @@ export default function ReceptionPage() {
                           <p className="text-teal-700 dark:text-teal-300 font-bold">{doc.waiting}</p><p className="text-slate-400">Waiting</p>
                         </div>
                         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
-                          <p className="text-blue-700 dark:text-blue-300 font-bold">{doc.inConsultation ? '1' : '0'}</p><p className="text-slate-400">In consult</p>
+                          <p className="text-blue-700 dark:text-blue-300 font-bold">{doc.inConsultation ? '1' : '0'}</p><p className="text-slate-400">In {L.service.toLowerCase()}</p>
                         </div>
                       </div>
                     </div>
@@ -517,6 +634,53 @@ export default function ReceptionPage() {
   );
 }
 
+// ─── Print helper ─────────────────────────────────────────────────────────────
+
+function printHistory(entries: HistoryEntry[], L: ReturnType<typeof getLabels>, from: string, to: string) {
+  const rows = entries.map((e) => `
+    <tr>
+      <td>#${e.tokenNumber}</td>
+      <td>${e.serviceDay}</td>
+      <td>${e.patient.name}</td>
+      <td>${e.patient.phone}</td>
+      <td>${e.doctor.name}</td>
+      <td>${e.doctor.department}</td>
+      <td>${fmtDuration(e.consultMinutes)}</td>
+      <td>${e.status.charAt(0) + e.status.slice(1).toLowerCase()}</td>
+    </tr>`).join('');
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <title>Visit History ${from} to ${to}</title>
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 12px; color: #1e293b; margin: 24px; }
+    h2 { font-size: 16px; margin-bottom: 4px; }
+    p  { color: #64748b; margin-bottom: 16px; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; padding: 6px 10px; background: #f1f5f9; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; }
+    tr:last-child td { border-bottom: none; }
+    @media print { body { margin: 0; } }
+  </style>
+</head>
+<body>
+  <h2>Visit History</h2>
+  <p>${from === to ? from : `${from} → ${to}`} · ${entries.length} record${entries.length !== 1 ? 's' : ''}</p>
+  <table>
+    <thead><tr>
+      <th>Token</th><th>Date</th><th>${L.customer}</th><th>Phone</th><th>${L.provider}</th><th>Time taken</th><th>Status</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <script>window.onload = function() { window.print(); }<\/script>
+</body>
+</html>`);
+  win.document.close();
+}
+
 // ─── History Tab (redesigned) ─────────────────────────────────────────────────
 
 type HistorySubTab = 'entries' | 'by-doctor';
@@ -524,18 +688,22 @@ type StatusFilter  = 'ALL' | 'COMPLETED' | 'MISSED' | 'CANCELLED' | 'SKIPPED';
 
 function HistoryTab({
   from, to, page, data, trendPoints,
-  onDateChange, onPageChange,
+  onDateChange, onPageChange, onRefresh, labels: L,
 }: {
   from: string; to: string; page: number;
   data: HistoryResponse | null;
   trendPoints: AnalyticsPoint[];
   onDateChange: (f: string, t: string) => void;
   onPageChange: (p: number) => void;
+  onRefresh: () => void;
+  labels: ReturnType<typeof getLabels>;
 }) {
   const [subTab, setSubTab]           = useState<HistorySubTab>('entries');
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
-  const [doctorFilter, setDoctorFilter] = useState('ALL');
+  const [selectedOfficer, setSelectedOfficer] = useState<string>('ALL');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const summary = data?.summary ?? { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 };
 
@@ -546,13 +714,23 @@ function HistoryTab({
     { label: '3 mo',  from: daysAgo(89), to: TODAY },
   ];
 
-  // Build doctor list for filter dropdown
-  const allDoctors = Array.from(new Map((data?.entries ?? []).map((e) => [e.doctor.name, e.doctor.name])).entries()).map(([v]) => v).sort();
+  // Build doctor list for officer pills
+  const officerGroups = useMemo(
+    () => buildOfficerGroups(data?.entries ?? []),
+    [data?.entries],
+  );
+
+  useEffect(() => {
+    if (selectedOfficer === 'ALL') return;
+    if (!officerGroups.some((g) => g.name === selectedOfficer)) {
+      setSelectedOfficer('ALL');
+    }
+  }, [officerGroups, selectedOfficer]);
 
   // Client-side filtering
   const filtered = (data?.entries ?? []).filter((e) => {
     if (statusFilter !== 'ALL' && e.status !== statusFilter) return false;
-    if (doctorFilter !== 'ALL' && e.doctor.name !== doctorFilter) return false;
+    if (selectedOfficer !== 'ALL' && e.doctor.name !== selectedOfficer) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!e.patient.name.toLowerCase().includes(q) && !e.doctor.name.toLowerCase().includes(q) && !e.doctor.department.toLowerCase().includes(q)) return false;
@@ -560,12 +738,12 @@ function HistoryTab({
     return true;
   });
 
-  const statusColors: Record<string, string> = {
-    COMPLETED: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30',
-    MISSED:    'text-amber-700 bg-amber-50 dark:bg-amber-900/30',
-    CANCELLED: 'text-rose-700 bg-rose-50 dark:bg-rose-900/30',
-    SKIPPED:   'text-slate-600 bg-slate-100 dark:bg-slate-700',
-  };
+  const filteredGroups = useMemo(() => {
+    const groups = buildOfficerGroups(filtered);
+    return selectedOfficer === 'ALL'
+      ? groups
+      : groups.filter((g) => g.name === selectedOfficer);
+  }, [filtered, selectedOfficer]);
 
   const statusBtns: { value: StatusFilter; label: string; color: string }[] = [
     { value: 'ALL',       label: 'All',       color: 'bg-slate-700 text-white' },
@@ -575,7 +753,7 @@ function HistoryTab({
     { value: 'SKIPPED',   label: 'Skipped',   color: 'bg-slate-500 text-white' },
   ];
 
-  const hasFilters = search || statusFilter !== 'ALL' || doctorFilter !== 'ALL';
+  const hasFilters = search || statusFilter !== 'ALL' || selectedOfficer !== 'ALL';
 
   return (
     <div className="p-6 space-y-5">
@@ -607,19 +785,19 @@ function HistoryTab({
             <div className="relative flex-1">
               <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <input
-                type="text" placeholder="Search patient, doctor…" value={search}
+                type="text" placeholder={`Search ${L.customer.toLowerCase()}, ${L.provider.toLowerCase()}…`} value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-7 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-teal-500"
               />
             </div>
             {hasFilters && (
-              <button type="button" onClick={() => { setSearch(''); setStatusFilter('ALL'); setDoctorFilter('ALL'); }}
+              <button type="button" onClick={() => { setSearch(''); setStatusFilter('ALL'); setSelectedOfficer('ALL'); }}
                 className="text-xs text-rose-500 hover:text-rose-600 whitespace-nowrap">Clear</button>
             )}
           </div>
         </div>
 
-        {/* Status + doctor filters */}
+        {/* Status filters */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-slate-400 font-medium">Status:</span>
           <div className="flex gap-1 flex-wrap">
@@ -630,16 +808,6 @@ function HistoryTab({
                 }`}>{label}</button>
             ))}
           </div>
-          {allDoctors.length > 0 && (
-            <>
-              <span className="text-xs text-slate-400 font-medium ml-2">Doctor:</span>
-              <select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)}
-                className="px-2 py-0.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs">
-                <option value="ALL">All doctors</option>
-                {allDoctors.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </>
-          )}
         </div>
       </div>
 
@@ -669,54 +837,115 @@ function HistoryTab({
 
       {/* ── Sub-tabs ── */}
       <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">
-        {([['entries', `Visit Entries${hasFilters ? ` (${filtered.length})` : ''}`], ['by-doctor', 'By Doctor']] as [HistorySubTab, string][]).map(([t, label]) => (
+        {([['entries', `Visit Entries${hasFilters ? ` (${filtered.length})` : ''}`], ['by-doctor', `By ${L.provider}`]] as [HistorySubTab, string][]).map(([t, label]) => (
           <button key={t} type="button" onClick={() => setSubTab(t)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
               subTab === t ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
             }`}>{label}</button>
         ))}
+        <div className="ml-auto pb-1 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => printHistory(filtered, L, from, to)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+          >
+            <PrintIcon className="w-3.5 h-3.5" />
+            Print
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-lg transition-colors"
+          >
+            <TrashIcon className="w-3.5 h-3.5" />
+            Delete period
+          </button>
+        </div>
       </div>
 
-      {/* ── Entries table ── */}
+      {/* ── Delete confirmation modal ── */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl ring-1 ring-slate-200 dark:ring-slate-700 p-6 max-w-sm w-full mx-4 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center shrink-0">
+                <TrashIcon className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-800 dark:text-slate-100">Delete history records</h3>
+                <p className="text-xs text-slate-500 mt-0.5">{fmtDate(from)} → {fmtDate(to)}</p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              This will permanently delete all completed, missed, cancelled, and skipped entries in this date range. <strong>This cannot be undone.</strong>
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await api(`/clinics/my/history?from=${from}&to=${to}`, { method: 'DELETE' });
+                    setShowDeleteConfirm(false);
+                    onPageChange(1);
+                    onRefresh();
+                  } catch { /* ignore */ }
+                  finally { setDeleting(false); }
+                }}
+                className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-700 text-sm text-white font-medium transition-colors disabled:opacity-50">
+                {deleting ? 'Deleting…' : 'Delete records'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Visit Entries ── */}
       {subTab === 'entries' && (
-        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div className="space-y-4">
+          {officerGroups.length > 0 && (
+            <OfficerSelectorPills
+              groups={officerGroups}
+              totalEntries={(data?.entries ?? []).length}
+              selected={selectedOfficer}
+              onSelect={setSelectedOfficer}
+              labels={L}
+            />
+          )}
+
           {filtered.length === 0 ? (
-            <div className="py-16 text-center text-slate-400 text-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 py-16 text-center text-slate-400 text-sm">
               {hasFilters ? 'No entries match your filters.' : 'No visit records for this period.'}
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-700/40">
-                    <tr>
-                      {['Token', 'Date', 'Patient', 'Phone', 'Doctor', 'Dept', 'Status'].map((h) => (
-                        <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                    {filtered.map((e) => (
-                      <tr key={e.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/20 transition-colors">
-                        <td className="px-4 py-3 text-slate-500 font-mono text-xs">#{e.tokenNumber}</td>
-                        <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">{e.serviceDay}</td>
-                        <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100 whitespace-nowrap">{e.patient.name}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap font-mono">{e.patient.phone}</td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{e.doctor.name}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{e.doctor.department}</td>
-                        <td className="px-4 py-3">
-                          <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[e.status] ?? 'text-slate-500 bg-slate-100'}`}>
-                            {e.status.charAt(0) + e.status.slice(1).toLowerCase()}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {/* Pagination — only shown when not filtered client-side */}
+              {filteredGroups.map((g) => (
+                <div
+                  key={g.name}
+                  className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+                >
+                  <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="font-semibold text-slate-800 dark:text-slate-100">{g.name}</h3>
+                      <p className="text-xs text-slate-500">{g.department}</p>
+                    </div>
+                    <OfficerStatusBadges group={g} />
+                  </div>
+                  <HistoryEntriesTable
+                    entries={g.entries}
+                    labels={L}
+                    showProvider={selectedOfficer === 'ALL'}
+                  />
+                </div>
+              ))}
+
               {!hasFilters && data && data.pages > 1 && (
-                <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between">
                   <span className="text-xs text-slate-500">{data.total} total entries</span>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => onPageChange(data.page - 1)} disabled={data.page <= 1}
@@ -734,15 +963,135 @@ function HistoryTab({
 
       {/* ── By Doctor ── */}
       {subTab === 'by-doctor' && (
-        <ByDoctorView entries={filtered} />
+        <ByDoctorView entries={filtered} labels={L} />
       )}
     </div>
   );
 }
 
-// ─── By Doctor view — table + bar chart ──────────────────────────────────────
+// ─── By Officer view — summary chart + counts ─────────────────────────────────
 
-function ByDoctorView({ entries }: { entries: HistoryEntry[] }) {
+type OfficerGroup = {
+  name: string;
+  department: string;
+  entries: HistoryEntry[];
+  completed: number;
+  missed: number;
+  cancelled: number;
+  skipped: number;
+};
+
+function buildOfficerGroups(entries: HistoryEntry[]): OfficerGroup[] {
+  const map = new Map<string, OfficerGroup>();
+  for (const e of entries) {
+    if (!map.has(e.doctor.name)) {
+      map.set(e.doctor.name, {
+        name: e.doctor.name,
+        department: e.doctor.department,
+        entries: [],
+        completed: 0,
+        missed: 0,
+        cancelled: 0,
+        skipped: 0,
+      });
+    }
+    const g = map.get(e.doctor.name)!;
+    g.entries.push(e);
+    if (e.status === 'COMPLETED') g.completed++;
+    else if (e.status === 'MISSED') g.missed++;
+    else if (e.status === 'CANCELLED') g.cancelled++;
+    else if (e.status === 'SKIPPED') g.skipped++;
+  }
+  return Array.from(map.values()).sort((a, b) => b.entries.length - a.entries.length);
+}
+
+function OfficerStatusBadges({ group: g }: { group: OfficerGroup }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-medium">
+        {g.completed} completed
+      </span>
+      {g.missed > 0 && (
+        <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-medium">
+          {g.missed} missed
+        </span>
+      )}
+      {g.cancelled > 0 && (
+        <span className="px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 font-medium">
+          {g.cancelled} cancelled
+        </span>
+      )}
+      {g.skipped > 0 && (
+        <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-medium">
+          {g.skipped} skipped
+        </span>
+      )}
+    </div>
+  );
+}
+
+function OfficerSelectorPills({
+  groups,
+  totalEntries,
+  selected,
+  onSelect,
+  labels: L,
+}: {
+  groups: OfficerGroup[];
+  totalEntries: number;
+  selected: string;
+  onSelect: (name: string) => void;
+  labels: ReturnType<typeof getLabels>;
+}) {
+  return (
+    <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+        Select {L.provider.toLowerCase()}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => onSelect('ALL')}
+          className={`rounded-xl border px-3.5 py-2 text-left text-sm transition-all ${
+            selected === 'ALL'
+              ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 shadow-sm ring-2 ring-teal-500/20'
+              : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+          }`}
+        >
+          <div className={`font-semibold ${selected === 'ALL' ? 'text-teal-700 dark:text-teal-300' : 'text-slate-800 dark:text-slate-100'}`}>
+            All {L.providerPlural.toLowerCase()}
+          </div>
+          <div className="text-xs text-slate-500 mt-0.5">{totalEntries} visits</div>
+        </button>
+        {groups.map((g) => {
+          const isSelected = selected === g.name;
+          const total = g.completed + g.missed + g.cancelled + g.skipped;
+          return (
+            <button
+              key={g.name}
+              type="button"
+              onClick={() => onSelect(g.name)}
+              className={`rounded-xl border px-3.5 py-2 text-left text-sm transition-all ${
+                isSelected
+                  ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 shadow-sm ring-2 ring-teal-500/20'
+                  : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              <div className={`font-semibold truncate ${isSelected ? 'text-teal-700 dark:text-teal-300' : 'text-slate-800 dark:text-slate-100'}`}>
+                {g.name}
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5 truncate">
+                {g.department} · {total} visit{total !== 1 ? 's' : ''}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ByDoctorView({ entries, labels: L }: { entries: HistoryEntry[]; labels: ReturnType<typeof getLabels> }) {
   type DRow = { name: string; department: string; completed: number; missed: number; cancelled: number; skipped: number };
 
   const docMap = new Map<string, DRow>();
@@ -764,7 +1113,6 @@ function ByDoctorView({ entries }: { entries: HistoryEntry[] }) {
 
   return (
     <div className="space-y-5">
-      {/* Mini bar chart */}
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
         <div className="flex items-center gap-4 mb-3 flex-wrap">
           <LegendDot color="#14b8a6" label="Completed" />
@@ -775,13 +1123,12 @@ function ByDoctorView({ entries }: { entries: HistoryEntry[] }) {
         <DoctorHistogram doctors={rows as DoctorAnalyticsRow[]} />
       </div>
 
-      {/* Table */}
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-700/40">
               <tr>
-                {['Doctor', 'Department', 'Completed', 'Missed', 'Cancelled', 'Skipped', 'Total'].map((h) => (
+                {[L.provider, L.department, 'Completed', 'Missed', 'Cancelled', 'Skipped', 'Total'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -1065,9 +1412,15 @@ function GearIcon({ className }: { className?: string }) {
 function RefreshIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>;
 }
-function ArrowLeftIcon({ className }: { className?: string }) {
-  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>;
+function LogoutIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>;
 }
 function SearchIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>;
+}
+function PrintIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>;
+}
+function TrashIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 }

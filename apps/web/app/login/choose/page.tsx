@@ -13,6 +13,7 @@
  */
 
 import Link from 'next/link';
+import { TurnosIcon } from '@/components/Icons';
 
 interface Choice {
   emoji: string;
@@ -37,8 +38,8 @@ const CHOICES: Choice[] = [
   },
   {
     emoji: '🩺',
-    title: 'Doctor / Receptionist',
-    subtitle: 'Clinic staff',
+    title: 'Staff',
+    subtitle: 'Business staff',
     description:
       'Use your registered email or mobile and password to access the reception or doctor dashboard.',
     href: '/login',
@@ -49,7 +50,7 @@ const CHOICES: Choice[] = [
     title: 'Admin',
     subtitle: 'Administrator',
     description:
-      'Not for patients, doctors or receptionists only for ADMINISTRATOR',
+      'Not for patients, staff or receptionists instead only for ADMINISTRATOR',
     href: '/login',
     accent: 'from-violet-500 to-purple-700',
   },
@@ -69,10 +70,8 @@ export default function LoginChoosePage() {
         <div className="text-center mb-10">
           {/* Logo — non-interactive in this flow; brand only */}
           <div className="inline-flex items-center gap-2.5 mb-6">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md">
-              CQ
-            </span>
-            <span className="text-xl font-semibold tracking-tight">Clinic Queue</span>
+            <TurnosIcon className="h-11 w-11 shadow-md" />
+            <span className="text-xl font-semibold tracking-tight">Turnos</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
@@ -137,9 +136,9 @@ export default function LoginChoosePage() {
 
         {/* Footer help */}
         <p className="text-center text-sm text-slate-500 mt-8">
-          New receptionist?{' '}
+          {/* New receptionist?{' '} */}
           <Link href="/register" className="text-brand-600 hover:text-brand-700 font-medium">
-            Register with an invite code →
+            {/* Register with an invite code → */}
           </Link>
         </p>
 

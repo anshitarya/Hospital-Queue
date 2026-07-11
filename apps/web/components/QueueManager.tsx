@@ -26,6 +26,17 @@ import { EntryStatusPill, DoctorStatusPill, LiveIndicator } from '@/components/S
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { getLabels } from '@/lib/labels';
+import { resolveAvgMinutes } from '@/lib/queueAvg';
+
+function doctorStorageKey(clinicId: string) {
+  return `turnos_selected_doctor_${clinicId}`;
+}
+
+function fmtShortDate(iso: string | null): string {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${String(y).slice(2)}`;
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -38,6 +49,9 @@ export function QueueManager() {
   const [name, setName]                           = useState('');
   const [phone, setPhone]                         = useState('');
   const [phoneResult, setPhoneResult]             = useState<PhoneValidationResult>({ ok: false });
+  // Previous visit lookup
+  const [prevVisit, setPrevVisit] = useState<{ name: string; totalVisits: number; providers: { name: string; count: number; dates: string[] }[] } | null>(null);
+  const [prevLookupPhone, setPrevLookupPhone] = useState('');
   const [priority, setPriority]                   = useState(0);
   const [notes, setNotes]                         = useState('');
   const [walkin, setWalkin]                       = useState(false);
@@ -57,20 +71,54 @@ export function QueueManager() {
 
   const L = getLabels(clinic?.businessType);
 
+  // ── Previous-visit lookup ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!phoneResult.ok || !phoneResult.e164) { setPrevVisit(null); return; }
+    if (phoneResult.e164 === prevLookupPhone) return; // already fetched for this number
+    setPrevLookupPhone(phoneResult.e164);
+    api<{ name: string; totalVisits: number; providers: { name: string; count: number; dates: string[] }[] } | null>(
+      `/clinics/my/patient-lookup?phone=${encodeURIComponent(phoneResult.e164)}`,
+    ).then((data) => {
+      setPrevVisit(data);
+      // Auto-fill name if not yet typed
+      if (data?.name && !name) setName(data.name);
+    }).catch(() => setPrevVisit(null));
+  }, [phoneResult.ok, phoneResult.e164]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Load clinic ──────────────────────────────────────────────────────────
   const loadClinic = useCallback(async () => {
     try {
       const data = await api<Clinic>('/clinics/my');
       setClinic(data);
-      setSelectedDoctorId((prev) => prev ?? (data.doctors ?? [])[0]?.id ?? null);
+      const doctors = data.doctors ?? [];
+      const saved =
+        typeof window !== 'undefined'
+          ? localStorage.getItem(doctorStorageKey(data.id))
+          : null;
+      const valid =
+        saved && doctors.some((d) => d.id === saved) ? saved : doctors[0]?.id ?? null;
+      setSelectedDoctorId(valid);
     } catch { /* ignore — page-level auth already guards this */ }
   }, []);
+
+  const selectDoctor = useCallback((id: string) => {
+    setSelectedDoctorId(id);
+    if (clinic?.id) localStorage.setItem(doctorStorageKey(clinic.id), id);
+  }, [clinic?.id]);
 
   useEffect(() => { void loadClinic(); }, [loadClinic]);
 
   // ── Real-time queue ──────────────────────────────────────────────────────
   const { snapshot: liveSnapshot, connected } = useDoctorQueue(selectedDoctorId);
   const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
+
+  // Re-render avg label while a customer is in service (elapsed time ticks up).
+  const [avgTick, setAvgTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setAvgTick((t) => t + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
+  const avgDisplay = useMemo(() => resolveAvgMinutes(snapshot), [snapshot, avgTick]);
 
   const allDoctors = useMemo(
     () => (clinic?.doctors ?? []).map((d) => ({ ...d, deptName: d.department?.name ?? '' })),
@@ -122,6 +170,7 @@ export function QueueManager() {
     // Reset form immediately
     setName(''); setPhone(''); setPhoneResult({ ok: false }); setPriority(0); setNotes('');
     setWalkin(false); setSlotType('NEW'); setInsertAtPosition('');
+    setPrevVisit(null); setPrevLookupPhone('');
     document.getElementById('qm-name')?.focus();
 
     const pendingId = `pending-${Date.now()}`;
@@ -306,7 +355,7 @@ export function QueueManager() {
             {allDoctors.map((d) => {
               const isSelected = selectedDoctorId === d.id;
               return (
-                <button key={d.id} type="button" onClick={() => setSelectedDoctorId(d.id)}
+                <button key={d.id} type="button" onClick={() => selectDoctor(d.id)}
                   className={`rounded-xl border px-3.5 py-2.5 text-left text-sm transition-all ${
                     isSelected
                       ? 'border-brand-500 bg-brand-50 shadow-sm ring-2 ring-brand-500/20'
@@ -339,6 +388,41 @@ export function QueueManager() {
           </div>
           <div className="p-5 space-y-3">
             <form onSubmit={addPatient} className="space-y-2.5">
+              <PhoneInput
+                label={null}
+                value={phone}
+                onChange={(raw, result) => {
+                  setPhone(raw);
+                  setPhoneResult(result);
+                  if (!result.ok) { setPrevVisit(null); setPrevLookupPhone(''); }
+                }}
+                required
+                autoComplete="off"
+              />
+              {prevVisit && (
+                <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 px-3.5 py-2.5 flex items-start gap-3">
+                  <span className="text-teal-600 text-base shrink-0 mt-0.5">↩</span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
+                    <div className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">
+                      <span>{prevVisit.totalVisits} completed visit{prevVisit.totalVisits !== 1 ? 's' : ''}</span>
+                      {prevVisit.providers.map((p) => (
+                        <div key={p.name} className="mt-1.5">
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-teal-500 dark:text-teal-500"> — {p.count} visit{p.count !== 1 ? 's' : ''}</span>
+                          {p.dates.length > 0 && (
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {p.dates.map((d) => (
+                                <span key={d} className="bg-teal-100 dark:bg-teal-800/40 rounded px-1.5 py-0.5 text-[10px] font-medium">{fmtShortDate(d)}</span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <input
                 id="qm-name"
                 className="input"
@@ -346,13 +430,6 @@ export function QueueManager() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-              />
-              <PhoneInput
-                label={null}
-                value={phone}
-                onChange={(raw, result) => { setPhone(raw); setPhoneResult(result); }}
-                required
-                autoComplete="off"
               />
               <select className="input" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
                 <option value={0}>Normal priority</option>
@@ -392,9 +469,11 @@ export function QueueManager() {
               <div className="border-t border-slate-100 pt-3 space-y-2">
                 <div className="text-xs text-slate-500 flex items-center justify-between">
                   <span>
-                    {snapshot.movingAvgMinutes != null
-                      ? `~${Math.round(snapshot.movingAvgMinutes)} min/patient (live avg)`
-                      : `${snapshot.doctor.avgConsultMinutes} min/patient (default)`}
+                    {avgDisplay
+                      ? avgDisplay.live
+                        ? `~${avgDisplay.label} ${L.perCustomer} (live avg)`
+                        : `${avgDisplay.label} ${L.perCustomer} (default)`
+                      : null}
                   </span>
                   {snapshot.doctor.delayMinutes > 0 && (
                     <span className="text-amber-600 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
