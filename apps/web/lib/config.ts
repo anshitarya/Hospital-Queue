@@ -29,7 +29,7 @@ export const BRAND = {
     hours: '9 AM–8 PM IST',
   },
   // Replace with your Google Form short link for user reviews
-  doctorSurveyUrl: 'https://forms.gle/dy6eZe8yaz7XbtAP8',
+  doctorSurveyUrl: 'https://forms.gle/C2QHX8Bv7qZGtmxr5',
 };
 
 export const FORMS = {
@@ -41,12 +41,12 @@ export const FORMS = {
     actionUrl: process.env.NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_ACTION ?? '',
     viewUrl:
       process.env.NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_URL ??
-      'https://forms.gle/dy6eZe8yaz7XbtAP8',
+      'https://forms.gle/76Zk339nJkQQqt4p8',
     fields: {
-      businessName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_BUSINESS ?? '',
-      contactName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_NAME ?? '',
-      email: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_EMAIL ?? '',
-      mobile: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_MOBILE ?? '',
+      businessName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_BUSINESS ?? 'entry.1778268907',
+      contactName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_NAME ?? 'entry.275317772',
+      email: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_EMAIL ?? 'entry.445315508',
+      mobile: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_MOBILE ?? 'entry.613579027',
     },
   },
 };
