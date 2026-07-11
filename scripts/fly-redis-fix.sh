@@ -66,15 +66,15 @@ echo "▶ Step 3 — Prod Pack should be Disabled (check Upstash dashboard if no
 flyctl redis status "$CANONICAL_REDIS" | grep -i prod || true
 echo ""
 
-echo "▶ Step 4 — Redeploy API (fixes stuck health checks after bad secret)"
-echo "    cd apps/api && flyctl deploy --remote-only --app $API_APP --region bom"
+echo "▶ Step 4 — Redeploy API in BOM (fixes stuck health checks after bad secret)"
+echo "    cd apps/api && flyctl deploy --remote-only --app $API_APP --primary-region bom --ha=false"
 echo ""
 read -r -p "Run deploy now? [Y/n] " do_deploy
 do_deploy=${do_deploy:-Y}
 if [[ "$do_deploy" =~ ^[Yy]$ ]]; then
   SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
   cd "$SCRIPT_DIR/../apps/api"
-  flyctl deploy --remote-only --app "$API_APP" --region bom
+  flyctl deploy --remote-only --app "$API_APP" --primary-region bom --ha=false
   cd - >/dev/null
 fi
 echo ""
