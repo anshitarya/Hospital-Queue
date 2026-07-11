@@ -5,6 +5,7 @@ enum BusinessType {
   SALON = 'SALON',
   BANK = 'BANK',
   GOVT = 'GOVT',
+  GENERAL = 'GENERAL',
 }
 
 export class CreateClinicDto {

@@ -1,17 +1,5 @@
 'use client';
 
-/**
- * Login-choice portal — the first stop for every new sign-in flow.
- *
- * "Sign in" and "Get started" in the landing nav both point here.
- * The user picks their role and is forwarded to the correct auth page.
- *
- * Three choices:
- *   Patient          → /login/patient  (OTP via mobile)
- *   Reception / Doctor → /login        (password)
- *   Admin            → /login          (password)
- */
-
 import Link from 'next/link';
 import { TurnosIcon } from '@/components/Icons';
 
@@ -21,8 +9,8 @@ interface Choice {
   subtitle: string;
   description: string;
   href: string;
-  accent: string;       // Tailwind gradient classes for the icon ring
-  badge?: string;       // Optional pill label
+  accent: string;
+  badge?: string;
 }
 
 const CHOICES: Choice[] = [
@@ -45,30 +33,18 @@ const CHOICES: Choice[] = [
     href: '/login',
     accent: 'from-brand-500 to-brand-700',
   },
-  {
-    emoji: '⚙️',
-    title: 'Admin',
-    subtitle: 'Administrator',
-    description:
-      'Not for patients, staff or receptionists instead only for ADMINISTRATOR',
-    href: '/login',
-    accent: 'from-violet-500 to-purple-700',
-  },
 ];
 
 export default function LoginChoosePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
-      {/* Background decoration */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[400px] w-[400px] rounded-full bg-brand-200/30 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-[350px] w-[350px] rounded-full bg-purple-200/30 blur-3xl" />
       </div>
 
-      <div className="w-full max-w-3xl">
-        {/* Header */}
+      <div className="w-full max-w-2xl">
         <div className="text-center mb-10">
-          {/* Logo — non-interactive in this flow; brand only */}
           <div className="inline-flex items-center gap-2.5 mb-6">
             <TurnosIcon className="h-11 w-11 shadow-md" />
             <span className="text-xl font-semibold tracking-tight">Turnos</span>
@@ -82,22 +58,19 @@ export default function LoginChoosePage() {
           </p>
         </div>
 
-        {/* Choice cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
           {CHOICES.map((c) => (
             <Link
               key={c.title}
               href={c.href}
               className="group card p-6 flex flex-col gap-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer"
             >
-              {/* Icon */}
               <div
                 className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${c.accent} shadow-md text-2xl group-hover:shadow-lg transition-shadow`}
               >
                 {c.emoji}
               </div>
 
-              {/* Title + badge */}
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-lg font-semibold text-slate-900">{c.title}</span>
@@ -110,39 +83,25 @@ export default function LoginChoosePage() {
                 <p className="text-xs text-slate-500 mt-0.5">{c.subtitle}</p>
               </div>
 
-              {/* Description */}
               <p className="text-sm text-slate-600 leading-relaxed flex-1">{c.description}</p>
 
-              {/* CTA arrow */}
               <div className="flex items-center gap-1.5 text-sm font-medium text-brand-600 group-hover:gap-2.5 transition-all">
                 Sign in
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </div>
             </Link>
           ))}
         </div>
 
-        {/* Footer help */}
         <p className="text-center text-sm text-slate-500 mt-8">
-          {/* New receptionist?{' '} */}
+          New staff member?{' '}
           <Link href="/register" className="text-brand-600 hover:text-brand-700 font-medium">
-            {/* Register with an invite code → */}
+            Register with an invite code →
           </Link>
         </p>
 
-        {/* Back to home */}
         <p className="text-center text-xs text-slate-400 mt-4">
           <Link href="/" className="hover:text-slate-600 underline underline-offset-2">
             ← Back to homepage

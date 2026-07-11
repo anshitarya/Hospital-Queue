@@ -89,7 +89,7 @@ export class QueueService {
         include: { patient: { select: { id: true, name: true, phone: true } } },
         orderBy: { completedAt: 'desc' },
       }),
-      this.eta.getMovingAvg(doctorId, { skipCache: true, serviceDay }),
+      this.eta.getMovingAvg(doctorId, { serviceDay }),
       this.prisma.queueEntry.count({ where: { doctorId, serviceDay, calledAt: { not: null } } }),
     ]);
 
@@ -537,14 +537,14 @@ export class QueueService {
       },
     });
 
-    await this.prisma.queueEvent.create({
+    void this.prisma.queueEvent.create({
       data: {
         doctorId: entry.doctorId,
         entryId,
         type: 'reordered',
         payload: { byUserId, newPriority: dto.priority },
       },
-    });
+    }).catch(() => {});
 
     void this.broadcast(entry.doctorId, 'queue_updated', { entryId });
     this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
@@ -589,9 +589,9 @@ export class QueueService {
       where: { id: entryId },
       data: { sortOrder: newSortOrder, version: { increment: 1 } },
     });
-    await this.prisma.queueEvent.create({
+    void this.prisma.queueEvent.create({
       data: { doctorId: entry.doctorId, entryId, type: 'moved', payload: { byUserId, targetPosition } },
-    });
+    }).catch(() => {});
     void this.broadcast(entry.doctorId, 'queue_updated', { entryId });
     this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
       eventType: 'moved', entryId, doctorId: entry.doctorId,
@@ -606,9 +606,9 @@ export class QueueService {
       where: { id: doctorId },
       data: { status: DoctorStatus.PAUSED },
     });
-    await this.prisma.queueEvent.create({
+    void this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_paused', payload: { byUserId } },
-    });
+    }).catch(() => {});
     void this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.PAUSED });
   }
 
@@ -618,9 +618,9 @@ export class QueueService {
       // Also clear break fields when resuming. Feature 4.
       data: { status: DoctorStatus.AVAILABLE, breakUntil: null, breakNote: null },
     });
-    await this.prisma.queueEvent.create({
+    void this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_resumed', payload: { byUserId } },
-    });
+    }).catch(() => {});
     void this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.AVAILABLE });
   }
 
@@ -635,13 +635,13 @@ export class QueueService {
       where: { id: doctorId },
       data: { status: DoctorStatus.PAUSED, breakUntil, breakNote: note ?? null },
     });
-    await this.prisma.queueEvent.create({
+    void this.prisma.queueEvent.create({
       data: {
         doctorId,
         type: 'doctor_break',
         payload: { byUserId, estimatedMinutes, breakUntil: breakUntil.toISOString() },
       },
-    });
+    }).catch(() => {});
     void this.broadcast(doctorId, 'doctor_break', {
       status: DoctorStatus.PAUSED,
       breakUntil: breakUntil.toISOString(),
@@ -862,20 +862,18 @@ export class QueueService {
       include: { patient: true },
     });
 
-    // Invalidate before broadcast so the fresh snapshot never reads a stale cache.
     if (next === EntryStatus.COMPLETED) {
-      await this.eta.invalidateCache(entry.doctorId, entry.serviceDay);
+      void this.eta.invalidateCache(entry.doctorId, entry.serviceDay);
     }
 
-    // Audit log must complete before returning; broadcast is fire-and-forget.
-    await this.prisma.queueEvent.create({
+    void this.prisma.queueEvent.create({
       data: {
         doctorId: entry.doctorId,
         entryId,
         type: `entry_${next.toLowerCase()}`,
         payload: { byUserId, from: entry.status, to: next },
       },
-    });
+    }).catch(() => {});
     void this.broadcast(entry.doctorId, 'queue_updated', {
       entryId,
       from: entry.status,
