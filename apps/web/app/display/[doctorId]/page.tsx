@@ -2,6 +2,7 @@
 
 import { useDoctorQueue } from '@/lib/socket';
 import { tokenDisplay } from '@/lib/tokenCode';
+import { ReviewFormButton } from '@/components/ReviewFormButton';
 
 /**
  * Public TV display. Mount this on a clinic-room screen at
@@ -31,8 +32,11 @@ export default function DisplayPage({ params }: { params: { doctorId: string } }
             )}
           </div>
         </div>
-        <div className="text-xs text-slate-500">
-          {connected ? '● live' : '○ reconnecting…'}
+        <div className="flex items-center gap-3">
+          <ReviewFormButton variant="dark" />
+          <div className="text-xs text-slate-500">
+            {connected ? '● live' : '○ reconnecting…'}
+          </div>
         </div>
       </div>
 

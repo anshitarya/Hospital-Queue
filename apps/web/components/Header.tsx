@@ -3,7 +3,8 @@ import React, { useEffect } from 'react';
 import { useAuth } from '@/lib/auth';
 import { ProfileMenu } from './ProfileMenu';
 import { DarkModeToggle } from './DarkModeToggle';
-import { Icon, TurnosIcon } from '@/components/Icons';
+import { ReviewFormButton } from './ReviewFormButton';
+import { TurnosIcon } from '@/components/Icons';
 /**
  * Shared dashboard header.
  *
@@ -39,6 +40,7 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
         </div>
         <div className="flex items-center gap-1">
           {actions}
+          <ReviewFormButton />
           <DarkModeToggle />
           <ProfileMenu />
         </div>

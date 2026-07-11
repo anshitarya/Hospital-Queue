@@ -85,9 +85,9 @@ export default function StaffLoginPage() {
 
           <div className="text-sm text-center text-slate-500 pt-1 border-t border-slate-100 space-y-2">
             <p>
-              {/* New receptionist?{' '} */}
-              <Link href="/register" className="text-brand-600 hover:text-brand-700 font-medium">
-                {/* Register with invite code → */}
+              New business?{' '}
+              <Link href="/get-started" className="text-brand-600 hover:text-brand-700 font-medium">
+                Register your business →
               </Link>
             </p>
             <p className="text-xs">

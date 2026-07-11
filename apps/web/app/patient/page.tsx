@@ -12,6 +12,7 @@ import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
 import { getLabels } from '@/lib/labels';
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
+import { Icon } from '@/components/Icons';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
@@ -24,8 +25,11 @@ const UPCOMING_THRESHOLD = 5; // show alert when ≤ this many people ahead
 
 function requestNotifPermission() {
   if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
+    return Notification.requestPermission().catch(() => Notification.permission);
   }
+  return Promise.resolve(
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+  );
 }
 
 function sendBrowserNotif(title: string, body: string) {
@@ -168,16 +172,18 @@ export default function PatientPage() {
     });
   }, []);
 
-  // Ask for notification permission once the user has an active queue entry.
+  // Prompt for notification permission when user has an active queue entry.
+  const [notifPromptOpen, setNotifPromptOpen] = useState(false);
   const notifRequested = useRef(false);
   useEffect(() => {
     if (notifRequested.current) return;
+    if (typeof Notification === 'undefined') return;
     const hasLive = history.some(
       (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
     );
-    if (hasLive) {
+    if (hasLive && Notification.permission === 'default') {
       notifRequested.current = true;
-      requestNotifPermission();
+      setNotifPromptOpen(true);
     }
   }, [history]);
 
@@ -255,6 +261,35 @@ export default function PatientPage() {
       />
 
       <main className="mx-auto max-w-lg px-4 py-5 space-y-4 animate-fade-in">
+
+        {notifPromptOpen && typeof Notification !== 'undefined' && Notification.permission === 'default' && (
+          <div className="rounded-xl bg-brand-50 dark:bg-brand-950/40 ring-1 ring-brand-200 dark:ring-brand-800 px-4 py-3 flex items-start gap-3">
+            <Icon.Bell className="h-5 w-5 text-brand-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0 space-y-2">
+              <p className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                Please allow notifications for latest queue updates — we&apos;ll alert you when your turn is near.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="btn-primary !py-1.5 !px-3 text-xs"
+                  onClick={() => {
+                    void requestNotifPermission().finally(() => setNotifPromptOpen(false));
+                  }}
+                >
+                  Allow notifications
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost !py-1.5 !px-3 text-xs"
+                  onClick={() => setNotifPromptOpen(false)}
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Sync bar ─────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between">

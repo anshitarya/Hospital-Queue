@@ -28,8 +28,27 @@ export const BRAND = {
     legalEmail: 'hello@turnos.fly.dev', // shown on legal pages — update when domain is live
     hours: '9 AM–8 PM IST',
   },
-  // Replace this with your actual Google Form URL
+  // Replace with your Google Form short link for user reviews
   doctorSurveyUrl: 'https://forms.gle/dy6eZe8yaz7XbtAP8',
+};
+
+export const FORMS = {
+  reviewUrl:
+    process.env.NEXT_PUBLIC_REVIEW_FORM_URL ??
+    process.env.NEXT_PUBLIC_GOOGLE_REVIEW_FORM_URL ??
+    BRAND.doctorSurveyUrl,
+  businessSignup: {
+    actionUrl: process.env.NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_ACTION ?? '',
+    viewUrl:
+      process.env.NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_URL ??
+      'https://forms.gle/dy6eZe8yaz7XbtAP8',
+    fields: {
+      businessName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_BUSINESS ?? '',
+      contactName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_NAME ?? '',
+      email: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_EMAIL ?? '',
+      mobile: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_MOBILE ?? '',
+    },
+  },
 };
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -150,7 +169,7 @@ export const FAQS: { q: string; a: string }[] = [
   },
   {
     q: 'How does a business get set up?',
-    a: 'Contact us and we\'ll set up your account in minutes. You\'ll get an invite code to share with your front-desk staff. Once they sign in, they can add providers and start registering customers right away.',
+    a: 'Register your business on the Get Started page — we\'ll reach out to onboard you. Your staff can sign in once your account is ready.',
   },
   {
     q: 'What does the front-desk staff do?',

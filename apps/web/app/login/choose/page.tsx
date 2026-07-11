@@ -96,9 +96,9 @@ export default function LoginChoosePage() {
         </div>
 
         <p className="text-center text-sm text-slate-500 mt-8">
-          New staff member?{' '}
-          <Link href="/register" className="text-brand-600 hover:text-brand-700 font-medium">
-            Register with an invite code →
+          New business?{' '}
+          <Link href="/get-started" className="text-brand-600 hover:text-brand-700 font-medium">
+            Register your business →
           </Link>
         </p>
 

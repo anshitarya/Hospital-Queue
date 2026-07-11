@@ -54,12 +54,12 @@ export default function HomePage() {
 
               <div className="flex flex-wrap items-center gap-3">
                 <Link
-                  href="/login/choose"
+                  href="/get-started"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-primary !px-5 !py-3 text-base shadow-md hover:shadow-lg"
                 >
-                  Get started
+                  Business owners — get started
                   <Icon.ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
@@ -279,8 +279,8 @@ export default function HomePage() {
                   Ready to turn your waiting room into a thing of the past?
                 </h2>
                 <p className="text-white/85 max-w-2xl">
-                  Sign in to get started, or reach out — we&apos;ll help you
-                  configure invite codes, providers, and your customer flow.
+                  Sign in if you already have access, or register your business — we&apos;ll
+                  help you set up providers and your customer flow.
                 </p>
 
                 <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -294,12 +294,12 @@ export default function HomePage() {
                     <Icon.ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
-                    href="/login/choose"
+                    href="/get-started"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 text-white ring-1 ring-white/30 px-5 py-3 text-sm font-semibold transition-colors"
                   >
-                    Get started
+                    Business owners — get started
                   </Link>
                 </div>
               </div>

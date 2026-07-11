@@ -69,12 +69,12 @@ export function LandingNav() {
             Sign in
           </Link>
           <Link
-            href="/login/choose"
+            href="/get-started"
             target="_blank"
             rel="noopener noreferrer"
             className="btn-primary text-sm !py-1.5 !px-3.5"
           >
-            Get started
+            For business owners
             <Icon.ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -116,13 +116,13 @@ export function LandingNav() {
                   Sign in
                 </Link>
                 <Link
-                  href="/login/choose"
+                  href="/get-started"
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)}
                   className="btn-primary flex-1 text-sm"
                 >
-                  Get started
+                  For business owners
                 </Link>
               </div>
             </div>

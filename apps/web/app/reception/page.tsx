@@ -15,6 +15,7 @@ import { DepartmentPicker, type DepartmentOption } from '@/components/Department
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { TurnosIcon } from '@/components/Icons';
+import { ReviewFormButton } from '@/components/ReviewFormButton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -434,6 +435,7 @@ export default function ReceptionPage() {
               <span className="hidden sm:block">Refresh</span>
             </button>
             <DarkModeToggle />
+            <ReviewFormButton />
             <ProfileMenu />
           </div>
         </div>
