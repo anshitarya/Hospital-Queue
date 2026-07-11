@@ -3,7 +3,6 @@
 # Fix Upstash Redis cost on Fly.io and recover REDIS_URL after cleanup mistakes.
 #
 # Canonical Redis for turnos-api-hq: queue-hq-redis (fly-queue-hq-redis.upstash.io)
-# Created by fly-deploy.sh with PREFIX=queue.
 #
 # Usage:
 #   ./scripts/fly-redis-fix.sh
@@ -24,84 +23,71 @@ echo "  Canonical DB: $CANONICAL_REDIS ($CANONICAL_HOST)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-echo "▶ Step 0 — What Redis instances exist?"
+echo "▶ Step 0 — Redis instances"
 flyctl redis list
 echo ""
 
 if ! flyctl redis status "$CANONICAL_REDIS" >/dev/null 2>&1; then
   echo "  ✖ $CANONICAL_REDIS not found."
   echo "    Recreate: flyctl redis create --name $CANONICAL_REDIS --region bom --no-replicas --enable-prodpack=false --enable-auto-upgrade=false --enable-eviction"
-  echo "    Then re-run this script."
   exit 1
 fi
 
-echo "▶ Step 1 — Check live REDIS_URL on $API_APP"
-CURRENT_HOST=""
-if flyctl ssh console -a "$API_APP" -C "printenv REDIS_URL" 2>/dev/null | grep -q "$CANONICAL_HOST"; then
-  CURRENT_HOST="$CANONICAL_HOST"
-  echo "  ✔ REDIS_URL already points at $CANONICAL_HOST"
-else
-  LIVE_URL=$(flyctl ssh console -a "$API_APP" -C "printenv REDIS_URL" 2>/dev/null || true)
-  CURRENT_HOST=$(echo "$LIVE_URL" | grep -o 'fly-[^.]*\.upstash\.io' || echo "(missing or wrong)")
-  echo "  ⚠ REDIS_URL host is: $CURRENT_HOST (expected $CANONICAL_HOST)"
-  echo ""
-  echo "  Fix — copy Private URL from status below, then:"
-  echo "    flyctl secrets set REDIS_URL=\"<private-url>\" --app $API_APP"
-  echo ""
-  flyctl redis status "$CANONICAL_REDIS"
-  echo ""
-  read -r -p "Paste Private URL now to update REDIS_URL? [y/N] " set_secret
-  if [[ "$set_secret" =~ ^[Yy]$ ]]; then
-    read -r -p "Private URL: " REDIS_URL
-    if [[ -n "$REDIS_URL" && "$REDIS_URL" == *"$CANONICAL_HOST"* ]]; then
-      flyctl secrets set REDIS_URL="$REDIS_URL" --app "$API_APP"
-      echo "  ✔ REDIS_URL updated (machines will restart)"
-    else
-      echo "  ✖ URL empty or host is not $CANONICAL_HOST — skipped"
-    fi
+PRIVATE_URL=$(flyctl redis status "$CANONICAL_REDIS" 2>/dev/null | grep "Private URL" | sed 's/.*│ *//' | tr -d ' ')
+
+echo "▶ Step 1 — Set REDIS_URL (no leading/trailing spaces!)"
+echo "  Canonical URL host: $CANONICAL_HOST"
+echo ""
+read -r -p "Update REDIS_URL secret now? [Y/n] " set_secret
+set_secret=${set_secret:-Y}
+if [[ "$set_secret" =~ ^[Yy]$ ]]; then
+  if [[ -z "$PRIVATE_URL" || "$PRIVATE_URL" != *"$CANONICAL_HOST"* ]]; then
+    read -r -p "Paste Private URL from 'flyctl redis status $CANONICAL_REDIS': " PRIVATE_URL
+  fi
+  PRIVATE_URL=$(echo "$PRIVATE_URL" | xargs)
+  if [[ -n "$PRIVATE_URL" && "$PRIVATE_URL" == *"$CANONICAL_HOST"* ]]; then
+    flyctl secrets set REDIS_URL="$PRIVATE_URL" --app "$API_APP"
+    echo "  ✔ REDIS_URL set"
+  else
+    echo "  ✖ Invalid URL — must contain $CANONICAL_HOST"
+    exit 1
   fi
 fi
 echo ""
 
-echo "▶ Step 2 — Disable Prod Pack on $CANONICAL_REDIS"
-echo "  flyctl redis update often fails with 'Could not find AddOn'."
-echo "  Use Upstash dashboard instead:"
-echo "    https://console.upstash.com → DATABASES → $CANONICAL_REDIS → Settings → disable Prod Pack"
+echo "▶ Step 2 — Machines (remove stray non-BOM machines if any)"
+flyctl machines list --app "$API_APP"
 echo ""
-read -r -p "Try flyctl redis update anyway? [y/N] " try_update
-if [[ "$try_update" =~ ^[Yy]$ ]]; then
-  flyctl redis update "$CANONICAL_REDIS" || echo "  (CLI failed — use Upstash dashboard above)"
+echo "  If a machine is in lhr/sin while Redis is bom, destroy the foreign one:"
+echo "    flyctl machine destroy <machine-id> --app $API_APP --force"
+echo ""
+
+echo "▶ Step 3 — Prod Pack should be Disabled (check Upstash dashboard if not)"
+flyctl redis status "$CANONICAL_REDIS" | grep -i prod || true
+echo ""
+
+echo "▶ Step 4 — Redeploy API (fixes stuck health checks after bad secret)"
+echo "    cd apps/api && flyctl deploy --remote-only --app $API_APP --region bom"
+echo ""
+read -r -p "Run deploy now? [Y/n] " do_deploy
+do_deploy=${do_deploy:-Y}
+if [[ "$do_deploy" =~ ^[Yy]$ ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  cd "$SCRIPT_DIR/../apps/api"
+  flyctl deploy --remote-only --app "$API_APP" --region bom
+  cd - >/dev/null
 fi
 echo ""
 
-echo "▶ Step 3 — Remove duplicate Redis (if any)"
-echo "  Only destroy databases that are NOT $CANONICAL_REDIS and NOT referenced by REDIS_URL."
-echo "  If turnos-redis was already deleted, skip this step."
+echo "▶ Step 5 — Verify"
+echo "  REDIS_URL host:"
+flyctl ssh console -a "$API_APP" -C "printenv REDIS_URL" 2>/dev/null | grep -o 'fly-[^.]*\.upstash\.io' || echo "  (could not read)"
 echo ""
-read -r -p "List names to destroy (space-separated), or press Enter to skip: " -a TO_DESTROY
-for name in "${TO_DESTROY[@]}"; do
-  if [[ "$name" == "$CANONICAL_REDIS" ]]; then
-    echo "  ✖ Refusing to destroy canonical $CANONICAL_REDIS"
-    continue
-  fi
-  read -r -p "Destroy $name? [y/N] " confirm
-  if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    flyctl redis destroy "$name" -y || echo "  (destroy failed — try Upstash dashboard or Fly support)"
-  fi
-done
-echo ""
-
-echo "▶ Step 4 — Verify"
-flyctl redis status "$CANONICAL_REDIS"
-echo ""
-flyctl ssh console -a "$API_APP" -C "printenv REDIS_URL" 2>/dev/null | grep -o 'fly-[^.]*\.upstash\.io' || echo "  (could not read REDIS_URL)"
-echo ""
-
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Step 5 — Redeploy API (SOCKET_IO_REDIS_ADAPTER=false):"
-echo "    cd apps/api && flyctl deploy --remote-only --app $API_APP"
-echo ""
-echo "  Step 6 — Health check:"
+echo "  Health:"
+echo "    curl https://${API_APP}.fly.dev/api/health"
 echo "    curl https://${API_APP}.fly.dev/api/ready"
+echo ""
+echo "  If deploy still times out, check logs:"
+echo "    flyctl logs --app $API_APP --no-tail"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""

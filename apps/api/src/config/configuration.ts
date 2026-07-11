@@ -17,7 +17,7 @@ export default () => ({
     url: process.env.DATABASE_URL,
   },
   redis: {
-    url: process.env.REDIS_URL ?? 'redis://localhost:6379',
+    url: (process.env.REDIS_URL ?? 'redis://localhost:6379').trim(),
   },
   /** Set SOCKET_IO_REDIS_ADAPTER=true only when running 2+ API machines (multi-instance). */
   socketio: {
