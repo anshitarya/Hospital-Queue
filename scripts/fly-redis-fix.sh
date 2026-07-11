@@ -3,7 +3,7 @@
 # Fix Upstash Redis cost on Fly.io
 #
 # Problem: Prod Pack ($200/mo per DB) was enabled on both queue-hq-redis and
-# turnos-redis. turnos-api-hq only uses queue-hq-redis.
+# turnos-redis. turnos-api-hq uses turnos-redis (verify with printenv REDIS_URL).
 #
 # Usage:
 #   ./scripts/fly-redis-fix.sh
@@ -13,8 +13,8 @@
 
 set -e
 
-KEEP_REDIS="queue-hq-redis"
-DROP_REDIS="turnos-redis"
+KEEP_REDIS="turnos-redis"
+DROP_REDIS="queue-hq-redis"
 API_APP="turnos-api-hq"
 
 echo ""
@@ -23,6 +23,10 @@ echo "  Fly Redis cost fix"
 echo "  Keep : $KEEP_REDIS  (used by $API_APP)"
 echo "  Drop : $DROP_REDIS  (unused duplicate)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+echo "▶ Verify live REDIS_URL host (should be fly-${KEEP_REDIS}.upstash.io):"
+flyctl ssh console -a "$API_APP" -C "printenv REDIS_URL" 2>/dev/null | grep -o 'fly-[^.]*\.upstash\.io' || true
 echo ""
 
 echo "▶ Current Redis instances:"
@@ -50,9 +54,8 @@ else
 fi
 
 echo ""
-echo "▶ Step 3 — Verify API still points at $KEEP_REDIS"
-echo "  (Private URL host should be fly-${KEEP_REDIS}.upstash.io)"
-flyctl secrets list --app "$API_APP" | grep -i REDIS || true
+echo "▶ Step 3 — Confirm API still points at $KEEP_REDIS"
+flyctl ssh console -a "$API_APP" -C "printenv REDIS_URL" 2>/dev/null | grep -o 'fly-[^.]*\.upstash\.io' || true
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
