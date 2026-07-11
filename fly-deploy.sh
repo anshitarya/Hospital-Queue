@@ -62,10 +62,15 @@ flyctl postgres attach "$DB_APP" --app "$API_APP" 2>/dev/null \
 # ── 4. Provision Redis ────────────────────────────────────────────────────────
 echo ""
 echo "▶ Provisioning Redis (Upstash)..."
+# Prod Pack is $200/mo per database — keep it off unless you need enterprise HA/compliance.
 REDIS_URL=$(flyctl redis create \
   --name "${PREFIX:+${PREFIX}-}hq-redis" \
   --region "$REGION" \
-  --no-replicas 2>&1 | grep "redis://" | head -1 | tr -d ' ')
+  --no-replicas \
+  --enable-prodpack=false \
+  --enable-auto-upgrade=false \
+  --enable-eviction \
+  2>&1 | grep "redis://" | head -1 | tr -d ' ')
 
 if [ -n "$REDIS_URL" ]; then
   flyctl secrets set REDIS_URL="$REDIS_URL" --app "$API_APP"

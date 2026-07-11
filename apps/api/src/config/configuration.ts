@@ -19,6 +19,10 @@ export default () => ({
   redis: {
     url: process.env.REDIS_URL ?? 'redis://localhost:6379',
   },
+  /** Set SOCKET_IO_REDIS_ADAPTER=true only when running 2+ API machines (multi-instance). */
+  socketio: {
+    redisAdapter: process.env.SOCKET_IO_REDIS_ADAPTER === 'true',
+  },
   msg91: {
     authKey:     process.env.MSG91_AUTH_KEY,
     senderId:    process.env.MSG91_SENDER_ID ?? 'TURNOS',

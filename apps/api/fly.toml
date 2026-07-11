@@ -17,6 +17,9 @@ region = "bom"       # Mumbai — closest to India
   MISSED_GAP                  = "4"
   FOLLOWUP_EVERY              = "0"
   CORS_ORIGIN                 = "https://turnos.fly.dev,https://turnos-hq.fly.dev"
+  # Single API machine — skip Socket.IO Redis pub/sub (saves Upstash commands).
+  # Set to "true" only when min_machines_running > 1.
+  SOCKET_IO_REDIS_ADAPTER     = "false"
   # ── Notification feature flags (flip to "true" when ready) ──────────────────
   FEATURE_SMS                 = "false"   # flip after MSG91 secrets are set
   FEATURE_WHATSAPP            = "false"   # flip after Meta WA secrets are set

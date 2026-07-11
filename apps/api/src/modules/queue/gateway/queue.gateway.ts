@@ -54,9 +54,16 @@ export class QueueGateway implements OnGatewayInit, OnGatewayConnection, OnGatew
   ) {}
 
   afterInit(server: Server) {
+    const useRedisAdapter = this.config.get<boolean>('socketio.redisAdapter') === true;
+    if (!useRedisAdapter) {
+      this.logger.log(
+        'Socket.IO without Redis adapter (single-instance). Set SOCKET_IO_REDIS_ADAPTER=true when scaling to 2+ API machines.',
+      );
+      return;
+    }
     const redisUrl = this.config.get<string>('redis.url');
     if (!redisUrl || redisUrl.startsWith('redis://localhost')) {
-      this.logger.warn('Socket.IO running without Redis adapter (dev mode — single instance only)');
+      this.logger.warn('SOCKET_IO_REDIS_ADAPTER=true but REDIS_URL is local — adapter skipped');
       return;
     }
     // Two separate connections required by the Redis adapter (pub + sub).
