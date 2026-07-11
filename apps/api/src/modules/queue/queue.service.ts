@@ -16,6 +16,7 @@ import { JoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
 import { QueueGateway } from './gateway/queue.gateway';
 import { clinicDefaults } from '../../config/clinic.config';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CustomerService, CUSTOMER_PUBLIC_SELECT } from '../patients/customer.service';
 import { FEATURES } from '../../common/features';
 import {
   effectivePosition,
@@ -55,6 +56,7 @@ export class QueueService {
     @Inject(forwardRef(() => QueueGateway))
     private readonly gateway: QueueGateway,
     private readonly notifications: NotificationsService,
+    private readonly customers: CustomerService,
   ) {}
 
   // ---------- read paths ----------
@@ -63,7 +65,7 @@ export class QueueService {
     doctor: Awaited<ReturnType<PrismaService['doctor']['findUnique']>>;
     entries: EnrichedEntry[];
     currentToken: number | null;
-    missedEntries: Array<{ id: string; tokenNumber: number; patient: { id: string; name: string; phone?: string | null } | null; completedAt: string | null; missedCount: number }>;
+    missedEntries: Array<{ id: string; tokenNumber: number; patient: { id: string; name: string; phone?: string | null; customerPin?: string | null } | null; completedAt: string | null; missedCount: number }>;
     movingAvgMinutes: number | null;
     hasStartedToday: boolean;
   }> {
@@ -81,12 +83,12 @@ export class QueueService {
           serviceDay,
           status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
         },
-        include: { patient: true },
+        include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         orderBy: { tokenNumber: 'asc' },
       }),
       this.prisma.queueEntry.findMany({
         where: { doctorId, serviceDay, status: EntryStatus.MISSED },
-        include: { patient: { select: { id: true, name: true, phone: true } } },
+        include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         orderBy: { completedAt: 'desc' },
       }),
       this.eta.getMovingAvg(doctorId, { serviceDay }),
@@ -124,6 +126,9 @@ export class QueueService {
       breakRemainingMinutes,
     });
 
+    await this.ensureCustomerPins(enriched as Array<{ patient?: { id: string; customerPin?: string | null } | null }>);
+    await this.ensureCustomerPins(missedEntries);
+
     const current =
       entries.find((e) => e.status === EntryStatus.IN_CONSULTATION)?.tokenNumber ?? null;
 
@@ -142,7 +147,7 @@ export class QueueService {
     const entry = await this.prisma.queueEntry.findUnique({
       where: { id: entryId },
       include: {
-        patient: true,
+        patient: { select: CUSTOMER_PUBLIC_SELECT },
         doctor: { include: { user: true, department: true, clinic: true } },
       },
     });
@@ -171,11 +176,7 @@ export class QueueService {
       if (cached) return this.getEntry(cached);
     }
 
-    const patient = await this.prisma.user.upsert({
-      where: { phone: dto.patientPhone },
-      update: { name: dto.patientName },
-      create: { role: Role.PATIENT, name: dto.patientName, phone: dto.patientPhone },
-    });
+    const patient = await this.customers.upsertByPhone(dto.patientPhone, dto.patientName);
 
     const serviceDay = todayKey();
 
@@ -308,7 +309,7 @@ export class QueueService {
             sortOrder,
             missedCount: input.missedCount ?? 0,
           },
-          include: { patient: true },
+          include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
@@ -333,7 +334,7 @@ export class QueueService {
           serviceDay,
           status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
         },
-        include: { patient: true },
+        include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         orderBy: { tokenNumber: 'asc' },
       }),
       this.prisma.queueEntry.count({
@@ -699,7 +700,7 @@ export class QueueService {
         status: { in: TERMINAL },
       },
       include: {
-        patient: { select: { id: true, name: true, phone: true } },
+        patient: { select: CUSTOMER_PUBLIC_SELECT },
         doctor: {
           include: {
             user: { select: { id: true, name: true } },
@@ -859,7 +860,7 @@ export class QueueService {
     const updated = await this.prisma.queueEntry.update({
       where: { id: entryId },
       data: { status: next, version: { increment: 1 }, ...extra },
-      include: { patient: true },
+      include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
     });
 
     if (next === EntryStatus.COMPLETED) {
@@ -911,6 +912,17 @@ export class QueueService {
     if (!doctor || doctor.clinicId !== callerClinicId) {
       throw new ForbiddenException('Not authorized: doctor belongs to a different clinic');
     }
+  }
+
+  private async ensureCustomerPins(rows: Array<{ patient?: { id: string; customerPin?: string | null } | null } | Record<string, unknown>>) {
+    await Promise.all(
+      rows.map(async (row) => {
+        const p = (row as { patient?: { id: string; customerPin?: string | null } | null }).patient;
+        if (p && !p.customerPin) {
+          p.customerPin = await this.customers.ensurePin({ id: p.id, customerPin: null });
+        }
+      }),
+    );
   }
 
   private async broadcast(doctorId: string, eventType: string, payload: unknown) {

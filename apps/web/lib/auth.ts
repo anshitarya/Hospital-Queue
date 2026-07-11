@@ -51,27 +51,13 @@ export async function registerReceptionist(opts: {
   return api<AuthResult>('/auth/register', { method: 'POST', body: opts });
 }
 
-export async function requestOtp(phone: string) {
-  return api<{ devCode?: string }>('/auth/otp/request', { method: 'POST', body: { phone } });
+export async function loginCustomer(phone: string, pin: string) {
+  return api<AuthResult>('/auth/customer/login', { method: 'POST', body: { phone, pin } });
 }
 
-export async function verifyOtp(phone: string, code: string, name?: string) {
-  return api<AuthResult & { pinSet: boolean }>('/auth/otp/verify', {
-    method: 'POST',
-    body: { phone, code, name },
-  });
-}
-
-export async function checkPinStatus(phone: string) {
-  return api<{ pinSet: boolean }>(`/auth/patient/pin-status?phone=${encodeURIComponent(phone)}`);
-}
-
+/** @deprecated Use loginCustomer */
 export async function loginWithPin(phone: string, pin: string) {
-  return api<AuthResult>('/auth/patient/pin/login', { method: 'POST', body: { phone, pin } });
-}
-
-export async function setPatientPin(pin: string) {
-  return api<{ ok: boolean }>('/auth/patient/pin/set', { method: 'POST', body: { pin } });
+  return loginCustomer(phone, pin);
 }
 
 /* ─── Profile ─────────────────────────────────────────────────────────────── */
@@ -89,6 +75,7 @@ export interface UserProfile {
   clinic: { id: string; name: string } | null;
   createdAt: string;
   hasPassword: boolean;
+  customerPin?: string | null;
 }
 
 export async function getProfile() {

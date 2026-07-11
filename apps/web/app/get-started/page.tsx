@@ -4,8 +4,7 @@ import { useId, useState } from 'react';
 import Link from 'next/link';
 import { TurnosIcon, Icon } from '@/components/Icons';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
-import { FORMS, BRAND } from '@/lib/config';
-import { submitGoogleForm } from '@/lib/googleForms';
+import { api, ApiError } from '@/lib/api';
 
 export default function GetStartedPage() {
   const businessNameId = useId();
@@ -21,7 +20,7 @@ export default function GetStartedPage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
@@ -43,37 +42,22 @@ export default function GetStartedPage() {
     }
 
     setBusy(true);
-
-    const { actionUrl, viewUrl, fields } = FORMS.businessSignup;
-    const payload: Record<string, string> = {};
-    if (fields.businessName) payload[fields.businessName] = businessName.trim();
-    if (fields.contactName) payload[fields.contactName] = contactName.trim();
-    if (fields.email) payload[fields.email] = email.trim();
-    if (fields.mobile) payload[fields.mobile] = phoneResult.e164;
-
-    if (actionUrl && Object.keys(payload).length > 0) {
-      submitGoogleForm(actionUrl, payload);
+    try {
+      await api('/signup-requests', {
+        method: 'POST',
+        body: {
+          businessName: businessName.trim(),
+          contactName: contactName.trim(),
+          email: email.trim(),
+          phone: phoneResult.e164,
+        },
+      });
       setSubmitted(true);
+    } catch (ex) {
+      setError(ex instanceof ApiError ? ex.message : 'Something went wrong. Please try again.');
+    } finally {
       setBusy(false);
-      return;
     }
-
-    const hasPrefill = Object.values(fields).some(Boolean);
-    if (hasPrefill) {
-      const prefill = new URL(viewUrl);
-      if (fields.businessName) prefill.searchParams.set(fields.businessName, businessName.trim());
-      if (fields.contactName) prefill.searchParams.set(fields.contactName, contactName.trim());
-      if (fields.email) prefill.searchParams.set(fields.email, email.trim());
-      if (fields.mobile) prefill.searchParams.set(fields.mobile, phoneResult.e164);
-      window.open(prefill.toString(), '_blank', 'noopener,noreferrer');
-    } else {
-      const body = encodeURIComponent(
-        `Business name: ${businessName.trim()}\nContact name: ${contactName.trim()}\nEmail: ${email.trim()}\nMobile: ${phoneResult.e164}`,
-      );
-      window.location.href = `mailto:${BRAND.contact.email}?subject=${encodeURIComponent('Turnos business registration')}&body=${body}`;
-    }
-    setSubmitted(true);
-    setBusy(false);
   }
 
   return (
@@ -94,7 +78,7 @@ export default function GetStartedPage() {
           </h1>
           <p className="mt-2 text-slate-500 text-base max-w-xl mx-auto">
             For business owners — register your business and we&apos;ll set up your queue.
-            Customers can sign in separately with their mobile number.
+            Customers sign in separately with their mobile number and Customer PIN.
           </p>
         </div>
 
@@ -107,13 +91,11 @@ export default function GetStartedPage() {
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">I&apos;m a customer</h2>
                 <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-                  Check your queue position with your mobile number. No password or business setup needed.
+                  Check your queue position with your mobile number and 4-digit Customer PIN.
+                  Ask reception for your PIN on your first visit.
                 </p>
               </div>
-              <Link
-                href="/login/patient"
-                className="btn-primary w-full mt-auto"
-              >
+              <Link href="/login/patient" className="btn-primary w-full mt-auto">
                 Customer sign in
                 <Icon.ArrowRight className="h-4 w-4" />
               </Link>

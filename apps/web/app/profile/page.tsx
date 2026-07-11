@@ -480,9 +480,13 @@ function Security({
           <div className="flex items-start gap-3">
             <Icon.Shield className="h-5 w-5 mt-0.5 shrink-0" />
             <div>
-              <div className="font-medium">OTP-based account</div>
+              <div className="font-medium">PIN-based account</div>
               <div className="text-sky-700 mt-0.5">
-                You sign in with a one-time code sent to your phone — there&apos;s no password to change.
+                You sign in with your mobile number and permanent Customer PIN
+                {profile.customerPin ? (
+                  <> (<span className="font-mono font-semibold">{profile.customerPin}</span>)</>
+                ) : null}
+                — there&apos;s no password to change.
               </div>
             </div>
           </div>

@@ -16,13 +16,13 @@ interface Choice {
 const CHOICES: Choice[] = [
   {
     emoji: '🏥',
-    title: 'Patient',
-    subtitle: 'No password needed',
+    title: 'Customer',
+    subtitle: 'Mobile + PIN',
     description:
-      "Sign in with your mobile number. We'll send a one-time code — no account setup required.",
+      'Sign in with your mobile number and permanent 4-digit Customer PIN. Ask reception for your PIN on your first visit.',
     href: '/login/patient',
     accent: 'from-emerald-500 to-teal-600',
-    badge: 'OTP login',
+    badge: 'PIN login',
   },
   {
     emoji: '🩺',

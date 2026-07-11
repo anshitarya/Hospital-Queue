@@ -14,6 +14,7 @@ import { PatientsModule } from './modules/patients/patients.module';
 import { QueueModule } from './modules/queue/queue.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ClinicsModule } from './modules/clinics/clinics.module';
+import { SignupRequestsModule } from './modules/signup-requests/signup-requests.module';
 import { HealthModule } from './modules/health/health.module';
 import configuration from './config/configuration';
 
@@ -25,6 +26,7 @@ import configuration from './config/configuration';
     RedisModule,
     AuthModule,
     ClinicsModule,
+    SignupRequestsModule,
     DepartmentsModule,
     DoctorsModule,
     PatientsModule,

@@ -2,10 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
+import { CustomerService } from './customer.service';
 
 @Injectable()
 export class PatientsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customers: CustomerService,
+  ) {}
 
   searchByPhone(phone: string) {
     return this.prisma.user.findFirst({
@@ -13,14 +17,9 @@ export class PatientsService {
     });
   }
 
-  // Idempotent on phone: returns existing patient or creates a new one.
-  // Used by reception's "fast add" flow — typing a phone twice never creates a duplicate.
+  // Idempotent on phone: returns existing customer or creates a new one with a permanent PIN.
   upsertByPhone(dto: CreatePatientDto) {
-    return this.prisma.user.upsert({
-      where: { phone: dto.phone },
-      update: { name: dto.name },
-      create: { role: Role.PATIENT, name: dto.name, phone: dto.phone },
-    });
+    return this.customers.upsertByPhone(dto.phone, dto.name);
   }
 
   async get(id: string) {

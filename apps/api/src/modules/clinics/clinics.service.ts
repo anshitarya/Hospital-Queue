@@ -8,13 +8,17 @@ import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CustomerService } from '../patients/customer.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { AddDoctorDto } from './dto/add-doctor.dto';
 import { AddReceptionistDto } from './dto/add-receptionist.dto';
 
 @Injectable()
 export class ClinicsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customers: CustomerService,
+  ) {}
 
   // ── Admin ──────────────────────────────────────────────────────────────────
 
@@ -363,13 +367,20 @@ export class ClinicsService {
 
   async lookupPatient(clinicId: string, phone: string) {
     if (!phone) return null;
-    const patient = await this.prisma.user.findUnique({ where: { phone } });
-    if (!patient) return null;
+    const patient = await this.prisma.user.findUnique({
+      where: { phone },
+      select: { id: true, name: true, role: true, customerPin: true },
+    });
+    if (!patient || patient.role !== Role.PATIENT) return null;
+
+    let customerPin = patient.customerPin;
+    if (!customerPin) {
+      customerPin = await this.customers.ensurePin(patient);
+    }
 
     const where = { patientId: patient.id, doctor: { clinicId }, status: EntryStatus.COMPLETED };
     const [totalVisits, entries] = await Promise.all([
       this.prisma.queueEntry.count({ where }),
-      // Fetch enough to cover unique dates and providers across all officers in the clinic
       this.prisma.queueEntry.findMany({
         where,
         orderBy: { joinedAt: 'desc' },
@@ -378,9 +389,6 @@ export class ClinicsService {
       }),
     ]);
 
-    if (totalVisits === 0) return null;
-
-    // Group visits by provider
     const byProvider = new Map<string, { name: string; count: number; dates: string[] }>();
     for (const e of entries) {
       const provName = e.doctor?.user?.name;
@@ -391,13 +399,18 @@ export class ClinicsService {
       const day = e.serviceDay;
       if (day && !rec.dates.includes(day)) rec.dates.push(day);
     }
-    // count in byProvider only covers the last 50 entries; use totalVisits-proportional counts for display
-    const providers = [...byProvider.values()].map((p) => ({ name: p.name, count: p.count, dates: p.dates.slice(0, 10) }));
+    const providers = [...byProvider.values()].map((p) => ({
+      name: p.name,
+      count: p.count,
+      dates: p.dates.slice(0, 10),
+    }));
 
     return {
       name: patient.name,
+      customerPin,
       totalVisits,
       providers,
+      registered: true,
     };
   }
 

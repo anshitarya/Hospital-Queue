@@ -122,7 +122,7 @@ export interface QueueEntry {
   id: string;
   doctorId: string;
   patientId: string;
-  patient?: { id: string; name: string; phone?: string | null };
+  patient?: { id: string; name: string; phone?: string | null; customerPin?: string | null };
   serviceDay: string;
   tokenNumber: number;
   status: EntryStatus;
@@ -146,7 +146,7 @@ export interface QueueEntry {
 export interface MissedEntry {
   id: string;
   tokenNumber: number;
-  patient: { id: string; name: string; phone?: string | null } | null;
+  patient: { id: string; name: string; phone?: string | null; customerPin?: string | null } | null;
   completedAt: string | null;
   missedCount: number;
 }
@@ -161,6 +161,23 @@ export interface Snapshot {
   movingAvgMinutes?: number | null;
   /** True if at least one entry has been called today (callNext fired). Used to suppress "queue not started" after all are done. */
   hasStartedToday?: boolean;
+}
+
+export type SignupRequestStatus = 'PENDING' | 'CONTACTED' | 'APPROVED' | 'REJECTED';
+
+export interface BusinessSignupRequest {
+  id: string;
+  businessName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  status: SignupRequestStatus;
+  notes?: string | null;
+  clinicId?: string | null;
+  clinic?: { id: string; name: string } | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**

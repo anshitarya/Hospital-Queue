@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Clinic, type Doctor, type InviteCode } from '@/lib/api';
+import { api, ApiError, type Clinic, type Doctor, type InviteCode, type BusinessSignupRequest, type SignupRequestStatus } from '@/lib/api';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
@@ -75,7 +75,12 @@ export default function AdminPage() {
   // receptionist, reset passwords). "overview" is the read-only summary.
   // Persisted via `?tab=` so refresh / browser-back keep the user where they
   // were instead of bouncing them to the default.
-  const [tab, setTab] = useTabState<'overview' | 'manage'>('manage', ['overview', 'manage']);
+  const [tab, setTab] = useTabState<'overview' | 'manage' | 'requests'>('manage', ['overview', 'manage', 'requests']);
+
+  const [signupRequests, setSignupRequests] = useState<BusinessSignupRequest[]>([]);
+  const [pendingSignupCount, setPendingSignupCount] = useState(0);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestFilter, setRequestFilter] = useState<SignupRequestStatus | 'ALL'>('PENDING');
 
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
@@ -117,11 +122,40 @@ export default function AdminPage() {
     }
   }, []);
 
+  const loadPendingSignupCount = useCallback(async () => {
+    try {
+      const count = await api<number>('/signup-requests/stats/pending-count');
+      setPendingSignupCount(count);
+    } catch {
+      setPendingSignupCount(0);
+    }
+  }, []);
+
+  const loadSignupRequests = useCallback(async (filter: SignupRequestStatus | 'ALL' = requestFilter) => {
+    setLoadingRequests(true);
+    try {
+      const qs = filter === 'ALL' ? '' : `?status=${filter}`;
+      const rows = await api<BusinessSignupRequest[]>(`/signup-requests${qs}`);
+      setSignupRequests(rows);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to load signup requests' });
+      setSignupRequests([]);
+    } finally {
+      setLoadingRequests(false);
+    }
+  }, [requestFilter]);
+
   useEffect(() => {
     if (!ready) return;
     loadClinics();
     loadStats();
-  }, [ready, loadClinics, loadStats]);
+    loadPendingSignupCount();
+  }, [ready, loadClinics, loadStats, loadPendingSignupCount]);
+
+  useEffect(() => {
+    if (!ready || tab !== 'requests') return;
+    void loadSignupRequests(requestFilter);
+  }, [ready, tab, requestFilter, loadSignupRequests]);
 
   if (!ready) return <PageLoader label="Loading admin…" />;
 
@@ -516,12 +550,57 @@ export default function AdminPage() {
     return `${window.location.origin}/register?code=${code}`;
   }
 
+  async function updateSignupRequest(id: string, status: SignupRequestStatus) {
+    try {
+      await api(`/signup-requests/${id}`, { method: 'PATCH', body: { status } });
+      setToast({ type: 'ok', msg: `Request marked as ${status.toLowerCase()}` });
+      await Promise.all([loadSignupRequests(requestFilter), loadPendingSignupCount()]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update request' });
+    }
+  }
+
+  async function approveSignupRequest(req: BusinessSignupRequest) {
+    if (!window.confirm(`Create business "${req.businessName}" and approve this request?`)) return;
+    try {
+      const result = await api<{ request: BusinessSignupRequest; clinic: Clinic }>(
+        `/signup-requests/${req.id}/approve`,
+        { method: 'POST', body: {} },
+      );
+      setToast({ type: 'ok', msg: `Business "${result.clinic.name}" created — generate an invite code next.` });
+      await Promise.all([loadClinics(), loadStats(), loadSignupRequests(requestFilter), loadPendingSignupCount()]);
+      setTab('manage');
+      await selectClinic(result.clinic);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to approve request' });
+    }
+  }
+
+  const STATUS_PILL: Record<SignupRequestStatus, string> = {
+    PENDING: 'bg-amber-100 text-amber-800 ring-amber-200',
+    CONTACTED: 'bg-sky-100 text-sky-800 ring-sky-200',
+    APPROVED: 'bg-emerald-100 text-emerald-800 ring-emerald-200',
+    REJECTED: 'bg-rose-100 text-rose-800 ring-rose-200',
+  };
+
   return (
     <>
       <Header title="Admin" />
       <main className="mx-auto max-w-6xl px-4 py-5 space-y-5 animate-fade-in">
         {/* Tab bar */}
         <div className="tabs-bar">
+          <button
+            type="button"
+            onClick={() => setTab('requests')}
+            className={'tab ' + (tab === 'requests' ? 'tab-active' : 'tab-inactive')}
+          >
+            Signup requests
+            {pendingSignupCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+                {pendingSignupCount}
+              </span>
+            )}
+          </button>
           <button
             type="button"
             onClick={() => setTab('manage')}
@@ -538,6 +617,88 @@ export default function AdminPage() {
             Overview
           </button>
         </div>
+
+        {tab === 'requests' && (
+          <section className="card overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="section-title">Business signup requests</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Submissions from the Get Started page</p>
+              </div>
+              <select
+                className="input w-auto text-sm py-1.5"
+                value={requestFilter}
+                onChange={(e) => setRequestFilter(e.target.value as SignupRequestStatus | 'ALL')}
+              >
+                <option value="PENDING">Pending</option>
+                <option value="CONTACTED">Contacted</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="ALL">All</option>
+              </select>
+            </div>
+
+            {loadingRequests ? (
+              <div className="p-10 text-center text-sm text-slate-500">Loading requests…</div>
+            ) : signupRequests.length === 0 ? (
+              <div className="p-10 text-center text-sm text-slate-500">
+                No {requestFilter === 'ALL' ? '' : requestFilter.toLowerCase() + ' '}signup requests yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {signupRequests.map((req, idx) => (
+                  <div key={req.id} className={'px-5 py-4 ' + (idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40')}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-slate-900">{req.businessName}</h3>
+                          <span className={'pill text-[10px] ' + STATUS_PILL[req.status]}>{req.status}</span>
+                        </div>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {req.contactName} · {req.email} · {req.phone}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Submitted {new Date(req.createdAt).toLocaleString()}
+                          {req.clinic && <> · Linked to <span className="font-medium text-slate-600">{req.clinic.name}</span></>}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {req.status === 'PENDING' && (
+                          <>
+                            <button type="button" className="btn-secondary text-xs py-1.5"
+                              onClick={() => updateSignupRequest(req.id, 'CONTACTED')}>
+                              Mark contacted
+                            </button>
+                            <button type="button" className="btn-primary text-xs py-1.5"
+                              onClick={() => approveSignupRequest(req)}>
+                              Approve & create business
+                            </button>
+                            <button type="button" className="btn-ghost text-xs py-1.5 text-rose-600"
+                              onClick={() => updateSignupRequest(req.id, 'REJECTED')}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {req.status === 'CONTACTED' && (
+                          <>
+                            <button type="button" className="btn-primary text-xs py-1.5"
+                              onClick={() => approveSignupRequest(req)}>
+                              Approve & create business
+                            </button>
+                            <button type="button" className="btn-ghost text-xs py-1.5 text-rose-600"
+                              onClick={() => updateSignupRequest(req.id, 'REJECTED')}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {tab === 'overview' && (
           <>

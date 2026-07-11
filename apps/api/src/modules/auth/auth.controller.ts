@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Post, Res, Query } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Post, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { IsEmail, IsString, Length, Matches } from 'class-validator';
@@ -6,38 +6,16 @@ import { Transform } from 'class-transformer';
 import { AuthService } from './auth.service';
 import { StaffLoginDto } from './dto/staff-login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { OtpRequestDto, OtpVerifyDto } from './dto/otp.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { CustomerLoginDto } from './dto/customer-login.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 
-/**
- * Inline DTOs for the email verification flow. Kept inline because they're
- * only used here — the schemas are small and the endpoints are tightly
- * coupled to this controller.
- */
 class RequestEmailVerifyDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail({}, { message: 'Enter a valid email address' })
   email!: string;
-}
-
-class PinLoginDto {
-  @IsString()
-  phone!: string;
-
-  @IsString()
-  @Length(4, 4, { message: 'PIN must be exactly 4 digits' })
-  @Matches(/^\d{4}$/, { message: 'PIN must be 4 digits' })
-  pin!: string;
-}
-
-class SetPinDto {
-  @IsString()
-  @Length(4, 4, { message: 'PIN must be exactly 4 digits' })
-  @Matches(/^\d{4}$/, { message: 'PIN must be 4 digits' })
-  pin!: string;
 }
 
 class VerifyEmailDto {
@@ -55,9 +33,6 @@ export class AuthController {
     const isProd = process.env.NODE_ENV === 'production';
     res.cookie('hq_session', token, {
       httpOnly: true,
-      // In production the web app and API are on different domains, so the
-      // cookie must be SameSite=None (and therefore Secure) to be sent on
-      // cross-site requests. In dev (same host, http) keep Lax/insecure.
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
       maxAge: 30 * 24 * 60 * 60 * 1000,
@@ -67,11 +42,6 @@ export class AuthController {
 
   /* ─── Public auth endpoints ────────────────────────────────────────────── */
 
-  /**
-   * Staff login is throttled hard — slow brute-force is the main attack
-   * vector here. 10/min/IP from the global throttler is too loose for a
-   * login endpoint.
-   */
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('staff/login')
@@ -84,7 +54,6 @@ export class AuthController {
     return result;
   }
 
-  /** Registration is rate-limited to discourage invite-code enumeration. */
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
@@ -97,61 +66,36 @@ export class AuthController {
     return result;
   }
 
-  /**
-   * Per-IP OTP request throttle. There's a separate per-phone limit
-   * enforced inside OtpService (5 per 10 min) — these stack.
-   */
-  @Public()
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @Post('otp/request')
-  requestOtp(@Body() dto: OtpRequestDto) {
-    return this.auth.requestPatientOtp(dto.phone);
-  }
-
+  /** Customer login with mobile number + permanent 4-digit Customer PIN. */
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @Post('otp/verify')
-  async verifyOtp(
-    @Body() dto: OtpVerifyDto,
+  @Post('customer/login')
+  async customerLogin(
+    @Body() dto: CustomerLoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.verifyPatientOtp(dto.phone, dto.code, dto.name);
+    const result = await this.auth.loginCustomer(dto.phone, dto.pin);
     this.setSessionCookie(res, result.token);
     return result;
   }
 
-  /** Check if a phone number has a PIN set — tells the login page which flow to show. */
-  @Public()
-  @Get('patient/pin-status')
-  checkPinStatus(@Query('phone') phone: string) {
-    return this.auth.checkPinStatus(phone);
-  }
-
-  /** Login with phone + 4-digit PIN (returning patients). */
+  /** @deprecated Use POST /auth/customer/login — kept for backward compatibility. */
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('patient/pin/login')
-  async pinLogin(
-    @Body() dto: PinLoginDto,
+  async legacyPinLogin(
+    @Body() dto: CustomerLoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.loginWithPin(dto.phone, dto.pin);
+    const result = await this.auth.loginCustomer(dto.phone, dto.pin);
     this.setSessionCookie(res, result.token);
     return result;
-  }
-
-  /** Set / reset the patient PIN (must be authenticated — call after OTP verify). */
-  @Post('patient/pin/set')
-  setPin(@CurrentUser() user: AuthUser, @Body() dto: SetPinDto) {
-    return this.auth.setPatientPin(user.id, dto.pin);
   }
 
   @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     const isProd = process.env.NODE_ENV === 'production';
-    // clearCookie only matches (and removes) the cookie if the attributes
-    // line up with how it was set — keep these in sync with setSessionCookie.
     res.clearCookie('hq_session', {
       httpOnly: true,
       secure: isProd,

@@ -50,7 +50,13 @@ export function QueueManager() {
   const [phone, setPhone]                         = useState('');
   const [phoneResult, setPhoneResult]             = useState<PhoneValidationResult>({ ok: false });
   // Previous visit lookup
-  const [prevVisit, setPrevVisit] = useState<{ name: string; totalVisits: number; providers: { name: string; count: number; dates: string[] }[] } | null>(null);
+  const [prevVisit, setPrevVisit] = useState<{
+    name: string;
+    customerPin?: string | null;
+    totalVisits: number;
+    providers: { name: string; count: number; dates: string[] }[];
+    registered?: boolean;
+  } | null>(null);
   const [prevLookupPhone, setPrevLookupPhone] = useState('');
   const [priority, setPriority]                   = useState(0);
   const [notes, setNotes]                         = useState('');
@@ -76,12 +82,17 @@ export function QueueManager() {
     if (!phoneResult.ok || !phoneResult.e164) { setPrevVisit(null); return; }
     if (phoneResult.e164 === prevLookupPhone) return; // already fetched for this number
     setPrevLookupPhone(phoneResult.e164);
-    api<{ name: string; totalVisits: number; providers: { name: string; count: number; dates: string[] }[] } | null>(
+    api<{
+      name: string;
+      customerPin?: string | null;
+      totalVisits: number;
+      providers: { name: string; count: number; dates: string[] }[];
+      registered?: boolean;
+    } | null>(
       `/clinics/my/patient-lookup?phone=${encodeURIComponent(phoneResult.e164)}`,
     ).then((data) => {
       setPrevVisit(data);
-      // Auto-fill name if not yet typed
-      if (data?.name && !name) setName(data.name);
+      if (data?.name) setName(data.name);
     }).catch(() => setPrevVisit(null));
   }, [phoneResult.ok, phoneResult.e164]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -403,9 +414,20 @@ export function QueueManager() {
                 <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 px-3.5 py-2.5 flex items-start gap-3">
                   <span className="text-teal-600 text-base shrink-0 mt-0.5">↩</span>
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
+                      {prevVisit.customerPin && (
+                        <span className="pill bg-slate-100 text-slate-600 ring-slate-200 text-[10px] font-mono">
+                          PIN: {prevVisit.customerPin}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">
-                      <span>{prevVisit.totalVisits} completed visit{prevVisit.totalVisits !== 1 ? 's' : ''}</span>
+                      {prevVisit.totalVisits > 0 ? (
+                        <span>{prevVisit.totalVisits} completed visit{prevVisit.totalVisits !== 1 ? 's' : ''} at this business</span>
+                      ) : (
+                        <span>Registered customer — first visit at this business</span>
+                      )}
                       {prevVisit.providers.map((p) => (
                         <div key={p.name} className="mt-1.5">
                           <span className="font-medium">{p.name}</span>
@@ -641,6 +663,11 @@ export function QueueManager() {
                     <div className="min-w-0">
                       <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
                         {e.patient?.name ?? '—'}
+                        {e.patient?.customerPin && (
+                          <span className="pill bg-slate-100 text-slate-600 ring-slate-200 text-[10px] font-mono ml-1">
+                            PIN: {e.patient.customerPin}
+                          </span>
+                        )}
                         {e.missedCount > 0 && (
                           <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">Missed ×{e.missedCount}</span>
                         )}
@@ -714,6 +741,11 @@ function QueueRow({
         <div className="flex-1 min-w-0">
           <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
             {entry.patient?.name ?? '—'}
+            {entry.patient?.customerPin && (
+              <span className="pill bg-slate-100 text-slate-600 ring-slate-200 text-[10px] font-mono">
+                PIN: {entry.patient.customerPin}
+              </span>
+            )}
             {isPending   && <span className="pill bg-amber-100 text-amber-700 ring-amber-200 text-[10px]">Adding…</span>}
             {entry.priority >= 100 && <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 Emergency</span>}
             {entry.walkin && <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">Walk-in</span>}
