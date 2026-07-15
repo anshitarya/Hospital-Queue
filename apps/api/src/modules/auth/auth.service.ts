@@ -10,16 +10,21 @@ import { JwtService } from '@nestjs/jwt';
 import { Role, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
+import { pinsEqual } from '../../common/utils/pin';
+import { isValidIndianMobile, normalizeIndianMobile } from '../../common/utils/phone';
 import { OtpService } from './otp.service';
 import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-import { isValidIndianMobile, normalizeIndianMobile } from '../../common/utils/phone';
 
 export interface AuthResult {
   token: string;
   user: { id: string; role: Role; name: string; phone?: string | null; email?: string | null; clinicId?: string | null };
 }
+
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCKOUT_SECONDS = 15 * 60; // 15 min
 
 @Injectable()
 export class AuthService {
@@ -28,12 +33,10 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly otp: OtpService,
     private readonly config: ConfigService,
+    private readonly redis: RedisService,
   ) {}
 
   async staffLogin(identifier: string, password: string): Promise<AuthResult> {
-    // Identifier can be an email OR a mobile number. Normalize before lookup
-    // so the user can type "9876543210" and still match the canonical
-    // "+919876543210" stored in the DB.
     const isEmail = identifier.includes('@');
     const lookupKey = isEmail
       ? identifier.toLowerCase()
@@ -45,10 +48,8 @@ export class AuthService {
       ? await this.prisma.user.findUnique({ where: { email: lookupKey } })
       : await this.prisma.user.findUnique({ where: { phone: lookupKey } });
 
-    // Generic message — never reveal whether the identifier or password was
-    // the wrong half. This is intentional to prevent account enumeration.
     if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
-    if (user.role === Role.PATIENT) throw new UnauthorizedException('Use patient login');
+    if (user.role === Role.PATIENT) throw new UnauthorizedException('Use customer login');
 
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
@@ -87,29 +88,43 @@ export class AuthService {
     return this.sign(user);
   }
 
-  async requestPatientOtp(phone: string) {
-    return this.otp.issue('phone', phone);
-  }
+  /**
+   * Customer login with mobile number + permanent 4-digit Customer PIN.
+   * Rate-limited: 5 failures → 15-min lockout per customer.
+   */
+  async loginCustomer(phone: string, pin: string): Promise<AuthResult> {
+    const user = await this.prisma.user.findUnique({ where: { phone } });
 
-  async verifyPatientOtp(phone: string, code: string, name?: string): Promise<AuthResult> {
-    await this.otp.verify('phone', phone, code);
+    if (!user || user.role !== Role.PATIENT || !user.customerPin) {
+      await new Promise((r) => setTimeout(r, 300));
+      throw new UnauthorizedException('Invalid credentials');
+    }
 
-    const user = await this.prisma.user.upsert({
-      where: { phone },
-      // Patient OTP verification implicitly verifies the phone every time.
-      update: { phoneVerified: true, ...(name ? { name } : {}) },
-      create: { phone, name: name ?? `Patient ${phone.slice(-4)}`, role: Role.PATIENT, phoneVerified: true },
-    });
+    const lockKey = `pin_lock:${user.id}`;
+    const attempts = parseInt((await this.redis.client.get(lockKey)) ?? '0', 10);
+    if (attempts >= PIN_MAX_ATTEMPTS) {
+      throw new UnauthorizedException(
+        'Too many failed attempts. Please try again in 15 minutes.',
+      );
+    }
 
+    if (!pinsEqual(user.customerPin, pin)) {
+      const next = attempts + 1;
+      await this.redis.client.set(lockKey, String(next), 'EX', PIN_LOCKOUT_SECONDS);
+      const remaining = PIN_MAX_ATTEMPTS - next;
+      throw new UnauthorizedException(
+        remaining > 0
+          ? `Incorrect PIN. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+          : 'Too many failed attempts. Please try again in 15 minutes.',
+      );
+    }
+
+    await this.redis.client.del(lockKey);
     return this.sign(user);
   }
 
   /* ─── Profile management (authenticated user) ───────────────────────────── */
 
-  /**
-   * Returns a self-profile payload safe to send to the client.
-   * Used by GET /auth/profile.
-   */
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -131,19 +146,12 @@ export class AuthService {
       clinicId: user.clinicId,
       clinic: user.clinic,
       createdAt: user.createdAt,
-      // PATIENT accounts use OTP only and have no password — the change-password
-      // form is hidden when this is false.
       hasPassword: !!user.passwordHash,
+      // Customers can view their permanent PIN from their profile.
+      customerPin: user.role === Role.PATIENT ? user.customerPin : undefined,
     };
   }
 
-  /**
-   * Update the *non-sensitive* profile fields. Currently only `name`.
-   *
-   * Email changes go through requestEmailVerification → verifyEmail (two-step,
-   * OTP-confirmed). Phone is immutable post-signup — see UpdateProfileDto for
-   * the reasoning.
-   */
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     await this.prisma.user.update({
       where: { id: userId },
@@ -156,18 +164,6 @@ export class AuthService {
 
   /* ─── Email verification ────────────────────────────────────────────────── */
 
-  /**
-   * Step 1 of email change: validate, check uniqueness, store as `pendingEmail`,
-   * and send an OTP to the new address.
-   *
-   * Behaviour notes:
-   *   - We do NOT clear the existing verified email — the user keeps that
-   *     until they confirm the new one.
-   *   - Same-email-as-current short-circuits (no point sending an OTP) but is
-   *     still considered success so the UI doesn't have to special-case it.
-   *   - Uniqueness check covers BOTH the canonical email and other users'
-   *     pendingEmail to prevent two accounts racing to claim one address.
-   */
   async requestEmailVerification(userId: string, newEmail: string) {
     const email = newEmail.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -199,10 +195,6 @@ export class AuthService {
     return { sent: true, devCode };
   }
 
-  /**
-   * Step 2 of email change: verify the OTP, promote `pendingEmail` → `email`,
-   * set `emailVerified=true`, and clear the pending slot.
-   */
   async verifyEmail(userId: string, code: string) {
     const me = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!me) throw new NotFoundException('User not found');
@@ -212,8 +204,6 @@ export class AuthService {
 
     await this.otp.verify('email', me.pendingEmail, code);
 
-    // Race protection: another user might have taken this address while we
-    // were mid-verify. Check one more time inside the transaction.
     await this.prisma.$transaction(async (tx) => {
       const stillFree = await tx.user.findFirst({
         where: { email: me.pendingEmail!, NOT: { id: userId } },
@@ -234,10 +224,6 @@ export class AuthService {
     return this.getProfile(userId);
   }
 
-  /**
-   * Cancels any pending email change. Used by the UI when the user backs out
-   * of the verification step.
-   */
   async cancelPendingEmail(userId: string) {
     await this.prisma.user.update({
       where: { id: userId },
@@ -246,16 +232,11 @@ export class AuthService {
     return this.getProfile(userId);
   }
 
-  /**
-   * Verifies the current password and replaces the hash with a new one.
-   * Patients without a password (OTP-only accounts) cannot use this endpoint —
-   * they get a 400.
-   */
   async changePassword(userId: string, dto: ChangePasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (!user.passwordHash) {
-      throw new BadRequestException('This account uses OTP login and has no password to change');
+      throw new BadRequestException('This account uses PIN login and has no password to change');
     }
 
     const ok = await argon2.verify(user.passwordHash, dto.currentPassword);

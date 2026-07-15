@@ -1,0 +1,1 @@
+ALTER TYPE "BusinessType" ADD VALUE 'GENERAL';

@@ -26,7 +26,7 @@ function makeService() {
   const config = { get: jest.fn() } as unknown as ConfigService;
 
   return {
-    svc: new AuthService(prisma, jwt, otp, config),
+    svc: new AuthService(prisma, jwt, otp, config, { client: { get: async () => null, set: async () => {}, del: async () => {} } } as any),
     findUnique,
   };
 }
@@ -103,7 +103,7 @@ describe('AuthService.staffLogin', () => {
       role: Role.PATIENT,
       passwordHash,
     });
-    await expect(svc.staffLogin('p@x.com', 'hunter2')).rejects.toThrow(/patient login/i);
+    await expect(svc.staffLogin('p@x.com', 'hunter2')).rejects.toThrow(/customer login/i);
   });
 
   it('rejects wrong password (real argon2 verify)', async () => {
@@ -116,5 +116,64 @@ describe('AuthService.staffLogin', () => {
     await expect(svc.staffLogin('a@b.com', 'wrong')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+});
+
+describe('AuthService.loginCustomer', () => {
+  function makeRedis() {
+    const store = new Map<string, string>();
+    return {
+      client: {
+        get: async (k: string) => store.get(k) ?? null,
+        set: async (k: string, v: string) => { store.set(k, v); },
+        del: async (k: string) => { store.delete(k); },
+      },
+    };
+  }
+
+  function makeCustomerService() {
+    const findUnique = jest.fn();
+    const prisma = { user: { findUnique } } as unknown as PrismaService;
+    const jwt = { signAsync: jest.fn().mockResolvedValue('customer-token') } as unknown as JwtService;
+    const otp = { issue: jest.fn(), verify: jest.fn() } as unknown as OtpService;
+    const config = { get: jest.fn() } as unknown as ConfigService;
+    const redis = makeRedis();
+    const svc = new AuthService(prisma, jwt, otp, config, redis as any);
+    return { svc, findUnique, redis };
+  }
+
+  it('issues a JWT when phone and PIN match', async () => {
+    const { svc, findUnique } = makeCustomerService();
+    findUnique.mockResolvedValueOnce({
+      id: 'c-1',
+      role: Role.PATIENT,
+      name: 'Alice',
+      phone: '+919876543210',
+      customerPin: '4315',
+    });
+
+    const out = await svc.loginCustomer('+919876543210', '4315');
+    expect(out.token).toBe('customer-token');
+    expect(out.user.name).toBe('Alice');
+  });
+
+  it('rejects incorrect PIN with remaining attempts', async () => {
+    const { svc, findUnique } = makeCustomerService();
+    findUnique.mockResolvedValueOnce({
+      id: 'c-1',
+      role: Role.PATIENT,
+      customerPin: '4315',
+    });
+
+    await expect(svc.loginCustomer('+919876543210', '9999')).rejects.toThrow(
+      /Incorrect PIN.*4 attempts remaining/,
+    );
+  });
+
+  it('returns generic error when customer not found', async () => {
+    const { svc, findUnique } = makeCustomerService();
+    findUnique.mockResolvedValueOnce(null);
+
+    await expect(svc.loginCustomer('+919876543210', '4315')).rejects.toThrow('Invalid credentials');
   });
 });

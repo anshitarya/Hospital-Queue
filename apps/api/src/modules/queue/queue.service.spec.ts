@@ -3,6 +3,8 @@ import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
 import { QueueService } from './queue.service';
 import { EtaService } from './eta.service';
 import { QueueGateway } from './gateway/queue.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
+import { CustomerService } from '../patients/customer.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 
@@ -216,11 +218,41 @@ function makeService() {
   const redis = makeFakeRedis();
   const gateway = makeGatewaySpy();
   const eta = new EtaService();
+  const notifications = {
+    notifyJoined: () => Promise.resolve(),
+    notifyTurnNow: () => Promise.resolve(),
+    notifyAlmostNext: () => Promise.resolve(),
+    notifyQueueCleared: () => Promise.resolve(),
+    notifyTurnSoon: () => Promise.resolve(),
+    notifyDelayed: () => Promise.resolve(),
+  } as unknown as NotificationsService;
+  const customers = {
+    upsertByPhone: jest.fn(async (phone: string, name: string) => {
+      const users = prisma._users as unknown as Map<string, { id: string; phone: string; name: string; customerPin?: string }>;
+      const existing = [...users.values()].find((u) => u.phone === phone);
+      if (existing) {
+        Object.assign(existing, { name });
+        return existing;
+      }
+      const created = {
+        id: `u-${users.size + 1}`,
+        role: 'PATIENT',
+        phone,
+        name,
+        customerPin: '1234',
+      };
+      users.set(created.id, created);
+      return created;
+    }),
+    ensurePin: jest.fn(async (u: { id: string; customerPin?: string | null }) => u.customerPin ?? '1234'),
+  } as unknown as CustomerService;
   const svc = new QueueService(
     prisma as unknown as PrismaService,
     redis as unknown as RedisService,
     eta,
     gateway as unknown as QueueGateway,
+    notifications,
+    customers,
   );
   return { svc, prisma, gateway, redis };
 }
@@ -240,9 +272,6 @@ describe('QueueService — reception join → patient sync', () => {
 
     expect(entry.tokenNumber).toBe(1);
     expect(prisma._entries).toHaveLength(1);
-
-    // Let fire-and-forget broadcast execute
-    await new Promise(process.nextTick);
 
     // Doctor room — the reception screen + display board listen here
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
@@ -374,7 +403,7 @@ describe('QueueService — transitions notify the patient', () => {
     );
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.cancel(e.id, 'r-1');
+    await svc.cancel(e.id, { id: 'r-1', role: 'RECEPTIONIST' });
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),
@@ -473,10 +502,6 @@ describe('QueueService — pause / resume', () => {
     const { svc, prisma, gateway } = makeService();
     await svc.pauseDoctor('doc-1', 'r-1');
     expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
-
-    // Let fire-and-forget broadcast execute
-    await new Promise(process.nextTick);
-
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
       'queue:updated',

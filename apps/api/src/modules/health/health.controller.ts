@@ -19,7 +19,7 @@ import { RedisService } from '../../common/redis/redis.service';
  * Both endpoints are `@Public()` — no JWT required, otherwise the container
  * healthcheck would fail.
  */
-@Controller('health')
+@Controller()
 export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
@@ -27,7 +27,7 @@ export class HealthController {
   ) {}
 
   @Public()
-  @Get()
+  @Get('health')
   health() {
     return {
       ok: true,

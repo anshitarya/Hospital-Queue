@@ -5,7 +5,9 @@ import {
   ForbiddenException,
   Get,
   Param,
+  Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ClinicsService } from './clinics.service';
@@ -46,10 +48,96 @@ export class ClinicsController {
     return this.clinics.getMyClinic(user.clinicId);
   }
 
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/patient-lookup')
+  lookupPatient(@CurrentUser() user: AuthUser, @Query('phone') phone: string) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.lookupPatient(user.clinicId, phone);
+  }
+
   @Roles(Role.RECEPTIONIST, Role.DOCTOR, Role.ADMIN)
   @Get('my/departments')
   listDepartments() {
     return this.clinics.listDepartments();
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.DOCTOR, Role.ADMIN)
+  @Post('my/departments')
+  findOrCreateDepartment(@Body('name') name: string) {
+    return this.clinics.findOrCreateDepartment(name);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/dashboard')
+  getMyDashboard(@CurrentUser() user: AuthUser) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.getClinicDashboard(user.clinicId);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/analytics')
+  getMyAnalytics(
+    @CurrentUser() user: AuthUser,
+    @Query('period') period?: string,
+    @Query('count')  count?: string,
+    @Query('date')   date?: string,
+    @Query('from')   from?: string,
+    @Query('to')     to?: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    if (period === 'hourly') {
+      return this.clinics.getClinicAnalytics(user.clinicId, 'hourly', 24, date);
+    }
+    const p = period === 'monthly' ? 'monthly' : 'daily';
+    const n = count ? Math.min(Math.max(parseInt(count, 10) || 30, 7), 366) : (p === 'monthly' ? 12 : 30);
+    return this.clinics.getClinicAnalytics(user.clinicId, p, n, undefined, from, to);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/doctor-analytics')
+  getDoctorAnalytics(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from?: string,
+    @Query('to')   to?: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    const today = new Date().toISOString().slice(0, 10);
+    return this.clinics.getDoctorAnalytics(user.clinicId, from ?? today, to ?? today);
+  }
+
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
+  @Get('my/history')
+  getClinicHistory(
+    @CurrentUser() user: AuthUser,
+    @Query('from')      from?: string,
+    @Query('to')        to?: string,
+    @Query('page')      page?: string,
+    @Query('limit')     limit?: string,
+    @Query('doctorId')  doctorId?: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    const today = new Date().toISOString().slice(0, 10);
+    const sevenAgo = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+    return this.clinics.getClinicHistory(
+      user.clinicId,
+      from ?? sevenAgo,
+      to ?? today,
+      page  ? Math.max(1, parseInt(page,  10)) : 1,
+      limit ? Math.min(500, parseInt(limit, 10)) : 50,
+      doctorId,
+    );
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Delete('my/history')
+  deleteClinicHistory(
+    @CurrentUser() user: AuthUser,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    if (!from || !to) throw new ForbiddenException('from and to dates are required');
+    return this.clinics.deleteClinicHistory(user.clinicId, from, to);
   }
 
   /**
@@ -180,5 +268,39 @@ export class ClinicsController {
   @Post(':id/staff/:userId/reset-password')
   resetStaffPassword(@Param('id') clinicId: string, @Param('userId') userId: string) {
     return this.clinics.resetStaffPassword(clinicId, userId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch(':id')
+  updateClinic(@Param('id') id: string, @Body() dto: { name?: string; address?: string; businessType?: string }) {
+    return this.clinics.updateClinic(id, dto);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id')
+  deleteClinic(@Param('id') id: string) {
+    return this.clinics.deleteClinic(id);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id/doctors/:doctorId')
+  deleteDoctor(@Param('id') clinicId: string, @Param('doctorId') doctorId: string) {
+    return this.clinics.adminDeleteDoctor(clinicId, doctorId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Delete(':id/receptionists/:userId')
+  deleteReceptionist(@Param('id') clinicId: string, @Param('userId') userId: string) {
+    return this.clinics.adminDeleteReceptionist(clinicId, userId);
+  }
+
+  @Roles(Role.ADMIN)
+  @Patch(':id/staff/:userId/email')
+  updateStaffEmail(
+    @Param('id') clinicId: string,
+    @Param('userId') userId: string,
+    @Body('email') email: string,
+  ) {
+    return this.clinics.updateStaffEmail(clinicId, userId, email);
   }
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { Icon } from './Icons';
+import { Icon, TurnosIcon } from './Icons';
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: 'features', label: 'Features' },
@@ -34,17 +34,15 @@ export function LandingNav() {
       className={
         'sticky top-0 z-40 transition-all duration-200 ' +
         (scrolled
-          ? 'bg-white/85 backdrop-blur border-b border-slate-200 shadow-sm'
+          ? 'bg-white/85 dark:bg-slate-900/90 backdrop-blur border-b border-slate-200 dark:border-slate-700 shadow-sm'
           : 'bg-transparent')
       }
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6 flex items-center justify-between h-16">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold text-sm shadow-md group-hover:shadow-lg transition-shadow">
-            HQ
-          </span>
-          <span className="text-base font-semibold tracking-tight">Hospital Queue</span>
+          <TurnosIcon className="h-9 w-9 shadow-md group-hover:shadow-lg transition-shadow" />
+          <span className="text-base font-semibold tracking-tight dark:text-slate-100">Turnos</span>
         </Link>
 
         {/* Desktop nav */}
@@ -53,7 +51,7 @@ export function LandingNav() {
             <a
               key={s.id}
               href={`#${s.id}`}
-              className="px-3 py-1.5 text-sm text-slate-600 rounded-md hover:text-slate-900 hover:bg-slate-100 transition-colors"
+              className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 rounded-md hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
             >
               {s.label}
             </a>
@@ -64,15 +62,19 @@ export function LandingNav() {
         <div className="hidden md:flex items-center gap-2">
           <Link
             href="/login/choose"
-            className="text-sm text-slate-600 hover:text-slate-900 px-3 py-1.5"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 px-3 py-1.5"
           >
             Sign in
           </Link>
           <Link
-            href="/login/choose"
+            href="/get-started"
+            target="_blank"
+            rel="noopener noreferrer"
             className="btn-primary text-sm !py-1.5 !px-3.5"
           >
-            Get started
+            For business owners
             <Icon.ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -80,7 +82,7 @@ export function LandingNav() {
         {/* Mobile menu button */}
         <button
           type="button"
-          className="md:hidden p-2 rounded-lg hover:bg-slate-100"
+          className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-300"
           onClick={() => setMobileOpen((o) => !o)}
           aria-label="Toggle menu"
         >
@@ -90,33 +92,37 @@ export function LandingNav() {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-slate-200 bg-white animate-slide-up">
+        <div className="md:hidden border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 animate-slide-up">
           <nav className="px-4 py-3 space-y-1">
             {SECTIONS.map((s) => (
               <a
                 key={s.id}
                 href={`#${s.id}`}
                 onClick={() => setMobileOpen(false)}
-                className="block px-3 py-2 text-sm rounded-lg hover:bg-slate-100"
+                className="block px-3 py-2 text-sm dark:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
               >
                 {s.label}
               </a>
             ))}
-            <div className="pt-2 mt-2 border-t border-slate-100">
+            <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700">
               <div className="flex gap-2">
                 <Link
                   href="/login/choose"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)}
                   className="btn-secondary flex-1 text-sm"
                 >
                   Sign in
                 </Link>
                 <Link
-                  href="/login/choose"
+                  href="/get-started"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   onClick={() => setMobileOpen(false)}
                   className="btn-primary flex-1 text-sm"
                 >
-                  Get started
+                  For business owners
                 </Link>
               </div>
             </div>

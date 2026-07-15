@@ -36,11 +36,11 @@ export function useDoctorQueue(doctorId: string | null) {
     if (!doctorId) return;
 
     const token =
-      typeof window === 'undefined' ? null : window.localStorage.getItem('hq_token');
-
+      typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
     const socket = io(URL, {
       transports: ['websocket'],
-      auth: token ? { token } : {},
+      withCredentials: true,
+      auth: token ? { token } : undefined,
     });
     socketRef.current = socket;
 
@@ -94,13 +94,11 @@ export function usePatientStream(
     if (!enabled) return;
 
     const token =
-      typeof window === 'undefined' ? null : window.localStorage.getItem('hq_token');
-    // No token → no auth → server would refuse to room-join us. Bail.
-    if (!token) return;
-
+      typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
     const socket = io(URL, {
       transports: ['websocket'],
-      auth: { token },
+      withCredentials: true,
+      auth: token ? { token } : undefined,
     });
 
     socket.on('connect', () => {

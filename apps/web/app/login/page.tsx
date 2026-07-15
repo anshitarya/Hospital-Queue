@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { staffLogin, useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { IdentifierInput } from '@/components/IdentifierInput';
+import { TurnosIcon } from '@/components/Icons';
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -40,10 +41,8 @@ export default function StaffLoginPage() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md group-hover:shadow-lg transition-shadow">
-              HQ
-            </span>
-            <span className="text-lg font-semibold">Hospital Queue</span>
+            <TurnosIcon className="h-10 w-10 shadow-md group-hover:shadow-lg transition-shadow" />
+            <span className="text-lg font-semibold">Turnos</span>
           </Link>
         </div>
 
@@ -86,9 +85,9 @@ export default function StaffLoginPage() {
 
           <div className="text-sm text-center text-slate-500 pt-1 border-t border-slate-100 space-y-2">
             <p>
-              New receptionist?{' '}
-              <Link href="/register" className="text-brand-600 hover:text-brand-700 font-medium">
-                Register with invite code →
+              New business?{' '}
+              <Link href="/get-started" className="text-brand-600 hover:text-brand-700 font-medium">
+                Register your business →
               </Link>
             </p>
             <p className="text-xs">

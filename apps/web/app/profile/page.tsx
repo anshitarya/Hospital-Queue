@@ -35,7 +35,6 @@ import { Icon } from '@/components/Icons';
 export default function ProfilePage() {
   const { user, ready } = useRequireRole(['PATIENT', 'RECEPTIONIST', 'DOCTOR', 'ADMIN']);
   const setSession = useAuth((s) => s.setSession);
-  const token = useAuth((s) => s.token);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,9 +54,9 @@ export default function ProfilePage() {
   // ensures the header avatar and name update everywhere.
   function syncSession(updated: UserProfile) {
     setProfile(updated);
-    if (token && user) {
+    if (user) {
       setSession({
-        token,
+        token: '',
         user: {
           id: updated.id,
           role: updated.role,
@@ -125,7 +124,7 @@ function IdentityCard({ profile }: { profile: UserProfile }) {
     profile.role === 'RECEPTIONIST' ? 'from-emerald-500 to-emerald-700' :
     'from-slate-500 to-slate-700';
 
-  const roleLabel = profile.role.charAt(0) + profile.role.slice(1).toLowerCase();
+  const roleLabel = displayRole(profile.role);
   const memberSince = new Date(profile.createdAt).toLocaleDateString(undefined, {
     year: 'numeric', month: 'long', day: 'numeric',
   });
@@ -213,7 +212,7 @@ function PersonalDetails({
         </Field>
 
         <Field label="Role">
-          <input className="input bg-slate-50 cursor-not-allowed" value={profile.role} disabled />
+          <input className="input bg-slate-50 cursor-not-allowed" value={displayRole(profile.role)} disabled />
         </Field>
 
         {/* Phone — visible but locked. Show a "Verified" pill since phone is
@@ -238,7 +237,7 @@ function PersonalDetails({
           </div>
         </Field>
 
-        <Field label="Clinic">
+        <Field label="Business">
           <input
             className="input bg-slate-50 cursor-not-allowed"
             value={profile.clinic?.name ?? '—'}
@@ -481,10 +480,13 @@ function Security({
           <div className="flex items-start gap-3">
             <Icon.Shield className="h-5 w-5 mt-0.5 shrink-0" />
             <div>
-              <div className="font-medium">OTP-based account</div>
+              <div className="font-medium">PIN-based account</div>
               <div className="text-sky-700 mt-0.5">
-                You sign in with a one-time code sent to your phone — there&apos;s no password to change.
-                For account help, contact your clinic&apos;s reception.
+                You sign in with your mobile number and permanent Customer PIN
+                {profile.customerPin ? (
+                  <> (<span className="font-mono font-semibold">{profile.customerPin}</span>)</>
+                ) : null}
+                — there&apos;s no password to change.
               </div>
             </div>
           </div>
@@ -598,6 +600,11 @@ function Security({
 /* ─────────────────────────────────────────────────────────────────────────── */
 /*  Helpers                                                                    */
 /* ─────────────────────────────────────────────────────────────────────────── */
+
+function displayRole(role: UserProfile['role']) {
+  if (role === 'PATIENT') return '—';
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
 
 function Field({
   label,

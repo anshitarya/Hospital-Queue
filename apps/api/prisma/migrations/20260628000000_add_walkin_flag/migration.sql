@@ -1,0 +1,1 @@
+ALTER TABLE "QueueEntry" ADD COLUMN "walkin" BOOLEAN NOT NULL DEFAULT false;

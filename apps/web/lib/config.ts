@@ -17,15 +17,37 @@
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export const BRAND = {
-  name: 'Hospital Queue',
-  shortName: 'HQ',
-  tagline: 'Skip the waiting room. Arrive when it’s your turn.',
+  name: 'Turnos',
+  shortName: 'T',
+  tagline: 'Skip the wait. Arrive when it\'s your turn.',
   contact: {
-    phone: '+91 93521 33655',
-    phoneTel: '+919352133655',          // for tel: links
-    phoneWhatsapp: '919352133655',      // for wa.me links
+    phone: '+91 94147 71828',
+    phoneTel: '+919414771828',          // for tel: links
+    phoneWhatsapp: '919414771828',      // for wa.me links
     email: 'anshit.arya@flipkart.com',
+    legalEmail: 'hello@turnos.fly.dev', // shown on legal pages — update when domain is live
     hours: '9 AM–8 PM IST',
+  },
+  // Replace with your Google Form short link for user reviews
+  doctorSurveyUrl: 'https://forms.gle/C2QHX8Bv7qZGtmxr5',
+};
+
+export const FORMS = {
+  reviewUrl:
+    process.env.NEXT_PUBLIC_REVIEW_FORM_URL ??
+    process.env.NEXT_PUBLIC_GOOGLE_REVIEW_FORM_URL ??
+    BRAND.doctorSurveyUrl,
+  businessSignup: {
+    actionUrl: process.env.NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_ACTION ?? '',
+    viewUrl:
+      process.env.NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_URL ??
+      'https://forms.gle/76Zk339nJkQQqt4p8',
+    fields: {
+      businessName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_BUSINESS ?? 'entry.1778268907',
+      contactName: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_NAME ?? 'entry.275317772',
+      email: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_EMAIL ?? 'entry.445315508',
+      mobile: process.env.NEXT_PUBLIC_BUSINESS_FORM_ENTRY_MOBILE ?? 'entry.613579027',
+    },
   },
 };
 
@@ -95,35 +117,40 @@ export interface FeatureItem {
 export const FEATURES: FeatureItem[] = [
   {
     iconName: 'Clock',
-    title: 'Live ETA — not guesses',
-    body: 'Each token shows minutes until your turn, recomputed every time the doctor finishes a patient.',
+    title: 'Know exactly when it\'s your turn',
+    body: 'Customers see a live countdown — "~12 minutes" — that updates every time the provider finishes. No more guessing or asking the front desk.',
     span: 'sm:col-span-2',
-  },
-  {
-    iconName: 'Zap',
-    title: 'Instant socket updates',
-    body: 'Patient phones and TV displays update the moment reception or the doctor acts.',
   },
   {
     iconName: 'Smartphone',
-    title: 'Works on any phone',
-    body: 'No app to install. Patients sign in with a phone number and OTP.',
+    title: 'No app to download',
+    body: 'Customers just open a link on their phone and log in with an OTP. Works on any Android or iPhone, any browser.',
   },
   {
-    iconName: 'Users',
-    title: 'Roles done right',
-    body: 'Patient, receptionist, doctor and admin — each gets a focused dashboard with the right controls.',
+    iconName: 'Zap',
+    title: 'Every screen updates live',
+    body: 'The moment a provider calls the next customer, all phones and displays update instantly — no refresh needed.',
+  },
+  {
+    iconName: 'Bell',
+    title: 'Get notified before your turn',
+    body: 'The customer\'s screen flashes and they get an alert when they are 2–3 spots away. They can wait outside or nearby instead of crowding the room.',
     span: 'sm:col-span-2',
   },
   {
-    iconName: 'Building',
-    title: 'Multi-clinic ready',
-    body: 'One deployment serves many clinics. Admin invites receptionists; each clinic stays isolated.',
+    iconName: 'Shield',
+    title: 'Urgent cases go first — always',
+    body: 'Staff can mark any entry as urgent with one tap. They jump straight to the front of the queue.',
   },
   {
-    iconName: 'Shield',
-    title: 'Built for production',
-    body: 'JWT auth, rate limits, audit log, idempotent reception forms, daily backups baked in.',
+    iconName: 'Heart',
+    title: 'Missed your call? Rejoin easily',
+    body: 'If a customer steps out and misses their turn, staff can add them back near the front — no need to restart from the end.',
+  },
+  {
+    iconName: 'Activity',
+    title: 'Provider can pause or take a break',
+    body: 'Going on lunch? The provider sets a break time and all customers instantly see the updated wait. Queue resumes the moment they\'re back.',
   },
 ];
 
@@ -133,36 +160,36 @@ export const FEATURES: FeatureItem[] = [
 
 export const FAQS: { q: string; a: string }[] = [
   {
-    q: 'How do patients sign in?',
-    a: 'Patients open the link, enter their mobile number, and receive a 6-digit OTP. After verifying, they see a live card with their token number, current serving token, people ahead, and an estimated wait time — all updating in real time without refreshing.',
+    q: 'How does a customer check their queue position?',
+    a: 'Staff registers the customer and gives them a token link, or they log in with their phone number using an OTP. They\'ll see their token, how many people are ahead, and an estimated time — all live on their phone screen without needing to refresh.',
   },
   {
-    q: 'Do patients need to install an app?',
-    a: 'No. Hospital Queue runs entirely in the browser. Patients just open the link the clinic shares — works on any phone, tablet or computer.',
+    q: 'Do customers need to install any app?',
+    a: 'No — nothing to download. Customers just open the link in any browser on their phone. It works on any Android or iPhone.',
   },
   {
-    q: 'How do clinics get started?',
-    a: 'The admin creates a clinic and generates an invite code. Share the code (or the registration link) with your receptionist via WhatsApp or SMS — they sign up with their phone number, password, and the code. They can then add doctors and start managing the queue immediately.',
+    q: 'How does a business get set up?',
+    a: 'Register your business on the Get Started page — we\'ll reach out to onboard you. Your staff can sign in once your account is ready.',
   },
   {
-    q: 'Can one system serve multiple clinics?',
-    a: 'Yes. Each clinic has its own receptionists, doctors and queue — fully isolated. The admin can manage many clinics from one dashboard, generating invite codes for each.',
+    q: 'What does the front-desk staff do?',
+    a: 'Staff adds customers to the queue (name + phone number), can mark urgent cases that jump the queue, manage walk-ins, and see a live view of everything happening across all providers.',
   },
   {
-    q: 'How accurate is the ETA?',
-    a: 'ETA = remaining time for the current consultation + (people ahead × the doctor’s average consult time) + any delay the doctor declares. The doctor’s average is updated automatically from real consultation durations, so it adapts to how each doctor actually works.',
+    q: 'What does the service provider see?',
+    a: 'The provider sees who is currently being served, who is next, and the full waiting list with estimated times. They tap "Call next" when ready, mark the session complete when done, and can pause the queue or take a break at any time.',
   },
   {
-    q: 'What happens if the doctor runs late or takes a break?',
-    a: 'The doctor can pause the queue or set a delay — both update every patient’s ETA instantly so no one is misled. Patients see the new wait time on their phone within a second.',
+    q: 'How accurate is the wait time shown to customers?',
+    a: 'The app learns from each provider\'s actual service times and updates the estimate automatically. If a session takes longer than usual, all customers\' wait times adjust within seconds.',
   },
   {
-    q: 'Can I show a waiting-room TV display?',
-    a: 'Yes — every doctor has a public display URL at /display/<doctorId>. Open it on any browser plugged into the waiting-room TV. It shows the current token in huge type plus the next five up.',
+    q: 'Can I use a TV screen in the waiting area?',
+    a: 'Yes — open the display link on any browser connected to a TV. It shows "Now Serving" in large text and the next few tokens. No login needed for the display.',
   },
   {
-    q: 'Is patient data secure?',
-    a: 'Yes. All traffic runs over HTTPS, passwords are hashed with Argon2, JWT sessions expire after 7 days, and each clinic’s data is scoped so receptionists from one clinic can never see another’s queue. Daily database backups are taken automatically.',
+    q: 'Is this free for customers?',
+    a: 'Yes, completely free for customers. They sign in with their phone number and use it at no cost.',
   },
 ];
 
@@ -171,10 +198,10 @@ export const FAQS: { q: string; a: string }[] = [
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export const HERO_STATS = [
-  { v: '< 1s', l: 'Update latency' },
-  { v: '0 apps', l: 'For patients to install' },
-  { v: '∞', l: 'Clinics per deployment' },
-  { v: '24/7', l: 'Live queue sync' },
+  { v: '0', l: 'Apps to install' },
+  { v: '< 1 min', l: 'Customer sign-in time' },
+  { v: 'Live', l: 'Queue updates' },
+  { v: 'Free', l: 'For Users' },
 ];
 
 /* ─────────────────────────────────────────────────────────────────────────── */

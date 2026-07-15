@@ -135,7 +135,9 @@ function makeService() {
   prisma.$transaction = jest.fn(async (fn: (tx: any) => Promise<unknown>) =>
     fn({ user: prisma.user, doctor: prisma.doctor }),
   );
-  return { svc: new ClinicsService(prisma as unknown as PrismaService), prisma };
+  return { svc: new ClinicsService(prisma as unknown as PrismaService, {
+    ensurePin: jest.fn(async (u: { id: string }) => '1234'),
+  } as any), prisma };
 }
 
 describe('ClinicsService.addDoctor', () => {
