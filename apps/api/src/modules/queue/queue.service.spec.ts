@@ -89,7 +89,13 @@ function makeFakePrisma() {
     queueEntry: {
       findFirst: jest.fn(async ({ where, orderBy }: any) => {
         const list = entries
-          .filter((e) => e.doctorId === where.doctorId && e.serviceDay === where.serviceDay)
+          .filter((e) => {
+            if (where.doctorId && e.doctorId !== where.doctorId) return false;
+            if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
+            if (where.patientId && e.patientId !== where.patientId) return false;
+            if (where.status && e.status !== where.status) return false;
+            return true;
+          })
           .sort((a, b) =>
             orderBy?.tokenNumber === 'desc'
               ? b.tokenNumber - a.tokenNumber
@@ -107,12 +113,27 @@ function makeFakePrisma() {
       findMany: jest.fn(async ({ where }: any) => {
         return entries
           .filter(
-            (e) =>
-              e.doctorId === where.doctorId &&
-              e.serviceDay === where.serviceDay &&
-              where.status.in.includes(e.status),
+            (e) => {
+              const statusMatch = where.status && typeof where.status === 'object' && 'in' in where.status
+                ? where.status.in.includes(e.status)
+                : where.status === undefined || e.status === where.status;
+              return (
+                e.doctorId === where.doctorId &&
+                e.serviceDay === where.serviceDay &&
+                statusMatch
+              );
+            }
           )
           .map((e) => ({ ...e, patient: users.get(e.patientId) }));
+      }),
+      count: jest.fn(async ({ where }: any) => {
+        return entries.filter((e) => {
+          if (where.doctorId && e.doctorId !== where.doctorId) return false;
+          if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
+          if (where.calledAt && where.calledAt.not === null && e.calledAt === null) return false;
+          if (where.status && e.status !== where.status) return false;
+          return true;
+        }).length;
       }),
       create: jest.fn(async ({ data }: any) => {
         const e: FakeEntry = {
@@ -155,16 +176,41 @@ function makeFakePrisma() {
     $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) => {
       // Pass the same fake prisma in as tx — good enough for tests.
       return fn({
+        doctor: {
+          findUnique: jest.fn(async () => doctor),
+        },
         queueEntry: {
           findFirst: jest.fn(async ({ where, orderBy }: any) => {
             const list = entries
-              .filter((e) => e.doctorId === where.doctorId && e.serviceDay === where.serviceDay)
+              .filter((e) => {
+                if (where.doctorId && e.doctorId !== where.doctorId) return false;
+                if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
+                if (where.patientId && e.patientId !== where.patientId) return false;
+                if (where.status && e.status !== where.status) return false;
+                return true;
+              })
               .sort((a, b) =>
                 orderBy?.tokenNumber === 'desc'
                   ? b.tokenNumber - a.tokenNumber
                   : a.tokenNumber - b.tokenNumber,
               );
             return list[0] ?? null;
+          }),
+          findMany: jest.fn(async ({ where }: any) => {
+            return entries
+              .filter(
+                (e) => {
+                  const statusMatch = where.status && typeof where.status === 'object' && 'in' in where.status
+                    ? where.status.in.includes(e.status)
+                    : where.status === undefined || e.status === where.status;
+                  return (
+                    e.doctorId === where.doctorId &&
+                    e.serviceDay === where.serviceDay &&
+                    statusMatch
+                  );
+                }
+              )
+              .map((e) => ({ ...e, patient: users.get(e.patientId) }));
           }),
           create: async ({ data }: any) => {
             const e: FakeEntry = {
@@ -274,6 +320,7 @@ describe('QueueService — reception join → patient sync', () => {
     expect(prisma._entries).toHaveLength(1);
 
     // Doctor room — the reception screen + display board listen here
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
       'queue:updated',
@@ -502,6 +549,7 @@ describe('QueueService — pause / resume', () => {
     const { svc, prisma, gateway } = makeService();
     await svc.pauseDoctor('doc-1', 'r-1');
     expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
       'queue:updated',

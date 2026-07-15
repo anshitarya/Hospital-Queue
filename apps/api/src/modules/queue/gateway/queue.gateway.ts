@@ -1,8 +1,29 @@
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { parseCookie } = require('cookie') as { parseCookie: (str: string) => Record<string, string> };
+
+function parseCookie(str: string): Record<string, string> {
+  const cookies: Record<string, string> = {};
+  if (!str) return cookies;
+  const pairs = str.split(';');
+  for (const pair of pairs) {
+    const idx = pair.indexOf('=');
+    if (idx < 0) continue;
+    const key = pair.substring(0, idx).trim();
+    if (!key) continue;
+    let val = pair.substring(idx + 1).trim();
+    if (val.startsWith('"') && val.endsWith('"')) {
+      val = val.slice(1, -1);
+    }
+    try {
+      cookies[key] = decodeURIComponent(val);
+    } catch {
+      cookies[key] = val;
+    }
+  }
+  return cookies;
+}
+
 import {
   ConnectedSocket,
   MessageBody,

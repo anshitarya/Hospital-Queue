@@ -126,8 +126,13 @@ export class QueueService {
       breakRemainingMinutes,
     });
 
-    await this.ensureCustomerPins(enriched as Array<{ patient?: { id: string; customerPin?: string | null } | null }>);
-    await this.ensureCustomerPins(missedEntries);
+    // Run in background asynchronously so it doesn't block the API response / snapshot performance.
+    this.ensureCustomerPins(enriched as Array<{ patient?: { id: string; customerPin?: string | null } | null }>).catch((err) => {
+      this.logger.error('Error ensuring customer pins in snapshot background task', err);
+    });
+    this.ensureCustomerPins(missedEntries).catch((err) => {
+      this.logger.error('Error ensuring customer pins in missed snapshot background task', err);
+    });
 
     const current =
       entries.find((e) => e.status === EntryStatus.IN_CONSULTATION)?.tokenNumber ?? null;
