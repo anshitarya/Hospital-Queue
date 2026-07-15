@@ -184,6 +184,8 @@ model QueueEntry {
   @@index([doctorId, status])
   @@index([doctorId, serviceDay])
   @@index([patientId])
+  @@index([doctorId, serviceDay, status])
+  @@index([patientId, doctorId, serviceDay, status])
 }
 
 // Business owner signup requests from the public Get Started page.

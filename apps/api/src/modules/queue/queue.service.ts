@@ -657,7 +657,7 @@ export class QueueService {
 
   // ---------- history ----------
 
-  async getHistory(role: Role, userId: string, date?: string, filterDoctorId?: string) {
+  async getHistory(role: Role, userId: string, date?: string, filterDoctorId?: string, clinicId?: string | null) {
     const serviceDay = date ?? todayKey();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDay)) {
       throw new BadRequestException('date must be YYYY-MM-DD');
@@ -677,18 +677,21 @@ export class QueueService {
       if (!doctor) throw new NotFoundException('Doctor profile not found');
       doctorIds = [doctor.id];
     } else if (role === Role.RECEPTIONIST) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!user?.clinicId) throw new ForbiddenException('Receptionist has no clinic assigned');
+      const effectiveClinicId = clinicId ?? (await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { clinicId: true },
+      }))?.clinicId;
+      if (!effectiveClinicId) throw new ForbiddenException('Receptionist has no clinic assigned');
 
       if (filterDoctorId) {
         const doc = await this.prisma.doctor.findFirst({
-          where: { id: filterDoctorId, clinicId: user.clinicId },
+          where: { id: filterDoctorId, clinicId: effectiveClinicId },
         });
         if (!doc) throw new ForbiddenException('Doctor does not belong to your clinic');
         doctorIds = [filterDoctorId];
       } else {
         const docs = await this.prisma.doctor.findMany({
-          where: { clinicId: user.clinicId },
+          where: { clinicId: effectiveClinicId },
           select: { id: true },
         });
         doctorIds = docs.map((d) => d.id);

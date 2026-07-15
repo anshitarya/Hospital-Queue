@@ -166,6 +166,6 @@ export class QueueController {
     @Query('date') date?: string,
     @Query('doctorId') doctorId?: string,
   ) {
-    return this.queue.getHistory(user.role as Role, user.id, date, doctorId);
+    return this.queue.getHistory(user.role as Role, user.id, date, doctorId, user.clinicId);
   }
 }
