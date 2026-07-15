@@ -120,7 +120,7 @@ export class QueueService {
       await this.redis.client.set(`idem:${dto.idempotencyKey}`, entry.id, 'EX', 600);
     }
 
-    await this.broadcast(dto.doctorId, 'patient_joined', { entryId: entry.id });
+    void this.broadcast(dto.doctorId, 'patient_joined', { entryId: entry.id });
     // Patient's own private room — wakes their dashboard up the instant they
     // are checked in, no matter which doctor it was. They might not have any
     // doctor's room joined yet.
@@ -139,7 +139,7 @@ export class QueueService {
       priority: 0,
       notes,
     });
-    await this.broadcast(doctorId, 'patient_joined', { entryId: entry.id });
+    void this.broadcast(doctorId, 'patient_joined', { entryId: entry.id });
     this.gateway.emitToPatientRoom(patientId, 'patient:queue:updated', {
       eventType: 'joined',
       entryId: entry.id,
@@ -255,7 +255,7 @@ export class QueueService {
       },
     });
 
-    await this.broadcast(entry.doctorId, 'queue_updated', { entryId });
+    void this.broadcast(entry.doctorId, 'queue_updated', { entryId });
     this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
       eventType: 'reordered',
       entryId,
@@ -274,7 +274,7 @@ export class QueueService {
     await this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_paused', payload: { byUserId } },
     });
-    await this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.PAUSED });
+    void this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.PAUSED });
   }
 
   async resumeDoctor(doctorId: string, byUserId?: string) {
@@ -285,7 +285,7 @@ export class QueueService {
     await this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_resumed', payload: { byUserId } },
     });
-    await this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.AVAILABLE });
+    void this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.AVAILABLE });
   }
 
   // ---------- internals ----------
@@ -325,7 +325,7 @@ export class QueueService {
       },
     });
 
-    await this.broadcast(entry.doctorId, 'queue_updated', {
+    void this.broadcast(entry.doctorId, 'queue_updated', {
       entryId,
       from: entry.status,
       to: next,

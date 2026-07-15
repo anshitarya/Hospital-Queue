@@ -22,7 +22,10 @@
 
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all
+    /* py-2.5 → ~40px height with text-sm; meets the 44px touch-target guideline
+       when combined with the natural line-height. !py-* overrides in compact
+       table rows intentionally trade tap size for density — keep those < 5 uses. */
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all
            focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500/40 disabled:cursor-not-allowed;
   }
   .btn-primary {
@@ -51,7 +54,7 @@
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
   }
   .tab {
-    @apply px-4 py-2 text-sm font-medium rounded-lg transition-colors;
+    @apply px-4 py-2.5 text-sm font-medium rounded-lg transition-colors;
   }
   .tab-active {
     @apply bg-brand-600 text-white shadow-sm;

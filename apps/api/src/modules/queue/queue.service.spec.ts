@@ -241,6 +241,9 @@ describe('QueueService — reception join → patient sync', () => {
     expect(entry.tokenNumber).toBe(1);
     expect(prisma._entries).toHaveLength(1);
 
+    // Let fire-and-forget broadcast execute
+    await new Promise(process.nextTick);
+
     // Doctor room — the reception screen + display board listen here
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
@@ -470,6 +473,10 @@ describe('QueueService — pause / resume', () => {
     const { svc, prisma, gateway } = makeService();
     await svc.pauseDoctor('doc-1', 'r-1');
     expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
+
+    // Let fire-and-forget broadcast execute
+    await new Promise(process.nextTick);
+
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
       'queue:updated',

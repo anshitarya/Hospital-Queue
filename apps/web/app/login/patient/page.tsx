@@ -139,6 +139,7 @@ export default function PatientLoginPage() {
                   onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   maxLength={6}
                   inputMode="numeric"
+                  autoComplete="one-time-code"
                   required
                   autoFocus
                 />

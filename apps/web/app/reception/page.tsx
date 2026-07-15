@@ -695,19 +695,19 @@ function QueueRow({
 
       <div className="flex gap-1 shrink-0">
         {isInConsult && (
-          <button type="button" onClick={onComplete} className="btn-primary !px-2 !py-1 text-xs">
+          <button type="button" onClick={onComplete} className="btn-primary !px-3 !py-2 text-xs min-w-[44px] min-h-[44px]">
             Done
           </button>
         )}
         {entry.status === 'WAITING' && (
           <>
-            <button type="button" onClick={onEmergency} title="Mark emergency" className="btn-danger !px-2 !py-1 text-xs">
+            <button type="button" onClick={onEmergency} title="Mark emergency" className="btn-danger !px-3 !py-2 text-xs min-w-[44px] min-h-[44px]">
               !
             </button>
-            <button type="button" onClick={onSkip} className="btn-secondary !px-2 !py-1 text-xs">
+            <button type="button" onClick={onSkip} className="btn-secondary !px-3 !py-2 text-xs min-w-[44px] min-h-[44px]">
               Skip
             </button>
-            <button type="button" onClick={onCancel} className="btn-secondary !px-2 !py-1 text-xs">
+            <button type="button" onClick={onCancel} className="btn-secondary !px-3 !py-2 text-xs min-w-[44px] min-h-[44px]">
               ×
             </button>
           </>
