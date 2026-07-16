@@ -14,6 +14,7 @@ interface Props {
   onChange: (id: string) => void;
   placeholder?: string;
   required?: boolean;
+  label?: string;
 }
 
 /**
@@ -30,6 +31,7 @@ export function DepartmentPicker({
   onChange,
   placeholder = 'Search department…',
   required,
+  label = 'Select department',
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -116,7 +118,7 @@ export function DepartmentPicker({
         aria-expanded={open}
       >
         <span className={selected ? 'text-slate-900' : 'text-slate-400'}>
-          {selected ? selected.name : 'Select department'}
+          {selected ? selected.name : label}
         </span>
         <Icon.ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>

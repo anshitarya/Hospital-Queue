@@ -57,7 +57,7 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     try {
       await api(`/schedules/doctor/${selectedDocId}`, {
         method: 'POST',
-        body: JSON.stringify({ shifts: schedules }),
+        body: { shifts: schedules },
       });
       setToast({ type: 'ok', msg: 'Schedules updated successfully' });
     } catch (err) {

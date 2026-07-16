@@ -626,7 +626,14 @@ export default function ReceptionPage() {
                 <PhoneInput label={null} value={docPhone} onChange={(raw, result) => { setDocPhone(raw); setDocPhoneResult(result); }} autoComplete="off" />
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 sm:col-span-2 -mt-1">At least one of email / mobile is required.</p>
                 <div className="sm:col-span-2">
-                  <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
+                  <DepartmentPicker
+                    options={departments}
+                    value={docDeptId}
+                    onChange={setDocDeptId}
+                    required
+                    placeholder={`Search ${L.department.toLowerCase()}…`}
+                    label={`Select ${L.department.toLowerCase()}`}
+                  />
                 </div>
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Avg {L.service.toLowerCase()} time:</span>

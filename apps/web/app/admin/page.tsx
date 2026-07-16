@@ -1061,7 +1061,14 @@ export default function AdminPage() {
                   <input className="input" type="email" placeholder="Email (for login)" value={docEmail} onChange={(e) => setDocEmail(e.target.value)} />
                   <PhoneInput label={null} value={docPhone} onChange={(raw, result) => { setDocPhone(raw); setDocPhoneResult(result); }} autoComplete="off" />
                   <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
-                  <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
+                  <DepartmentPicker
+                    options={departments}
+                    value={docDeptId}
+                    onChange={setDocDeptId}
+                    required
+                    placeholder={`Search ${SL.department.toLowerCase()}…`}
+                    label={`Select ${SL.department.toLowerCase()}`}
+                  />
                   <label className="flex items-center gap-2 text-sm">
                     <span className="text-slate-600 whitespace-nowrap shrink-0">Avg {SL.service.toLowerCase()}:</span>
                     <input className="input flex-1" type="number" min={1} max={120} value={docAvg} onChange={(e) => setDocAvg(Number(e.target.value))} required />

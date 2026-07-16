@@ -53,7 +53,7 @@ export function WorkflowTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     try {
       await api('/workflow/my', {
         method: 'POST',
-        body: JSON.stringify({ steps }),
+        body: { steps },
       });
       setToast({ type: 'ok', msg: 'Workflow saved successfully' });
     } catch (err) {

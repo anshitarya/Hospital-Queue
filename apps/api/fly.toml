@@ -1,7 +1,5 @@
-# Fly.io config for the NestJS API.
-# App name must be globally unique — change "hq-api" to something like "yourname-hq-api".
 app    = "turnos-api-hq"
-primary_region = "bom"   # Mumbai — keep API near Redis + users
+primary_region = "sin"   # Singapore
 
 [build]
   dockerfile = "Dockerfile.prod"

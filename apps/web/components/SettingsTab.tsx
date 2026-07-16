@@ -48,7 +48,7 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
     try {
       await api('/business-settings/my', {
         method: 'PATCH',
-        body: JSON.stringify(settings),
+        body: settings,
       });
       setToast({ type: 'ok', msg: 'Settings updated successfully' });
     } catch (err) {

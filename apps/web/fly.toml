@@ -1,6 +1,5 @@
-# Fly.io config for the Next.js web app.
 app            = "turnos"
-primary_region = "bom"   # Mumbai — keep web near API + Redis
+primary_region = "sin"   # Singapore
 
 [build]
   dockerfile = "Dockerfile.prod"

@@ -71,13 +71,13 @@ export function LeavesTab({ doctors, setToast }: { doctors: DoctorItem[]; setToa
     try {
       await api('/leaves/request', {
         method: 'POST',
-        body: JSON.stringify({
+        body: {
           userId: doc.userId,
           type,
           startDate: new Date(startDate).toISOString(),
           endDate: new Date(endDate).toISOString(),
           reason,
-        }),
+        },
       });
       setToast({ type: 'ok', msg: 'Leave request submitted successfully' });
       setStartDate('');

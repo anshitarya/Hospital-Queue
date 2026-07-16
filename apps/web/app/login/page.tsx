@@ -58,7 +58,7 @@ export default function StaffLoginPage() {
         <div className="card p-7 space-y-5">
           <div>
             <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Welcome back</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Sign in as reception, doctor, or admin.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Sign in as reception, provider, or admin.</p>
           </div>
 
           <form onSubmit={submit} className="space-y-4">

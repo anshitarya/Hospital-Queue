@@ -12,7 +12,15 @@ export class WorkflowService {
     if (!config) {
       return { clinicId, steps: [] };
     }
-    return config;
+    let steps = config.steps;
+    while (typeof steps === 'string') {
+      try {
+        steps = JSON.parse(steps);
+      } catch {
+        break;
+      }
+    }
+    return { ...config, steps };
   }
 
   async setWorkflow(clinicId: string, steps: any[]) {

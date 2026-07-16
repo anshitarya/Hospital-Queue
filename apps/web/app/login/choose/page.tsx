@@ -29,7 +29,7 @@ const CHOICES: Choice[] = [
     title: 'Staff',
     subtitle: 'Business staff',
     description:
-      'Use your registered email or mobile and password to access the reception or doctor dashboard.',
+      'Use your registered email or mobile and password to access the reception or provider dashboard.',
     href: '/login',
     accent: 'from-brand-500 to-brand-700',
   },
