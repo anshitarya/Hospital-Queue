@@ -52,7 +52,7 @@
     @apply btn bg-white text-slate-700 border border-slate-200/80 shadow-sm
            hover:bg-slate-50 hover:border-slate-300 active:scale-[0.97]
            dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700
-           dark:hover:bg-slate-750 dark:hover:border-slate-600;
+           dark:hover:bg-slate-700 dark:hover:border-slate-600;
   }
   .btn-ghost {
     @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200
@@ -252,7 +252,7 @@ html.dark .card-inset { @apply bg-slate-800/50 ring-slate-700/40; }
 html.dark .input { @apply bg-slate-800/60 border-slate-700 text-slate-100 placeholder:text-slate-500; }
 html.dark .input:focus { @apply border-brand-400 ring-brand-400/20; }
 html.dark .btn-secondary {
-  @apply bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-750 hover:border-slate-600;
+  @apply bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 hover:border-slate-600;
 }
 html.dark .btn-ghost { @apply text-slate-400 hover:bg-slate-800 hover:text-slate-200; }
 html.dark .tabs-bar { @apply border-slate-800; }
