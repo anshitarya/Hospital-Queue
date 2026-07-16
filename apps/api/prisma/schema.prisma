@@ -53,17 +53,19 @@ enum SignupRequestStatus {
 // A clinic groups receptionists, doctors, and their queues.
 // Each receptionist belongs to exactly one clinic (V1 constraint).
 model Clinic {
-  id           String       @id @default(cuid())
-  name         String
-  address      String?
-  businessType BusinessType @default(CLINIC)
-  createdAt    DateTime     @default(now())
+  id                    String                 @id @default(cuid())
+  name                  String
+  address               String?
+  businessType          BusinessType           @default(CLINIC)
+  createdAt             DateTime               @default(now())
 
-  inviteCodes InviteCode[]
-  users       User[] // receptionists of this clinic
-  doctors     Doctor[]
-  signupRequests BusinessSignupRequest[]
-  visits      Visit[]
+  inviteCodes           InviteCode[]
+  users                 User[] // receptionists of this clinic
+  doctors               Doctor[]
+  signupRequests        BusinessSignupRequest[]
+  visits                Visit[]
+  businessSetting       BusinessSetting?
+  workflowConfiguration WorkflowConfiguration?
 }
 
 // One-use, time-limited code that lets a receptionist self-register.
@@ -116,6 +118,8 @@ model User {
   inviteUsed         InviteCode?   @relation("InviteUsedBy")
   patientVisits      Visit[]       @relation("PatientVisits")
   transfersInitiated TransferLog[] @relation("TransfersInitiated")
+  leaves             StaffLeave[]  @relation("UserLeaves")
+  approvedLeaves     StaffLeave[]  @relation("ApprovedLeaves")
 
   @@index([role])
   @@index([clinicId])
@@ -130,29 +134,36 @@ model Department {
 }
 
 model Doctor {
-  id                String       @id @default(cuid())
-  userId            String       @unique
-  user              User         @relation(fields: [userId], references: [id])
-  departmentId      String
-  department        Department   @relation(fields: [departmentId], references: [id])
+  id                 String                 @id @default(cuid())
+  userId             String                 @unique
+  user               User                   @relation(fields: [userId], references: [id])
+  departmentId       String
+  department         Department             @relation(fields: [departmentId], references: [id])
   // Which clinic this doctor belongs to. Scopes queue visibility.
-  clinicId          String?
-  clinic            Clinic?      @relation(fields: [clinicId], references: [id])
-  avgConsultMinutes Int          @default(7)
-  status            DoctorStatus @default(AVAILABLE)
-  delayMinutes      Int          @default(0)
+  clinicId           String?
+  clinic             Clinic?                @relation(fields: [clinicId], references: [id])
+  avgConsultMinutes  Int                    @default(7)
+  status             DoctorStatus           @default(AVAILABLE)
+  delayMinutes       Int                    @default(0)
   // Break handling (Feature 4)
-  breakUntil        DateTime?
-  breakNote         String?
+  breakUntil         DateTime?
+  breakNote          String?
   // Follow-up slots: every Nth slot reserved for FOLLOWUP patients; 0 = disabled (Feature 6)
-  followUpEvery     Int          @default(0)
+  followUpEvery      Int                    @default(0)
   // Insertion gaps (Features 1 & 2)
-  walkinGap         Int           @default(4)
-  missedGap         Int           @default(4)
-  entries           QueueEntry[]
-  transfersFrom     TransferLog[] @relation("TransfersFrom")
-  transfersTo       TransferLog[] @relation("TransfersTo")
-  updatedAt         DateTime      @updatedAt
+  walkinGap          Int                    @default(4)
+  missedGap          Int                    @default(4)
+  entries            QueueEntry[]
+  transfersFrom      TransferLog[]          @relation("TransfersFrom")
+  transfersTo        TransferLog[]          @relation("TransfersTo")
+  schedules          ProfessionalSchedule[]
+  maxCustomersPerDay  Int                    @default(50)
+  appointmentDuration Int                    @default(15)
+  walkinAllowed      Boolean                @default(true)
+  followupPriority   Boolean                @default(false)
+  specialization     String?
+  roomNumber         String?
+  updatedAt          DateTime               @updatedAt
 
   @@index([departmentId])
   @@index([clinicId])
@@ -160,32 +171,34 @@ model Doctor {
 }
 
 model QueueEntry {
-  id          String      @id @default(cuid())
-  doctorId    String
-  doctor      Doctor      @relation(fields: [doctorId], references: [id])
-  patientId   String
-  patient     User        @relation("PatientEntries", fields: [patientId], references: [id])
-  createdById String?
-  createdBy   User?       @relation("CreatedByStaff", fields: [createdById], references: [id])
-  serviceDay  String
-  tokenNumber Int
-  status      EntryStatus @default(WAITING)
-  priority    Int         @default(0)
-  notes       String?
-  version     Int         @default(0)
+  id              String      @id @default(cuid())
+  doctorId        String
+  doctor          Doctor      @relation(fields: [doctorId], references: [id])
+  patientId       String
+  patient         User        @relation("PatientEntries", fields: [patientId], references: [id])
+  createdById     String?
+  createdBy       User?       @relation("CreatedByStaff", fields: [createdById], references: [id])
+  serviceDay      String
+  tokenNumber     Int
+  status          EntryStatus @default(WAITING)
+  priority        Int         @default(0)
+  notes           String?
+  version         Int         @default(0)
   // Walk-in / rejoin sort position (null = sort by tokenNumber). Feature 1 & 2.
-  sortOrder   Float?
+  sortOrder       Float?
   // Whether this entry was added as a walk-in (no prior appointment).
-  walkin      Boolean     @default(false)
-  missedCount Int         @default(0)
+  walkin          Boolean     @default(false)
+  missedCount     Int         @default(0)
   // NEW vs FOLLOWUP slot reservation. Feature 6.
-  slotType    SlotType    @default(NEW)
-  joinedAt    DateTime    @default(now())
-  calledAt    DateTime?
-  startedAt   DateTime?
-  completedAt DateTime?
-  visitId     String?
-  visit       Visit?      @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  slotType        SlotType    @default(NEW)
+  joinedAt        DateTime    @default(now())
+  calledAt        DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  visitId         String?
+  visit           Visit?      @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  appointmentTime DateTime?
+  appointmentSlot String?
 
   @@unique([doctorId, serviceDay, tokenNumber])
   @@index([doctorId, status])
@@ -267,4 +280,88 @@ model TransferLog {
   @@index([visitId])
   @@index([transferredFromId])
   @@index([transferredToId])
+}
+
+model BusinessSetting {
+  id                    String   @id @default(cuid())
+  clinicId              String   @unique
+  clinic                Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  
+  businessType          String   @default("CLINIC")
+  queueMode             String   @default("LIVE_QUEUE")
+  appointmentMode       String   @default("HYBRID")
+  
+  workingDays           String[] @default(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"])
+  businessHolidays      String[] @default([])
+  queueStarts           String   @default("09:00")
+  queueEnds             String   @default("17:00")
+  
+  walkinJoinRule        String   @default("END_OF_QUEUE")
+  walkinJoinRuleParam   Int      @default(4)
+  followupJoinRule      String   @default("END_OF_QUEUE")
+  followupJoinRuleParam Int      @default(4)
+  emergencyJoinRule     String   @default("TOP_PRIORITY")
+  vipJoinRule           String   @default("SEPARATE_QUEUE")
+  
+  allowWalkins          Boolean  @default(true)
+  allowOnlineBooking    Boolean  @default(true)
+  allowFollowups        Boolean  @default(true)
+  maxDailyBookings      Int      @default(100)
+  emergencyQueueEnabled Boolean  @default(true)
+  vipQueueEnabled       Boolean  @default(true)
+
+  tokenPrefix           String   @default("TK")
+  queueNumberFormat     String   @default("NUMBER")
+  etaCalculationMethod  String   @default("MOVING_AVERAGE")
+  bufferTime            Int      @default(5)
+  gracePeriod           Int      @default(10)
+  noShowTimeout         Int      @default(15)
+
+  autoQueueAssignment   Boolean  @default(true)
+  bookingControl        String   @default("CUSTOMER_CONTROLLED")
+  appointmentInterval   Int      @default(15)
+  maxCustomersPerSlot   Int      @default(1)
+  
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model ProfessionalSchedule {
+  id          String   @id @default(cuid())
+  doctorId    String
+  doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int      
+  startTime   String   
+  endTime     String   
+  isHoliday   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([doctorId])
+}
+
+model StaffLeave {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation("UserLeaves", fields: [userId], references: [id], onDelete: Cascade)
+  type         String     
+  startDate    DateTime
+  endDate      DateTime
+  reason       String?
+  status       String     @default("PENDING") 
+  approvedById String?
+  approvedBy   User?      @relation("ApprovedLeaves", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+model WorkflowConfiguration {
+  id        String   @id @default(cuid())
+  clinicId  String   @unique
+  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  steps     Json     
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

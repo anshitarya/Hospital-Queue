@@ -16,6 +16,11 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ClinicsModule } from './modules/clinics/clinics.module';
 import { SignupRequestsModule } from './modules/signup-requests/signup-requests.module';
 import { HealthModule } from './modules/health/health.module';
+import { BusinessSettingsModule } from './modules/business-settings/business-settings.module';
+import { ProfessionalScheduleModule } from './modules/professional-schedule/professional-schedule.module';
+import { LeaveManagementModule } from './modules/leave-management/leave-management.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { WorkflowModule } from './modules/workflow/workflow.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -33,6 +38,11 @@ import configuration from './config/configuration';
     QueueModule,
     NotificationsModule,
     HealthModule,
+    BusinessSettingsModule,
+    ProfessionalScheduleModule,
+    LeaveManagementModule,
+    AnalyticsModule,
+    WorkflowModule,
   ],
   providers: [
     // Global request logger — runs around every HTTP handler.

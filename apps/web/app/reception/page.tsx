@@ -16,10 +16,15 @@ import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput'
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { TurnosIcon } from '@/components/Icons';
 import { ReviewFormButton } from '@/components/ReviewFormButton';
+import { SettingsTab } from '@/components/SettingsTab';
+import { ScheduleTab } from '@/components/ScheduleTab';
+import { LeavesTab } from '@/components/LeavesTab';
+import { WorkflowTab } from '@/components/WorkflowTab';
+import { AnalyticsTab } from '@/components/AnalyticsTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'queue' | 'history' | 'staff';
+type Tab = 'dashboard' | 'queue' | 'history' | 'staff' | 'settings' | 'schedule' | 'leaves' | 'workflows' | 'analytics';
 
 interface DashboardDoctor {
   id: string; name: string; department: string;
@@ -143,7 +148,7 @@ interface DoctorAnalytics { from: string; to: string; doctors: DoctorAnalyticsRo
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff'];
+const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff', 'settings', 'schedule', 'leaves', 'workflows', 'analytics'];
 const TODAY = new Date().toISOString().slice(0, 10);
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
 const SEVEN_AGO = daysAgo(6);
@@ -386,7 +391,17 @@ export default function ReceptionPage() {
     if (activeTab === 'history') { void loadHistory(historyFrom, historyTo, historyPage); void loadHistoryAnalytics(historyFrom, historyTo); }
   };
 
-  const tabLabel: Record<Tab, string> = { dashboard: 'Dashboard', queue: 'Live Queue', history: 'History', staff: 'Staff' };
+  const tabLabel: Record<Tab, string> = {
+    dashboard: 'Dashboard',
+    queue: 'Live Queue',
+    history: 'History',
+    staff: 'Staff',
+    settings: 'Business Settings',
+    schedule: 'Staff Schedules',
+    leaves: 'Leaves & Breaks',
+    workflows: 'Workflows',
+    analytics: 'Business Analytics',
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-[#0a0a0b] overflow-hidden">
@@ -419,13 +434,24 @@ export default function ReceptionPage() {
             </button>
           ))}
 
-          <div className="pt-2 mt-2 border-t border-slate-800/60">
-            {[{ label: L.customerPlural, icon: HeartIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
-              <button key={label} type="button" disabled
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-600 cursor-not-allowed">
+          <div className="pt-2 mt-2 border-t border-slate-800/60 space-y-0.5">
+            <div className="px-3 py-1 text-[9px] font-semibold text-slate-500 uppercase tracking-wider hidden sm:block">Configuration</div>
+            {[
+              { label: 'Settings', tab: 'settings', icon: GearIcon },
+              { label: 'Schedules', tab: 'schedule', icon: CalendarIcon },
+              { label: 'Leaves & Breaks', tab: 'leaves', icon: ClockIcon },
+              { label: 'Workflows', tab: 'workflows', icon: RouteIcon },
+              { label: 'Analytics', tab: 'analytics', icon: ChartIcon },
+            ].map(({ label, tab, icon: Icon }) => (
+              <button key={tab} type="button" onClick={() => handleTabChange(tab as Tab)}
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
+                  activeTab === tab
+                    ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
+                    : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
+                }`}>
                 <Icon className="w-4 h-4 shrink-0" />
-                <span className="hidden sm:block">{label}</span>
-                <span className="hidden sm:block ml-auto text-[10px] text-slate-700 bg-slate-800 px-1.5 py-0.5 rounded-md">Soon</span>
+                <span className="hidden sm:block text-xs">{label}</span>
+                {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
               </button>
             ))}
           </div>
@@ -682,8 +708,33 @@ export default function ReceptionPage() {
                   ))}
                 </div>
               )}
-            </div>
           </div>
+        </div>
+      )}
+
+        {/* ── Settings ── */}
+        {activeTab === 'settings' && (
+          <SettingsTab setToast={setToast} />
+        )}
+
+        {/* ── Schedule ── */}
+        {activeTab === 'schedule' && (
+          <ScheduleTab doctors={doctors as any[]} setToast={setToast} />
+        )}
+
+        {/* ── Leaves ── */}
+        {activeTab === 'leaves' && (
+          <LeavesTab doctors={doctors as any[]} setToast={setToast} />
+        )}
+
+        {/* ── Workflows ── */}
+        {activeTab === 'workflows' && (
+          <WorkflowTab doctors={doctors as any[]} setToast={setToast} />
+        )}
+
+        {/* ── Analytics ── */}
+        {activeTab === 'analytics' && (
+          <AnalyticsTab setToast={setToast} />
         )}
       </main>
     </div>
@@ -1481,4 +1532,13 @@ function PrintIcon({ className }: { className?: string }) {
 }
 function TrashIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
+}
+function CalendarIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>;
+}
+function RouteIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>;
+}
+function ChartIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" /></svg>;
 }

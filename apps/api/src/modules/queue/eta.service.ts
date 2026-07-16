@@ -20,6 +20,7 @@ export interface EnrichedEntry extends QueueEntry {
 export interface EtaOptions {
   movingAvgMinutes?: number | null;
   breakRemainingMinutes?: number;
+  settings?: any;
 }
 
 // ─── Algorithm constants ──────────────────────────────────────────────────────
@@ -234,6 +235,7 @@ export class EtaService {
     })();
 
     const baseDelay = (doctor.delayMinutes ?? 0) + breakRemainingMinutes;
+    const settings = options.settings;
 
     return entries.map<EnrichedEntry>((entry) => {
       if (entry.status !== EntryStatus.WAITING) {
@@ -248,6 +250,20 @@ export class EtaService {
 
       const idx        = waiting.findIndex((w) => w.id === entry.id);
       const peopleAhead = idx; // 0 = next in line
+
+      if (settings && (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT')) {
+        const appointmentTime = entry.appointmentTime ? new Date(entry.appointmentTime) : new Date();
+        const etaAbsolute = new Date(appointmentTime.getTime() + baseDelay * 60_000);
+        const etaMin = Math.max(0, (etaAbsolute.getTime() - Date.now()) / 60_000);
+        return {
+          ...entry,
+          peopleAhead,
+          etaMinutes:       Math.round(etaMin),
+          etaAbsolute:      etaAbsolute.toISOString(),
+          movingAvgMinutes: Math.round(avgMin),
+        };
+      }
+
       const etaMin     = remainingForCurrent + baseDelay + peopleAhead * avgMin;
 
       return {

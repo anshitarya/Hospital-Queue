@@ -39,6 +39,18 @@ async function main() {
       create: { id: cfg.id, name: cfg.name, address: cfg.address },
     });
 
+    // Create/update business settings.
+    await prisma.businessSetting.upsert({
+      where: { clinicId: clinic.id },
+      update: {},
+      create: {
+        clinicId: clinic.id,
+        businessType: 'CLINIC',
+        queueMode: 'LIVE_QUEUE',
+        appointmentMode: 'HYBRID',
+      },
+    });
+
     // Receptionist for this clinic.
     await prisma.user.upsert({
       where: { email: cfg.receptionist.email },
@@ -71,7 +83,7 @@ async function main() {
         },
       });
 
-      await prisma.doctor.upsert({
+      const doctor = await prisma.doctor.upsert({
         where: { userId: user.id },
         update: {
           avgConsultMinutes: avg,
@@ -91,6 +103,20 @@ async function main() {
           followUpEvery: cfg.queue.followUpEvery,
           status: DoctorStatus.AVAILABLE,
         },
+      });
+
+      // Default schedules for the doctor.
+      await prisma.professionalSchedule.deleteMany({ where: { doctorId: doctor.id } });
+      await prisma.professionalSchedule.createMany({
+        data: [
+          { doctorId: doctor.id, dayOfWeek: 1, startTime: '09:00', endTime: '13:00' },
+          { doctorId: doctor.id, dayOfWeek: 1, startTime: '14:00', endTime: '18:00' },
+          { doctorId: doctor.id, dayOfWeek: 2, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, dayOfWeek: 3, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, dayOfWeek: 4, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, dayOfWeek: 5, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, dayOfWeek: 6, startTime: '09:00', endTime: '14:00' },
+        ],
       });
     }
 

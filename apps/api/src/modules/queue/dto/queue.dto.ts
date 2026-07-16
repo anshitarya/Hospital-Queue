@@ -44,6 +44,10 @@ export class JoinQueueDto {
   @IsInt()
   @Min(1)
   insertAtPosition?: number;
+
+  @IsOptional()
+  @IsString()
+  appointmentTime?: string;
 }
 
 export class PatientJoinQueueDto {
@@ -53,6 +57,10 @@ export class PatientJoinQueueDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  appointmentTime?: string;
 }
 
 export class ReorderEntryDto {

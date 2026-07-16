@@ -20,21 +20,27 @@ import { CustomerService, CUSTOMER_PUBLIC_SELECT } from '../patients/customer.se
 import { FEATURES } from '../../common/features';
 import {
   effectivePosition,
-  fifoSortOrder,
-  fifoRejoinSortOrder,
-  legacySortOrder,
-  legacyRejoinSortOrder,
+  calculateSortOrder,
+  calculateRejoinSortOrder,
   OrderingInput,
 } from './queue-ordering';
 
-function tokenToCode(n: number): string {
+function tokenToCode(n: number, settings?: any): string {
   if (n <= 0) return '---';
-  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const M = 17576; // 26^3
-  const A = 6949;
-  const ADD = 3749;
-  const x = (((n - 1) * A) + ADD) % M;
-  return CHARS[Math.floor(x / 676)] + CHARS[Math.floor((x % 676) / 26)] + CHARS[x % 26];
+  const prefix = settings?.tokenPrefix ?? 'TK';
+  const format = settings?.queueNumberFormat ?? 'NUMBER';
+  
+  if (format === 'CODE') {
+    const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const M = 17576; // 26^3
+    const A = 6949;
+    const ADD = 3749;
+    const x = (((n - 1) * A) + ADD) % M;
+    const code = CHARS[Math.floor(x / 676)] + CHARS[Math.floor((x % 676) / 26)] + CHARS[x % 26];
+    return `${prefix}-${code}`;
+  }
+  
+  return `${prefix}-${n}`;
 }
 
 function todayKey(): string {
@@ -97,10 +103,28 @@ export class QueueService {
 
     if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
 
-    // Sort in-memory by effective position so walk-ins slot in correctly.
-    const entries = [...rawEntries].sort(
-      (a, b) => effectivePosition(a) - effectivePosition(b),
-    );
+    let settings = await this.prisma.businessSetting.findUnique({
+      where: { clinicId: doctor.clinicId || '' },
+    });
+    if (!settings) {
+      settings = await this.prisma.businessSetting.create({
+        data: {
+          clinicId: doctor.clinicId || '',
+          businessType: 'CLINIC',
+          queueMode: 'LIVE_QUEUE',
+          appointmentMode: 'HYBRID',
+        },
+      });
+    }
+
+    const entries = [...rawEntries].sort((a, b) => {
+      if (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT') {
+        const timeA = a.appointmentTime ? new Date(a.appointmentTime).getTime() : Infinity;
+        const timeB = b.appointmentTime ? new Date(b.appointmentTime).getTime() : Infinity;
+        if (timeA !== timeB) return timeA - timeB;
+      }
+      return effectivePosition(a) - effectivePosition(b);
+    });
 
     const missedEntries = missedRaw.map((e) => ({
       id: e.id,
@@ -114,7 +138,6 @@ export class QueueService {
       ? Math.max(0, (doctor.breakUntil.getTime() - Date.now()) / 60_000)
       : 0;
 
-    // Use in-progress elapsed for ETA when no completed history yet.
     let effectiveAvg = movingAvgMinutes;
     if (effectiveAvg === null) {
       const inProgress = entries.find((e) => e.status === EntryStatus.IN_CONSULTATION);
@@ -124,6 +147,7 @@ export class QueueService {
     const enriched = this.eta.enrich(doctor, entries, {
       movingAvgMinutes: effectiveAvg,
       breakRemainingMinutes,
+      settings,
     });
 
     await this.ensureCustomerPins(enriched as Array<{ patient?: { id: string; customerPin?: string | null } | null }>);
@@ -215,6 +239,7 @@ export class QueueService {
       walkin: dto.walkin ?? false,
       slotType: dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
       insertAtPosition: dto.insertAtPosition,
+      appointmentTime: dto.appointmentTime,
     });
 
     if (dto.idempotencyKey) {
@@ -234,7 +259,7 @@ export class QueueService {
     return entry;
   }
 
-  async joinByPatient(patientId: string, doctorId: string, notes?: string) {
+  async joinByPatient(patientId: string, doctorId: string, notes?: string, appointmentTime?: string) {
     const entry = await this.createEntry({
       doctorId,
       patientId,
@@ -242,6 +267,7 @@ export class QueueService {
       notes,
       walkin: false,
       slotType: SlotType.NEW,
+      appointmentTime,
     });
     void this.broadcast(doctorId, 'patient_joined', { entryId: entry.id });
     this.gateway.emitToPatientRoom(patientId, 'patient:queue:updated', {
@@ -266,22 +292,79 @@ export class QueueService {
     notes?: string;
     walkin: boolean;
     slotType: SlotType;
-    // Pass an explicit sortOrder when rejoining a missed patient. Feature 2.
     sortOrder?: number;
     missedCount?: number;
     insertAtPosition?: number;
     visitId?: string;
+    appointmentTime?: string;
   }) {
     const serviceDay = todayKey();
     return this.prisma.$transaction(
       async (tx) => {
         const doctor = await tx.doctor.findUnique({
           where: { id: input.doctorId },
-          select: { clinicId: true },
+          select: { clinicId: true, userId: true },
         });
         if (!doctor) throw new NotFoundException('Doctor profile not found');
         const clinicId = doctor.clinicId;
         if (!clinicId) throw new BadRequestException('Doctor is not assigned to a clinic');
+
+        // Fetch settings or default
+        let settings = await tx.businessSetting.findUnique({
+          where: { clinicId },
+        });
+        if (!settings) {
+          settings = await tx.businessSetting.create({
+            data: {
+              clinicId,
+              businessType: 'CLINIC',
+              queueMode: 'LIVE_QUEUE',
+              appointmentMode: 'HYBRID',
+            },
+          });
+        }
+
+        // Check if doctor has active approved leaves/breaks right now
+        const now = new Date();
+        const activeLeave = await tx.staffLeave.findFirst({
+          where: {
+            userId: doctor.userId,
+            status: 'APPROVED',
+            startDate: { lte: now },
+            endDate: { gte: now },
+          },
+        });
+
+        if (activeLeave) {
+          throw new BadRequestException('The professional is currently unavailable (on leave or break)');
+        }
+
+        // Slot allocation
+        let finalAppointmentTime: Date | null = null;
+        let appointmentSlotStr: string | null = null;
+
+        if (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT') {
+          if (input.appointmentTime) {
+            let parsedTime: Date;
+            if (input.appointmentTime.includes('T')) {
+              parsedTime = new Date(input.appointmentTime);
+            } else {
+              parsedTime = new Date(`${serviceDay}T${input.appointmentTime}:00.000Z`);
+            }
+            finalAppointmentTime = parsedTime;
+            appointmentSlotStr = input.appointmentTime.includes('T')
+              ? input.appointmentTime.slice(11, 16)
+              : input.appointmentTime;
+          } else {
+            const allocated = await this.findNextAvailableSlot(tx, input.doctorId, settings, serviceDay, now);
+            if (allocated) {
+              finalAppointmentTime = allocated.time;
+              appointmentSlotStr = allocated.slotStr;
+            } else {
+              throw new BadRequestException('No available appointment slots left for today');
+            }
+          }
+        }
 
         let visitId = input.visitId;
         if (!visitId) {
@@ -322,9 +405,7 @@ export class QueueService {
           sortOrder:        input.sortOrder,
         };
 
-        const sortOrder = FEATURES.FIFO_QUEUE_ORDERING
-          ? await fifoSortOrder(orderingInput, tx, serviceDay)
-          : await legacySortOrder(orderingInput, tx, serviceDay);
+        const sortOrder = await calculateSortOrder(orderingInput, tx, serviceDay, settings);
 
         return tx.queueEntry.create({
           data: {
@@ -341,6 +422,8 @@ export class QueueService {
             sortOrder,
             missedCount: input.missedCount ?? 0,
             visitId,
+            appointmentTime: finalAppointmentTime,
+            appointmentSlot: appointmentSlotStr,
           },
           include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         });
@@ -467,7 +550,7 @@ export class QueueService {
   async rejoinQueue(missedEntryId: string, byUserId?: string) {
     const missed = await this.prisma.queueEntry.findUnique({
       where: { id: missedEntryId },
-      include: { doctor: { select: { id: true, missedGap: true } } },
+      include: { doctor: { select: { id: true, clinicId: true } } },
     });
     if (!missed) throw new NotFoundException('Entry not found');
     if (missed.status !== EntryStatus.MISSED) {
@@ -475,7 +558,22 @@ export class QueueService {
     }
 
     const serviceDay = todayKey();
-    const gap = missed.doctor.missedGap ?? clinicDefaults.queue.missedGap;
+    const clinicId = missed.doctor.clinicId;
+    if (!clinicId) throw new BadRequestException('Doctor is not assigned to a clinic');
+
+    let settings = await this.prisma.businessSetting.findUnique({
+      where: { clinicId },
+    });
+    if (!settings) {
+      settings = await this.prisma.businessSetting.create({
+        data: {
+          clinicId,
+          businessType: 'CLINIC',
+          queueMode: 'LIVE_QUEUE',
+          appointmentMode: 'HYBRID',
+        },
+      });
+    }
 
     const allActive = await this.prisma.queueEntry.findMany({
       where: {
@@ -487,27 +585,19 @@ export class QueueService {
     });
     const positions = allActive.map((e) => effectivePosition(e)).sort((a, b) => a - b);
 
-    let sortOrder: number;
-    if (FEATURES.FIFO_QUEUE_ORDERING) {
-      sortOrder = fifoRejoinSortOrder(positions);
-    } else {
-      const lastMissedInQueue = await this.prisma.queueEntry.findFirst({
-        where: {
-          doctorId: missed.doctorId,
-          serviceDay,
-          status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-          sortOrder: { not: null },
-          missedCount: { gt: 0 },
-        },
-        orderBy: { sortOrder: 'desc' },
-        select:  { sortOrder: true },
-      });
-      sortOrder = legacyRejoinSortOrder(
-        lastMissedInQueue as { sortOrder: number } | null,
-        positions,
-        gap,
-      );
-    }
+    const lastMissedInQueue = await this.prisma.queueEntry.findFirst({
+      where: {
+        doctorId: missed.doctorId,
+        serviceDay,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        sortOrder: { not: null },
+        missedCount: { gt: 0 },
+      },
+      orderBy: { sortOrder: 'desc' },
+      select:  { sortOrder: true },
+    });
+
+    const sortOrder = calculateRejoinSortOrder(positions, settings, lastMissedInQueue as { sortOrder: number } | null);
 
     const entry = await this.createEntry({
       doctorId: missed.doctorId,
@@ -633,9 +723,21 @@ export class QueueService {
         slotType:         dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
       };
 
-      const sortOrder = FEATURES.FIFO_QUEUE_ORDERING
-        ? await fifoSortOrder(orderingInput, tx, serviceDay)
-        : await legacySortOrder(orderingInput, tx, serviceDay);
+      let settings = await tx.businessSetting.findUnique({
+        where: { clinicId },
+      });
+      if (!settings) {
+        settings = await tx.businessSetting.create({
+          data: {
+            clinicId,
+            businessType: 'CLINIC',
+            queueMode: 'LIVE_QUEUE',
+            appointmentMode: 'HYBRID',
+          },
+        });
+      }
+
+      const sortOrder = await calculateSortOrder(orderingInput, tx, serviceDay, settings);
 
       const last = await tx.queueEntry.findFirst({
         where: { doctorId: dto.destinationDoctorId, serviceDay },
@@ -1110,6 +1212,78 @@ export class QueueService {
       const doctorName = doctor?.user?.name ?? 'the doctor';
       await this.notifications.notifyJoined(phone, `#${tokenToCode(tokenNumber)}`, doctorName);
     } catch { /* never let notification errors surface to callers */ }
+  }
+
+  private async findNextAvailableSlot(
+    tx: any,
+    doctorId: string,
+    settings: any,
+    serviceDay: string,
+    now: Date,
+  ): Promise<{ time: Date; slotStr: string } | null> {
+    const dayOfWeek = now.getDay();
+    
+    const shifts = await tx.professionalSchedule.findMany({
+      where: { doctorId, dayOfWeek, isHoliday: false },
+      orderBy: { startTime: 'asc' },
+    });
+
+    if (shifts.length === 0) {
+      return null;
+    }
+
+    const existingBookings = await tx.queueEntry.findMany({
+      where: {
+        doctorId,
+        serviceDay,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        appointmentTime: { not: null },
+      },
+      select: { appointmentTime: true },
+    });
+
+    const bookingCounts = new Map<string, number>();
+    for (const b of existingBookings) {
+      if (b.appointmentTime) {
+        const slotStr = new Date(b.appointmentTime).toISOString().slice(11, 16);
+        bookingCounts.set(slotStr, (bookingCounts.get(slotStr) || 0) + 1);
+      }
+    }
+
+    const interval = settings.appointmentInterval || 15;
+    const maxCap = settings.queueMode === 'CAPACITY_TIME_SLOT' ? (settings.maxCustomersPerSlot || 3) : 1;
+
+    for (const shift of shifts) {
+      const [startH, startM] = shift.startTime.split(':').map(Number);
+      const [endH, endM] = shift.endTime.split(':').map(Number);
+
+      const shiftStart = new Date(now);
+      shiftStart.setHours(startH, startM, 0, 0);
+
+      const shiftEnd = new Date(now);
+      shiftEnd.setHours(endH, endM, 0, 0);
+
+      let currentSlot = new Date(shiftStart);
+      if (now.getTime() > currentSlot.getTime()) {
+        const rem = now.getMinutes() % interval;
+        currentSlot.setTime(now.getTime() + (interval - rem) * 60 * 1000);
+        currentSlot.setSeconds(0, 0);
+      }
+
+      while (currentSlot.getTime() + interval * 60 * 1000 <= shiftEnd.getTime()) {
+        const slotStr = currentSlot.toTimeString().slice(0, 5);
+        const count = bookingCounts.get(slotStr) || 0;
+
+        if (count < maxCap) {
+          const finalTime = new Date(`${serviceDay}T${slotStr}:00.000Z`);
+          return { time: finalTime, slotStr };
+        }
+
+        currentSlot.setTime(currentSlot.getTime() + interval * 60 * 1000);
+      }
+    }
+
+    return null;
   }
 
   /** Throws ForbiddenException if the doctor does not belong to the caller's clinic.

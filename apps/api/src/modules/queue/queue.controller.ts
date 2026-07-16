@@ -56,7 +56,7 @@ export class QueueController {
   @Roles(Role.PATIENT)
   @Post('patient/join')
   patientJoin(@Body() dto: PatientJoinQueueDto, @CurrentUser() user: AuthUser) {
-    return this.queue.joinByPatient(user.id, dto.doctorId, dto.notes);
+    return this.queue.joinByPatient(user.id, dto.doctorId, dto.notes, dto.appointmentTime);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.ADMIN)
