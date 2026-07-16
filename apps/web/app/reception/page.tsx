@@ -389,50 +389,73 @@ export default function ReceptionPage() {
   const tabLabel: Record<Tab, string> = { dashboard: 'Dashboard', queue: 'Live Queue', history: 'History', staff: 'Staff' };
 
   return (
-    <div className="flex h-screen bg-slate-100 dark:bg-slate-900 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-[#0a0a0b] overflow-hidden">
       <DoctorCredentialsModal credentials={creds} onClose={() => setCreds(null)} />
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
+
       {/* ── Sidebar ── */}
-      <aside className="w-16 sm:w-56 flex-shrink-0 bg-slate-900 dark:bg-slate-950 flex flex-col">
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-700/60">
+      <aside className="w-16 sm:w-60 flex-shrink-0 bg-slate-950 dark:bg-black flex flex-col border-r border-slate-800/60">
+        {/* Logo */}
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-800/60">
           <TurnosIcon className="w-8 h-8 shrink-0" />
-          <span className="hidden sm:block font-semibold text-white text-sm leading-tight">{data?.clinic?.name ?? 'Turnos'}</span>
+          <div className="hidden sm:block min-w-0">
+            <div className="font-semibold text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">Reception</div>
+          </div>
         </div>
-        <nav className="flex-1 py-4 space-y-0.5 px-2">
+
+        {/* Navigation */}
+        <nav className="flex-1 py-4 px-2 space-y-0.5">
           {NAV.map(({ label, tab, icon: Icon }) => (
             <button key={tab} type="button" onClick={() => handleTabChange(tab)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                activeTab === tab ? 'bg-teal-600 text-white font-medium' : 'text-slate-400 hover:text-white hover:bg-slate-700/60 cursor-pointer'
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
+                activeTab === tab
+                  ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
               }`}>
               <Icon className="w-4 h-4 shrink-0" />
               <span className="hidden sm:block">{label}</span>
+              {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
             </button>
           ))}
-          {[{ label: L.customerPlural, icon: HeartIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
-            <button key={label} type="button" disabled className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-slate-600 cursor-not-allowed">
-              <Icon className="w-4 h-4 shrink-0" />
-              <span className="hidden sm:block">{label}</span>
-              <span className="hidden sm:block ml-auto text-[10px] text-slate-600">Soon</span>
-            </button>
-          ))}
+
+          <div className="pt-2 mt-2 border-t border-slate-800/60">
+            {[{ label: L.customerPlural, icon: HeartIcon }, { label: 'Settings', icon: GearIcon }].map(({ label, icon: Icon }) => (
+              <button key={label} type="button" disabled
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-600 cursor-not-allowed">
+                <Icon className="w-4 h-4 shrink-0" />
+                <span className="hidden sm:block">{label}</span>
+                <span className="hidden sm:block ml-auto text-[10px] text-slate-700 bg-slate-800 px-1.5 py-0.5 rounded-md">Soon</span>
+              </button>
+            ))}
+          </div>
         </nav>
-        <div className="p-3 border-t border-slate-700/60">
-          <div className="px-3 py-2 text-xs text-slate-500 truncate hidden sm:block">{user?.name}</div>
+
+        {/* User footer */}
+        <div className="p-3 border-t border-slate-800/60">
+          <div className="hidden sm:flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors group">
+            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+              {(user?.name ?? 'U').charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-slate-300 truncate">{user?.name ?? 'User'}</div>
+              <div className="text-[10px] text-slate-500 truncate">{user?.email ?? user?.phone ?? ''}</div>
+            </div>
+          </div>
         </div>
       </aside>
 
       {/* ── Main ── */}
       <main className="flex-1 overflow-y-auto">
-        <div className="sticky top-0 z-10 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">{tabLabel[activeTab]}</h1>
-            <p className="text-xs text-slate-500 mt-0.5">{todayDate}</p>
+        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0a0a0b]/90 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 px-5 sm:px-6 py-3.5 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-base font-semibold text-slate-800 dark:text-slate-100 tracking-tight">{tabLabel[activeTab]}</h1>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{todayDate}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
             <button type="button" onClick={refresh} disabled={refreshing}
-              className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium disabled:opacity-50">
+              className={`btn-icon ${refreshing ? 'opacity-50' : ''}`} title="Refresh">
               <RefreshIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:block">Refresh</span>
             </button>
             <DarkModeToggle />
             <ReviewFormButton />
@@ -442,7 +465,8 @@ export default function ReceptionPage() {
 
         {/* ── Dashboard ── */}
         {activeTab === 'dashboard' && (
-          <div className="p-6 space-y-6">
+          <div className="p-5 sm:p-6 space-y-5">
+            {/* Today's stat cards */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <StatCard label="Waiting"         value={today.waiting}        color="teal"  />
               <StatCard label={L.inService}      value={today.inConsultation} color="blue"  />
@@ -452,7 +476,7 @@ export default function ReceptionPage() {
             </div>
 
             {/* Booking Overview */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+            <div className="card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div>
                   <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Booking Overview</h2>
@@ -499,7 +523,7 @@ export default function ReceptionPage() {
             </div>
 
             {/* Doctor Histogram — with period presets */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
+            <div className="card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
                 <div>
                   <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Breakdown by {L.provider}</h2>
@@ -543,7 +567,7 @@ export default function ReceptionPage() {
 
         {/* ── Queue ── */}
         {activeTab === 'queue' && (
-          <div className="px-4 py-5 mx-auto max-w-7xl">
+          <div className="p-4 sm:p-5 mx-auto max-w-7xl">
             <QueueManager />
           </div>
         )}
@@ -562,66 +586,96 @@ export default function ReceptionPage() {
 
         {/* ── Staff ── */}
         {activeTab === 'staff' && (
-          <div className="p-6 space-y-6">
+          <div className="p-5 sm:p-6 space-y-5">
 
             {/* Add doctor form */}
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-4 flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-md bg-teal-100 text-teal-700 text-xs font-bold">+</span>
+            <div className="card p-5">
+              <h2 className="section-title mb-4 flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-400 text-sm font-bold">+</span>
                 Add {L.provider.toLowerCase()}
               </h2>
-              <form onSubmit={addDoctor} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-xl">
+              <form onSubmit={addDoctor} className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
                 <input className="input sm:col-span-2" placeholder="Full name" value={docName} onChange={(e) => setDocName(e.target.value)} required />
                 <input className="input" type="email" placeholder="Email (for login)" value={docEmail} onChange={(e) => setDocEmail(e.target.value)} />
                 <PhoneInput label={null} value={docPhone} onChange={(raw, result) => { setDocPhone(raw); setDocPhoneResult(result); }} autoComplete="off" />
-                <p className="text-[11px] text-slate-400 sm:col-span-2 -mt-1">At least one of email / mobile is required.</p>
+                <p className="text-[11px] text-slate-400 dark:text-slate-500 sm:col-span-2 -mt-1">At least one of email / mobile is required.</p>
                 <div className="sm:col-span-2">
                   <DepartmentPicker options={departments} value={docDeptId} onChange={setDocDeptId} required />
                 </div>
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                  <span className="text-slate-600 dark:text-slate-300 whitespace-nowrap shrink-0">Avg {L.service.toLowerCase()} time:</span>
+                  <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Avg {L.service.toLowerCase()} time:</span>
                   <input className="input flex-1" type="number" min={1} max={120} value={docAvg}
                     onChange={(e) => setDocAvg(Number(e.target.value))} required />
                   <span className="text-xs text-slate-400 shrink-0">{L.perCustomer}</span>
                 </label>
                 <button type="submit" className="btn-primary sm:col-span-2" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
-                  {docBusy ? 'Adding…' : `Add ${L.provider.toLowerCase()}`}
+                  {docBusy ? (
+                    <span className="flex items-center gap-2">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                      Adding…
+                    </span>
+                  ) : `Add ${L.provider.toLowerCase()}`}
                 </button>
               </form>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
-              <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm mb-4">
-                {L.providerPlural} <span className="text-slate-400 font-normal">({doctors.length})</span>
+            {/* Doctor list */}
+            <div className="card p-5">
+              <h2 className="section-title mb-4">
+                {L.providerPlural}
+                <span className="ml-2 text-slate-400 dark:text-slate-500 font-normal text-sm">({doctors.length})</span>
               </h2>
               {doctors.length === 0 ? (
-                <p className="text-slate-400 text-sm">No {L.providerPlural.toLowerCase()} yet.</p>
+                <div className="py-8 flex flex-col items-center text-center">
+                  <div className="h-14 w-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-3">
+                    <UsersIcon className="w-7 h-7" />
+                  </div>
+                  <p className="font-semibold text-slate-600 dark:text-slate-300 text-sm">No {L.providerPlural.toLowerCase()} yet</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Use the form above to add your first {L.provider.toLowerCase()}.</p>
+                </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {doctors.map((doc) => (
-                    <div key={doc.id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                    <div key={doc.id} className="card-hover p-4 space-y-3">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center text-sm font-bold text-teal-700 dark:text-teal-300 shrink-0">
-                          {doc.name.charAt(0)}
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-emerald-100 dark:from-brand-900/40 dark:to-emerald-900/40 flex items-center justify-center text-sm font-bold text-brand-700 dark:text-brand-400 shrink-0">
+                          {doc.name.charAt(0).toUpperCase()}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">{doc.name}</p>
-                          <p className="text-xs text-slate-400 truncate">{doc.department}</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{doc.department}</p>
                         </div>
-                        <div className="ml-auto shrink-0"><DoctorStatusBadge status={doc.status} /></div>
+                        <div className="shrink-0"><DoctorStatusBadge status={doc.status} /></div>
                       </div>
-                      <div className="grid grid-cols-4 gap-2 text-center text-xs pt-1 border-t border-slate-100 dark:border-slate-700">
-                        <div><p className="text-emerald-600 font-bold text-base">{doc.completed}</p><p className="text-slate-400">Done</p></div>
-                        <div><p className="text-amber-600 font-bold text-base">{doc.missed}</p><p className="text-slate-400">Missed</p></div>
-                        <div><p className="text-rose-600 font-bold text-base">{doc.cancelled}</p><p className="text-slate-400">Cancel</p></div>
-                        <div><p className="text-slate-500 font-bold text-base">{doc.skipped}</p><p className="text-slate-400">Skip</p></div>
+                      <div className="grid grid-cols-4 gap-1.5 text-center text-xs pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                        <div className="space-y-0.5">
+                          <p className="text-emerald-600 dark:text-emerald-400 font-bold text-base leading-none">{doc.completed}</p>
+                          <p className="text-slate-400 dark:text-slate-500">Done</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-amber-600 dark:text-amber-400 font-bold text-base leading-none">{doc.missed}</p>
+                          <p className="text-slate-400 dark:text-slate-500">Missed</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-rose-600 dark:text-rose-400 font-bold text-base leading-none">{doc.cancelled}</p>
+                          <p className="text-slate-400 dark:text-slate-500">Cancel</p>
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-slate-500 dark:text-slate-400 font-bold text-base leading-none">{doc.skipped}</p>
+                          <p className="text-slate-400 dark:text-slate-500">Skip</p>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                        <div className="bg-teal-50 dark:bg-teal-900/20 rounded-lg p-2">
-                          <p className="text-teal-700 dark:text-teal-300 font-bold">{doc.waiting}</p><p className="text-slate-400">Waiting</p>
+                        <div className="card-inset p-2 rounded-xl">
+                          <p className="text-brand-700 dark:text-brand-400 font-bold">{doc.waiting}</p>
+                          <p className="text-slate-400 dark:text-slate-500">Waiting</p>
                         </div>
-                        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-2">
-                          <p className="text-blue-700 dark:text-blue-300 font-bold">{doc.inConsultation ? '1' : '0'}</p><p className="text-slate-400">In {L.service.toLowerCase()}</p>
+                        <div className="card-inset p-2 rounded-xl">
+                          <p className="text-blue-700 dark:text-blue-400 font-bold">{doc.inConsultation ? '1' : '0'}</p>
+                          <p className="text-slate-400 dark:text-slate-500">In {L.service.toLowerCase()}</p>
                         </div>
                       </div>
                     </div>
@@ -1158,18 +1212,20 @@ function ByDoctorView({ entries, labels: L }: { entries: HistoryEntry[]; labels:
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  const cls: Record<string, string> = {
-    teal:  'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800/40 text-teal-700 dark:text-teal-300',
-    blue:  'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/40 text-blue-700 dark:text-blue-300',
-    green: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300',
-    amber: 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/40 text-amber-700 dark:text-amber-300',
-    red:   'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-800/40 text-rose-700 dark:text-rose-300',
-    slate: 'bg-slate-50 dark:bg-slate-700/40 border-slate-100 dark:border-slate-700 text-slate-600 dark:text-slate-300',
+  const cls: Record<string, { bg: string; text: string; bar: string }> = {
+    teal:  { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-brand-600 dark:text-brand-400',   bar: 'bg-brand-500'   },
+    blue:  { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-blue-600 dark:text-blue-400',     bar: 'bg-blue-500'    },
+    green: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-emerald-600 dark:text-emerald-400', bar: 'bg-emerald-500' },
+    amber: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-amber-600 dark:text-amber-400',   bar: 'bg-amber-500'   },
+    red:   { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-rose-600 dark:text-rose-400',     bar: 'bg-rose-500'    },
+    slate: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-slate-500 dark:text-slate-400',   bar: 'bg-slate-400'   },
   };
+  const c = cls[color] ?? cls.slate;
   return (
-    <div className={`rounded-xl border p-4 ${cls[color] ?? cls.slate}`}>
-      <p className="text-xs font-medium opacity-70 uppercase tracking-wide">{label}</p>
-      <p className="text-3xl font-bold mt-1">{value}</p>
+    <div className={`rounded-2xl shadow-card p-4 overflow-hidden relative ${c.bg}`}>
+      <div className={`absolute top-0 left-0 right-0 h-0.5 ${c.bar} opacity-70`} />
+      <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">{label}</p>
+      <p className={`text-3xl font-bold mt-1 tracking-tight ${c.text}`}>{value}</p>
     </div>
   );
 }

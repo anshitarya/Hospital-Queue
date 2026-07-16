@@ -8,6 +8,7 @@
  *   • Add-patient form (name, phone, priority, walk-in, follow-up, position)
  *   • Live queue (real-time via socket, optimistic UI)
  *   • Per-entry actions: complete, miss, skip, cancel, emergency, move
+ *   • Drag-and-drop queue reordering (HTML5 native, calls /queue/entry/:id/move)
  *   • Multi-select cancel
  *   • Clear queue (waiting-only or waiting + missed)
  *   • Missed-patients panel with rejoin
@@ -16,7 +17,7 @@
  * receptionist or admin user is authenticated.
  */
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { api, ApiError, type QueueEntry, type Clinic, type Snapshot } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
 import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
@@ -25,6 +26,7 @@ import { Toast, type ToastMessage } from '@/components/Toast';
 import { EntryStatusPill, DoctorStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
+import { EmptyState, EmptyIcons } from '@/components/EmptyState';
 import { getLabels } from '@/lib/labels';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 
@@ -71,6 +73,10 @@ export function QueueManager() {
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  // ── Drag and drop ────────────────────────────────────────────────────────
+  const [dragId, setDragId]   = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
+
   // ── Modals / toasts ─────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
@@ -80,7 +86,7 @@ export function QueueManager() {
   // ── Previous-visit lookup ────────────────────────────────────────────────
   useEffect(() => {
     if (!phoneResult.ok || !phoneResult.e164) { setPrevVisit(null); return; }
-    if (phoneResult.e164 === prevLookupPhone) return; // already fetched for this number
+    if (phoneResult.e164 === prevLookupPhone) return;
     setPrevLookupPhone(phoneResult.e164);
     api<{
       name: string;
@@ -352,53 +358,75 @@ export function QueueManager() {
     );
   };
 
+  // ── Drag-and-drop handlers ────────────────────────────────────────────────
+  const handleDragStart = (id: string) => setDragId(id);
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOver(id);
+  };
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!dragId || dragId === targetId) { setDragId(null); setDragOver(null); return; }
+    const targetPos = orderMap.get(targetId);
+    if (targetPos !== undefined) moveEntry(dragId, targetPos);
+    setDragId(null);
+    setDragOver(null);
+  };
+  const handleDragEnd = () => { setDragId(null); setDragOver(null); };
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       {/* Doctor selector */}
-      {allDoctors.length > 0 ? (
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Select {L.provider.toLowerCase()}</span>
-            <LiveIndicator connected={connected} />
-          </div>
+      <div className="card p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            Select {L.provider.toLowerCase()}
+          </span>
+          <LiveIndicator connected={connected} />
+        </div>
+        {allDoctors.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {allDoctors.map((d) => {
               const isSelected = selectedDoctorId === d.id;
               return (
                 <button key={d.id} type="button" onClick={() => selectDoctor(d.id)}
-                  className={`rounded-xl border px-3.5 py-2.5 text-left text-sm transition-all ${
+                  className={`rounded-2xl border px-4 py-2.5 text-left text-sm transition-all duration-150 ${
                     isSelected
-                      ? 'border-brand-500 bg-brand-50 shadow-sm ring-2 ring-brand-500/20'
-                      : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
+                      ? 'border-brand-500/60 bg-brand-50 dark:bg-brand-950/40 shadow-sm ring-2 ring-brand-500/20'
+                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
                   }`}>
-                  <div className={`font-semibold truncate ${isSelected ? 'text-brand-700' : 'text-slate-800'}`}>
+                  <div className={`font-semibold text-[13px] truncate ${isSelected ? 'text-brand-700 dark:text-brand-400' : 'text-slate-800 dark:text-slate-200'}`}>
                     {d.user.name}
                   </div>
-                  <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
                     <DoctorStatusPill status={d.status} />
-                    <span>{d.deptName || '—'}</span>
+                    {d.deptName && <span className="text-slate-400 dark:text-slate-500">· {d.deptName}</span>}
                   </div>
                 </button>
               );
             })}
           </div>
-        </div>
-      ) : (
-        <div className="card p-4 text-sm text-slate-500 text-center">
-          No {L.providerPlural.toLowerCase()} yet. Go to the <strong>Staff</strong> tab to add one.
-        </div>
-      )}
+        ) : (
+          <EmptyState
+            icon={<EmptyIcons.Staff />}
+            title={`No ${L.providerPlural.toLowerCase()} yet`}
+            description={`Go to the Staff tab to add your first ${L.provider.toLowerCase()}.`}
+            size="sm"
+          />
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Add-patient form */}
         <section className="card overflow-hidden lg:col-span-1">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
             <h2 className="section-title">Add {L.customer.toLowerCase()}</h2>
             {snapshot?.doctor && <DoctorStatusPill status={snapshot.doctor.status} />}
           </div>
           <div className="p-5 space-y-3">
-            <form onSubmit={addPatient} className="space-y-2.5">
+            <form onSubmit={addPatient} className="space-y-3">
               <PhoneInput
                 label={null}
                 value={phone}
@@ -411,13 +439,13 @@ export function QueueManager() {
                 autoComplete="off"
               />
               {prevVisit && (
-                <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 px-3.5 py-2.5 flex items-start gap-3">
-                  <span className="text-teal-600 text-base shrink-0 mt-0.5">↩</span>
+                <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200/60 dark:border-teal-800/60 px-3.5 py-2.5 flex items-start gap-3 animate-enter">
+                  <span className="text-teal-500 text-base shrink-0 mt-0.5">↩</span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
                       {prevVisit.customerPin && (
-                        <span className="pill bg-slate-100 text-slate-600 ring-slate-200 text-[10px] font-mono">
+                        <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
                           PIN: {prevVisit.customerPin}
                         </span>
                       )}
@@ -435,7 +463,7 @@ export function QueueManager() {
                           {p.dates.length > 0 && (
                             <div className="mt-0.5 flex flex-wrap gap-1">
                               {p.dates.map((d) => (
-                                <span key={d} className="bg-teal-100 dark:bg-teal-800/40 rounded px-1.5 py-0.5 text-[10px] font-medium">{fmtShortDate(d)}</span>
+                                <span key={d} className="bg-teal-100 dark:bg-teal-800/40 rounded-lg px-1.5 py-0.5 text-[10px] font-medium">{fmtShortDate(d)}</span>
                               ))}
                             </div>
                           )}
@@ -458,24 +486,24 @@ export function QueueManager() {
                 <option value={100}>🚨 Emergency (goes to top)</option>
               </select>
               {priority < 100 && (
-                <div className="flex gap-4 py-0.5">
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none text-sm">
-                    <input type="checkbox" className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                <div className="card-inset px-3.5 py-2.5 flex gap-5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500"
                       checked={walkin} onChange={(e) => setWalkin(e.target.checked)} />
-                    <span className="text-slate-700">Walk-in</span>
+                    <span className="text-slate-700 dark:text-slate-300">Walk-in</span>
                     <span className="text-[10px] text-slate-400">(near current)</span>
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer select-none text-sm">
-                    <input type="checkbox" className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
+                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
                       checked={slotType === 'FOLLOWUP'} onChange={(e) => setSlotType(e.target.checked ? 'FOLLOWUP' : 'NEW')} />
-                    <span className="text-slate-700">Follow-up</span>
+                    <span className="text-slate-700 dark:text-slate-300">Follow-up</span>
                   </label>
                 </div>
               )}
               <textarea className="input resize-none" placeholder="Notes (optional)" rows={2}
                 value={notes} onChange={(e) => setNotes(e.target.value)} />
               <label className="flex items-center gap-2 text-sm">
-                <span className="text-slate-600 whitespace-nowrap shrink-0">Position:</span>
+                <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Position:</span>
                 <input className="input flex-1" type="number" min={1} placeholder="Auto (end of queue)"
                   value={insertAtPosition}
                   onChange={(e) => setInsertAtPosition(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))} />
@@ -488,8 +516,8 @@ export function QueueManager() {
 
             {/* Doctor quick controls */}
             {snapshot?.doctor && (
-              <div className="border-t border-slate-100 pt-3 space-y-2">
-                <div className="text-xs text-slate-500 flex items-center justify-between">
+              <div className="border-t border-slate-100 dark:border-slate-800/60 pt-3 space-y-2.5">
+                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
                   <span>
                     {avgDisplay
                       ? avgDisplay.live
@@ -498,12 +526,12 @@ export function QueueManager() {
                       : null}
                   </span>
                   {snapshot.doctor.delayMinutes > 0 && (
-                    <span className="text-amber-600 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
                   )}
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={callNext} className="btn-primary flex-1 !py-2 text-xs">
-                    Call next
+                    ▶ Call next
                   </button>
                   {snapshot.doctor.status === 'PAUSED' ? (
                     <button type="button" onClick={() => controlDoctor('resume')} className="btn-secondary !py-2 text-xs">Resume</button>
@@ -518,54 +546,68 @@ export function QueueManager() {
 
         {/* Live queue */}
         <section className="card overflow-hidden lg:col-span-2">
-          <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 space-y-2">
+          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-800/30 space-y-2.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="section-title">
+              <h2 className="section-title flex items-center gap-2">
                 Live queue
                 {snapshot?.doctor && (
-                  <span className="ml-2 text-sm font-normal text-slate-400">— {snapshot.doctor.user.name}</span>
+                  <span className="text-sm font-normal text-slate-400 dark:text-slate-500">— {snapshot.doctor.user.name}</span>
                 )}
               </h2>
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 text-xs">Now serving</span>
-                <span className="font-bold text-slate-800 font-mono text-sm">
+                <span className="text-xs text-slate-500 dark:text-slate-400">Now serving</span>
+                <span className="font-bold text-slate-800 dark:text-slate-100 font-mono text-sm bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1">
                   {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
                 </span>
               </div>
             </div>
+            {/* Search + controls row */}
             <div className="flex gap-2">
-              <input type="search" placeholder="Search by name or phone…" value={queueSearch}
-                onChange={(e) => setQueueSearch(e.target.value)} className="input !py-1.5 text-xs flex-1" />
+              <div className="relative flex-1">
+                <svg viewBox="0 0 20 20" fill="currentColor" className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none">
+                  <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                </svg>
+                <input type="search" placeholder="Search by name or phone…" value={queueSearch}
+                  onChange={(e) => setQueueSearch(e.target.value)}
+                  className="input !py-1.5 !pl-8 text-xs" />
+              </div>
               <button type="button"
                 onClick={() => { setSelectMode((v) => !v); setSelectedIds(new Set()); }}
-                className={`btn-ghost !py-1 !px-2.5 text-xs shrink-0 ${selectMode ? 'bg-brand-50 text-brand-700 ring-1 ring-brand-200' : ''}`}>
+                className={`btn-ghost !py-1 !px-2.5 text-xs shrink-0 ${selectMode ? 'bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-400 ring-1 ring-brand-200 dark:ring-brand-800' : ''}`}>
                 {selectMode ? 'Done' : 'Select'}
               </button>
               {selectedIds.size > 0 && (
                 <button type="button" onClick={cancelSelected}
-                  className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 border border-rose-200 shrink-0">
+                  className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 ring-1 ring-rose-200 dark:ring-rose-800 shrink-0">
                   Cancel {selectedIds.size}
                 </button>
               )}
               {!selectMode && ((snapshot?.entries ?? []).some((e) => e.status === 'WAITING') || (snapshot?.missedEntries ?? []).length > 0) && (
                 <button type="button" onClick={() => setShowClearConfirm(true)}
-                  className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 shrink-0">
+                  className="btn-ghost !py-1 !px-2.5 text-xs text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 shrink-0">
                   Clear
                 </button>
               )}
             </div>
+            {/* Drag hint */}
+            {(snapshot?.entries ?? []).filter((e) => e.status === 'WAITING').length > 1 && (
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                <svg viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                Drag rows to reorder the queue
+              </p>
+            )}
             {showClearConfirm && (
-              <div className="rounded-xl bg-rose-50 ring-1 ring-rose-200 px-4 py-3 space-y-2">
-                <p className="text-sm font-medium text-rose-800">Cancel all {L.customerPlural.toLowerCase()}?</p>
-                <p className="text-xs text-rose-600">They will appear in history as Cancelled.</p>
+              <div className="rounded-xl bg-rose-50 dark:bg-rose-950/40 ring-1 ring-rose-200 dark:ring-rose-800/60 px-4 py-3 space-y-2 animate-enter">
+                <p className="text-sm font-semibold text-rose-800 dark:text-rose-300">Cancel all {L.customerPlural.toLowerCase()}?</p>
+                <p className="text-xs text-rose-600 dark:text-rose-400">They will appear in history as Cancelled.</p>
                 <div className="flex gap-2 flex-wrap">
                   <button type="button" onClick={() => clearQueue(false)}
-                    className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
+                    className="btn-ghost !py-1 !px-3 text-xs text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/30">
                     Clear waiting only
                   </button>
                   {(snapshot?.missedEntries ?? []).length > 0 && (
                     <button type="button" onClick={() => clearQueue(true)}
-                      className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
+                      className="btn-ghost !py-1 !px-3 text-xs text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/30">
                       Clear waiting + missed
                     </button>
                   )}
@@ -589,13 +631,23 @@ export function QueueManager() {
                 )
               : entries;
             return (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-subtle">
                 {filtered.length > 0 ? (
                   filtered.map((e) => (
-                    <div key={e.id} className="flex items-stretch">
+                    <div
+                      key={e.id}
+                      className={`flex items-stretch transition-all duration-150 ${
+                        dragOver === e.id && dragId !== e.id ? 'ring-2 ring-brand-400 ring-inset' : ''
+                      } ${dragId === e.id ? 'opacity-40' : ''}`}
+                      draggable={e.status === 'WAITING' && !e.id.startsWith('pending-')}
+                      onDragStart={() => handleDragStart(e.id)}
+                      onDragOver={(ev) => handleDragOver(ev, e.id)}
+                      onDrop={(ev) => handleDrop(ev, e.id)}
+                      onDragEnd={handleDragEnd}
+                    >
                       {selectMode && e.status === 'WAITING' && (
                         <label className="flex items-center pl-4 pr-2 cursor-pointer">
-                          <input type="checkbox" className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                          <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500"
                             checked={selectedIds.has(e.id)}
                             onChange={() => setSelectedIds((prev) => {
                               const next = new Set(prev);
@@ -608,6 +660,7 @@ export function QueueManager() {
                         <QueueRow
                           entry={e}
                           orderNumber={orderMap.get(e.id)}
+                          isDragging={dragId === e.id}
                           onComplete={() => setEntryStatus(e.id, 'complete')}
                           onCancel={() => setEntryStatus(e.id, 'cancel')}
                           onEmergency={() => markEmergency(e.id)}
@@ -618,12 +671,12 @@ export function QueueManager() {
                     </div>
                   ))
                 ) : (
-                  <div className="py-16 text-center">
-                    <div className="text-4xl mb-2">{sq ? '🔍' : '📭'}</div>
-                    <div className="text-sm text-slate-500">
-                      {sq ? `No results for "${queueSearch}"` : selectedDoctorId ? 'Queue is empty' : 'Select a doctor above'}
-                    </div>
-                  </div>
+                  <EmptyState
+                    icon={sq ? <EmptyIcons.Search /> : <EmptyIcons.Queue />}
+                    title={sq ? `No results for "${queueSearch}"` : selectedDoctorId ? 'Queue is empty' : 'Select a provider above'}
+                    description={sq ? 'Try a different name or phone number.' : selectedDoctorId ? 'Add a patient using the form on the left.' : ''}
+                    size="md"
+                  />
                 )}
               </div>
             );
@@ -644,44 +697,44 @@ export function QueueManager() {
           : allMissed;
         return (
           <section className="card overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-rose-100 bg-rose-50 flex items-center gap-3">
-              <h2 className="section-title text-rose-700 flex-1">Missed {L.customerPlural.toLowerCase()}</h2>
+            <div className="px-5 py-4 border-b border-rose-100 dark:border-rose-900/40 bg-rose-50/60 dark:bg-rose-950/20 flex items-center gap-3">
+              <h2 className="section-title text-rose-700 dark:text-rose-400 flex-1">Missed {L.customerPlural.toLowerCase()}</h2>
               <input type="search" placeholder="Search…" value={missedSearch}
                 onChange={(e) => setMissedSearch(e.target.value)}
                 className="input !py-1 w-full sm:!w-36 text-xs" />
-              <span className="pill bg-rose-100 text-rose-700 ring-rose-200 shrink-0">
+              <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60 shrink-0">
                 {mq && filteredMissed.length !== allMissed.length
                   ? `${filteredMissed.length} / ${allMissed.length}`
                   : allMissed.length}
               </span>
             </div>
-            <div className="divide-y divide-slate-100">
+            <div className="divide-subtle">
               {filteredMissed.length > 0 ? filteredMissed.map((e) => (
-                <div key={e.id} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                <div key={e.id} className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="font-mono font-bold text-rose-600 shrink-0">{tokenDisplay(e.tokenNumber)}</span>
+                    <span className="font-mono font-bold text-rose-600 dark:text-rose-400 shrink-0 text-sm">{tokenDisplay(e.tokenNumber)}</span>
                     <div className="min-w-0">
-                      <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
+                      <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-2 flex-wrap text-sm">
                         {e.patient?.name ?? '—'}
                         {e.patient?.customerPin && (
-                          <span className="pill bg-slate-100 text-slate-600 ring-slate-200 text-[10px] font-mono ml-1">
+                          <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono ml-1">
                             PIN: {e.patient.customerPin}
                           </span>
                         )}
                         {e.missedCount > 0 && (
-                          <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">Missed ×{e.missedCount}</span>
+                          <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">Missed ×{e.missedCount}</span>
                         )}
                       </div>
-                      {e.patient?.phone && <div className="text-xs text-slate-400">{e.patient.phone}</div>}
+                      {e.patient?.phone && <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{e.patient.phone}</div>}
                     </div>
                   </div>
                   <button type="button" onClick={() => rejoinEntry(e.id)}
-                    className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 border-brand-200 hover:bg-brand-50 shrink-0">
+                    className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50 dark:hover:bg-brand-950/30 shrink-0">
                     Rejoin queue
                   </button>
                 </div>
               )) : (
-                <div className="py-8 text-center text-sm text-slate-400">
+                <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
                   No missed {L.customerPlural.toLowerCase()} match &ldquo;{missedSearch}&rdquo;
                 </div>
               )}
@@ -699,11 +752,12 @@ export function QueueManager() {
 // ─── QueueRow ─────────────────────────────────────────────────────────────────
 
 function QueueRow({
-  entry, orderNumber,
+  entry, orderNumber, isDragging,
   onComplete, onCancel, onEmergency, onMiss, onMove,
 }: {
   entry: QueueEntry;
   orderNumber?: number;
+  isDragging?: boolean;
   onComplete: () => void;
   onCancel: () => void;
   onEmergency: () => void;
@@ -714,6 +768,8 @@ function QueueRow({
   const [showMove,  setShowMove]  = useState(false);
   const isInConsult = entry.status === 'IN_CONSULTATION';
   const isPending   = entry.id.startsWith('pending-');
+  const isWaiting   = entry.status === 'WAITING';
+  const isDraggable = isWaiting && !isPending;
 
   function submitMove() {
     if (movingTo === '' || movingTo < 1) return;
@@ -723,58 +779,67 @@ function QueueRow({
   }
 
   return (
-    <div className={`px-4 py-3.5 transition-colors ${
-      isInConsult ? 'bg-emerald-50/60 border-l-4 border-l-emerald-400'
-      : isPending  ? 'bg-amber-50/40 opacity-70'
-      : 'hover:bg-slate-50/60'
+    <div className={`px-4 py-3.5 transition-all duration-150 group ${
+      isInConsult ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-l-[3px] border-l-emerald-400'
+      : isPending  ? 'bg-amber-50/50 dark:bg-amber-950/20 opacity-70'
+      : isDragging ? 'opacity-40'
+      : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
     }`}>
       <div className="flex items-start gap-3">
-        {orderNumber !== undefined && (
-          <div className="flex flex-col items-center shrink-0 w-8 pt-0.5">
-            <span className="text-[10px] leading-none text-slate-400">pos</span>
-            <span className="font-bold text-sm text-slate-600 leading-tight">{orderNumber}</span>
+        {/* Drag handle */}
+        {isDraggable && (
+          <div className="drag-handle shrink-0 mt-1 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-500 transition-colors" title="Drag to reorder">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
+              <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
           </div>
         )}
-        <div className={`font-mono font-bold text-lg shrink-0 w-14 ${isInConsult ? 'text-emerald-700' : 'text-slate-800'}`}>
+        {orderNumber !== undefined && (
+          <div className="flex flex-col items-center shrink-0 w-7 pt-0.5">
+            <span className="text-[9px] leading-none text-slate-400 dark:text-slate-500 uppercase tracking-wide">pos</span>
+            <span className="font-bold text-sm text-slate-600 dark:text-slate-300 leading-tight">{orderNumber}</span>
+          </div>
+        )}
+        <div className={`font-mono font-bold text-lg shrink-0 w-12 ${isInConsult ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
           {isPending ? '#…' : tokenDisplay(entry.tokenNumber)}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
+          <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5 flex-wrap text-sm">
             {entry.patient?.name ?? '—'}
             {entry.patient?.customerPin && (
-              <span className="pill bg-slate-100 text-slate-600 ring-slate-200 text-[10px] font-mono">
+              <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
                 PIN: {entry.patient.customerPin}
               </span>
             )}
-            {isPending   && <span className="pill bg-amber-100 text-amber-700 ring-amber-200 text-[10px]">Adding…</span>}
-            {entry.priority >= 100 && <span className="pill bg-rose-100 text-rose-700 ring-rose-200 text-[10px]">🚨 Emergency</span>}
-            {entry.walkin && <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">Walk-in</span>}
-            {entry.slotType === 'FOLLOWUP' && <span className="pill bg-purple-100 text-purple-700 ring-purple-200 text-[10px]">Follow-up</span>}
+            {isPending   && <span className="pill-sm bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-amber-200 dark:ring-amber-800/60">Adding…</span>}
+            {entry.priority >= 100 && <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">🚨 Emergency</span>}
+            {entry.walkin && <span className="pill-sm bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-400 ring-brand-200 dark:ring-brand-800/60">Walk-in</span>}
+            {entry.slotType === 'FOLLOWUP' && <span className="pill-sm bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 ring-purple-200 dark:ring-purple-800/60">Follow-up</span>}
           </div>
-          <div className="text-xs text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
+          <div className="text-xs text-slate-400 dark:text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
             <span>{entry.patient?.phone ?? '—'}</span>
-            {entry.notes && <span className="text-slate-400 truncate">· {entry.notes}</span>}
+            {entry.notes && <span className="text-slate-300 dark:text-slate-600 truncate">· {entry.notes}</span>}
           </div>
         </div>
         <div className="text-right text-xs shrink-0">
-          {entry.status === 'WAITING' && !isPending && (
+          {isWaiting && !isPending && (
             <>
-              <div className="font-semibold text-slate-700">
+              <div className="font-semibold text-slate-700 dark:text-slate-200">
                 {entry.peopleAhead === 0 ? 'next up' : `${entry.peopleAhead} ahead`}
               </div>
-              <div className="text-slate-400">~{entry.etaMinutes} min</div>
+              <div className="text-slate-400 dark:text-slate-500">~{entry.etaMinutes} min</div>
             </>
           )}
           {isInConsult && <EntryStatusPill status={entry.status} />}
         </div>
       </div>
 
-      {showMove && entry.status === 'WAITING' && (
-        <div className="mt-2 flex items-center gap-2">
+      {showMove && isWaiting && (
+        <div className="mt-2.5 flex items-center gap-2 animate-enter">
           <input autoFocus type="number" min={1} placeholder="Position #" value={movingTo}
             onChange={(e) => setMovingTo(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
             onKeyDown={(e) => { if (e.key === 'Enter') submitMove(); if (e.key === 'Escape') setShowMove(false); }}
-            className="input !py-1.5 !px-2.5 text-xs w-28" />
+            className="input-sm w-28" />
           <button type="button" onClick={submitMove} disabled={movingTo === ''} className="btn-primary !py-1.5 !px-3 text-xs">Move</button>
           <button type="button" onClick={() => setShowMove(false)} className="btn-ghost !py-1.5 !px-2 text-xs">Cancel</button>
         </div>
@@ -783,23 +848,26 @@ function QueueRow({
       <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
         {isInConsult && (
           <>
-            <button type="button" onClick={onComplete} className="btn-success !px-3 !py-1.5 text-xs">✓ Done</button>
+            <button type="button" onClick={onComplete} className="btn-success !px-3 !py-1.5 text-xs">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5"><path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd"/></svg>
+              Done
+            </button>
             <button type="button" onClick={onMiss}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200"
+              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
               title="Patient didn't appear when called">Missed</button>
           </>
         )}
-        {entry.status === 'WAITING' && (
+        {isWaiting && (
           <>
             <button type="button" onClick={() => setShowMove((v) => !v)}
               title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs">↕ Move</button>
             <button type="button" onClick={onEmergency}
               title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs">🚨</button>
             <button type="button" onClick={onMiss}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 hover:bg-rose-50 border-rose-200"
+              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
               title="Patient didn't appear — add to missed queue">Missed</button>
             <button type="button" onClick={onCancel}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 hover:bg-slate-50"
+              className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
               title="Remove patient from queue">Cancel</button>
           </>
         )}
