@@ -91,3 +91,20 @@ export class StartBreakDto {
   @IsString()
   note?: string;
 }
+
+export class TransferPatientDto {
+  @IsString()
+  destinationDoctorId!: string;
+
+  @IsOptional()
+  @IsString()
+  transferReason?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  walkin?: boolean;
+
+  @IsOptional()
+  @IsIn(['NEW', 'FOLLOWUP'])
+  slotType?: 'NEW' | 'FOLLOWUP';
+}

@@ -63,6 +63,7 @@ model Clinic {
   users       User[] // receptionists of this clinic
   doctors     Doctor[]
   signupRequests BusinessSignupRequest[]
+  visits      Visit[]
 }
 
 // One-use, time-limited code that lets a receptionist self-register.
@@ -109,10 +110,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  doctorProfile  Doctor?
-  patientEntries QueueEntry[] @relation("PatientEntries")
-  createdEntries QueueEntry[] @relation("CreatedByStaff")
-  inviteUsed     InviteCode?  @relation("InviteUsedBy")
+  doctorProfile      Doctor?
+  patientEntries     QueueEntry[]  @relation("PatientEntries")
+  createdEntries     QueueEntry[]  @relation("CreatedByStaff")
+  inviteUsed         InviteCode?   @relation("InviteUsedBy")
+  patientVisits      Visit[]       @relation("PatientVisits")
+  transfersInitiated TransferLog[] @relation("TransfersInitiated")
 
   @@index([role])
   @@index([clinicId])
@@ -144,10 +147,12 @@ model Doctor {
   // Follow-up slots: every Nth slot reserved for FOLLOWUP patients; 0 = disabled (Feature 6)
   followUpEvery     Int          @default(0)
   // Insertion gaps (Features 1 & 2)
-  walkinGap         Int          @default(4)
-  missedGap         Int          @default(4)
+  walkinGap         Int           @default(4)
+  missedGap         Int           @default(4)
   entries           QueueEntry[]
-  updatedAt         DateTime     @updatedAt
+  transfersFrom     TransferLog[] @relation("TransfersFrom")
+  transfersTo       TransferLog[] @relation("TransfersTo")
+  updatedAt         DateTime      @updatedAt
 
   @@index([departmentId])
   @@index([clinicId])
@@ -179,6 +184,8 @@ model QueueEntry {
   calledAt    DateTime?
   startedAt   DateTime?
   completedAt DateTime?
+  visitId     String?
+  visit       Visit?      @relation(fields: [visitId], references: [id], onDelete: Cascade)
 
   @@unique([doctorId, serviceDay, tokenNumber])
   @@index([doctorId, status])
@@ -218,4 +225,46 @@ model QueueEvent {
 
   @@index([doctorId, createdAt])
   @@index([entryId])
+}
+
+enum VisitStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Visit {
+  id         String      @id @default(cuid())
+  clinicId   String
+  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patientId  String
+  patient    User        @relation("PatientVisits", fields: [patientId], references: [id], onDelete: Cascade)
+  status     VisitStatus @default(ACTIVE)
+  serviceDay String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  entries    QueueEntry[]
+  transfers  TransferLog[]
+
+  @@index([clinicId, serviceDay])
+  @@index([patientId])
+}
+
+model TransferLog {
+  id                String   @id @default(cuid())
+  visitId           String
+  visit             Visit    @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  transferredById   String
+  transferredBy     User     @relation("TransfersInitiated", fields: [transferredById], references: [id], onDelete: Cascade)
+  transferredFromId String
+  transferredFrom   Doctor   @relation("TransfersFrom", fields: [transferredFromId], references: [id], onDelete: Cascade)
+  transferredToId   String
+  transferredTo     Doctor   @relation("TransfersTo", fields: [transferredToId], references: [id], onDelete: Cascade)
+  transferredAt     DateTime @default(now())
+  transferReason    String?
+
+  @@index([visitId])
+  @@index([transferredFromId])
+  @@index([transferredToId])
 }

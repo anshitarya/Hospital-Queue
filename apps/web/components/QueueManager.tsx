@@ -364,6 +364,18 @@ export function QueueManager() {
   const handleEmergency = useCallback((id: string) => markEmergency(id), [markEmergency]);
   const handleMiss = useCallback((id: string) => missEntry(id), [missEntry]);
   const handleMove = useCallback((id: string, pos: number) => moveEntry(id, pos), [moveEntry]);
+  const handleTransfer = useCallback(
+    (id: string, destId: string, reason?: string, walkin?: boolean, slotType?: 'NEW' | 'FOLLOWUP') =>
+      callAction(
+        () => api(`/queue/entry/${id}/transfer`, {
+          method: 'POST',
+          body: { destinationDoctorId: destId, transferReason: reason || undefined, walkin, slotType }
+        }),
+        'Transfer',
+        (s) => ({ ...s, entries: s.entries.filter((e) => e.id !== id) }),
+      ),
+    [callAction]
+  );
 
   // ── Drag-and-drop handlers ────────────────────────────────────────────────
   const handleDragStart = (id: string) => setDragId(id);
@@ -673,6 +685,8 @@ export function QueueManager() {
                           onEmergency={handleEmergency}
                           onMiss={handleMiss}
                           onMove={handleMove}
+                          onTransfer={handleTransfer}
+                          doctors={allDoctors}
                         />
                       </div>
                     </div>
@@ -760,7 +774,7 @@ export function QueueManager() {
 
 const QueueRow = memo(function QueueRow({
   entry, orderNumber, isDragging,
-  onComplete, onCancel, onEmergency, onMiss, onMove,
+  onComplete, onCancel, onEmergency, onMiss, onMove, onTransfer, doctors,
 }: {
   entry: QueueEntry;
   orderNumber?: number;
@@ -770,9 +784,17 @@ const QueueRow = memo(function QueueRow({
   onEmergency: (id: string) => void;
   onMiss: (id: string) => void;
   onMove: (id: string, position: number) => void;
+  onTransfer: (id: string, destDoctorId: string, reason?: string, walkin?: boolean, slotType?: 'NEW' | 'FOLLOWUP') => void;
+  doctors: Array<{ id: string; user: { name: string }; deptName?: string }>;
 }) {
   const [movingTo,  setMovingTo]  = useState<number | ''>('');
   const [showMove,  setShowMove]  = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [destDoctorId, setDestDoctorId] = useState('');
+  const [reason, setReason] = useState('');
+  const [transferWalkin, setTransferWalkin] = useState(false);
+  const [transferSlotType, setTransferSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
+
   const isInConsult = entry.status === 'IN_CONSULTATION';
   const isPending   = entry.id.startsWith('pending-');
   const isWaiting   = entry.status === 'WAITING';
@@ -783,6 +805,14 @@ const QueueRow = memo(function QueueRow({
     onMove(entry.id, movingTo);
     setMovingTo('');
     setShowMove(false);
+  }
+
+  function submitTransfer() {
+    if (!destDoctorId) return;
+    onTransfer(entry.id, destDoctorId, reason, transferWalkin, transferSlotType);
+    setShowTransfer(false);
+    setDestDoctorId('');
+    setReason('');
   }
 
   return (
@@ -852,12 +882,83 @@ const QueueRow = memo(function QueueRow({
         </div>
       )}
 
+      {showTransfer && (
+        <div className="mt-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-3 space-y-2.5 animate-enter">
+          <div className="text-xs font-semibold text-indigo-800 dark:text-indigo-300">Transfer patient</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <select
+              value={destDoctorId}
+              onChange={(e) => setDestDoctorId(e.target.value)}
+              className="input-sm w-full font-sans text-xs"
+            >
+              <option value="">Select professional...</option>
+              {doctors
+                .filter((d) => d.id !== entry.doctorId)
+                .map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.user.name} {d.deptName ? `(${d.deptName})` : ''}
+                  </option>
+                ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Reason (e.g. Lab, checkup)"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="input-sm w-full text-xs"
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div className="flex gap-4">
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs select-none">
+                <input
+                  type="checkbox"
+                  checked={transferWalkin}
+                  onChange={(e) => setTransferWalkin(e.target.checked)}
+                  className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                />
+                <span className="text-slate-600 dark:text-slate-400">Walk-in</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer text-xs select-none">
+                <input
+                  type="checkbox"
+                  checked={transferSlotType === 'FOLLOWUP'}
+                  onChange={(e) => setTransferSlotType(e.target.checked ? 'FOLLOWUP' : 'NEW')}
+                  className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                />
+                <span className="text-slate-600 dark:text-slate-400">Follow-up</span>
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={submitTransfer}
+                disabled={!destDoctorId}
+                className="btn-primary !py-1.5 !px-3 text-xs"
+              >
+                Send
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowTransfer(false)}
+                className="btn-ghost !py-1.5 !px-2 text-xs"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
         {isInConsult && (
           <>
             <button type="button" onClick={() => onComplete(entry.id)} className="btn-success !px-3 !py-1.5 text-xs">
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5"><path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd"/></svg>
               Done
+            </button>
+            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+              Transfer
             </button>
             <button type="button" onClick={() => onMiss(entry.id)}
               className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
@@ -866,7 +967,10 @@ const QueueRow = memo(function QueueRow({
         )}
         {isWaiting && (
           <>
-            <button type="button" onClick={() => setShowMove((v) => !v)}
+            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+              Transfer
+            </button>
+            <button type="button" onClick={() => { setShowMove((v) => !v); setShowTransfer(false); }}
               title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs">↕ Move</button>
             <button type="button" onClick={() => onEmergency(entry.id)}
               title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs">🚨</button>

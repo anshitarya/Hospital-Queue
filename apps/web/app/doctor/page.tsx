@@ -43,6 +43,14 @@ export default function DoctorPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
+  // Transfer states
+  const [showTransferForm, setShowTransferForm] = useState(false);
+  const [destDoctorId, setDestDoctorId] = useState('');
+  const [transferReason, setTransferReason] = useState('');
+  const [transferWalkin, setTransferWalkin] = useState(false);
+  const [transferSlotType, setTransferSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
+  const [doctorsList, setDoctorsList] = useState<Doctor[]>([]);
+
   const [recList, setRecList] = useState<ReceptionistRow[]>([]);
   const [recName, setRecName] = useState('');
   const [recEmail, setRecEmail] = useState('');
@@ -126,6 +134,7 @@ export default function DoctorPage() {
   useEffect(() => {
     if (!ready || !user) return;
     api<Doctor[]>('/doctors').then((all) => {
+      setDoctorsList(all);
       const me = all.find((d) => d.userId === user.id);
       if (me) {
         setDoctorId(me.id);
@@ -206,6 +215,31 @@ export default function DoctorPage() {
       'Mark missed',
       (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'MISSED' as const } : e) }),
     );
+
+  const transferEntry = () => {
+    if (!destDoctorId || !current) return;
+    callAction(
+      () => api(`/queue/entry/${current.id}/transfer`, {
+        method: 'POST',
+        body: {
+          destinationDoctorId: destDoctorId,
+          transferReason: transferReason || undefined,
+          walkin: transferWalkin,
+          slotType: transferSlotType,
+        }
+      }),
+      'Transfer patient',
+      (s) => ({
+        ...s,
+        entries: s.entries.filter((e) => e.id !== current.id),
+      }),
+    );
+    setShowTransferForm(false);
+    setDestDoctorId('');
+    setTransferReason('');
+    setTransferWalkin(false);
+    setTransferSlotType('NEW');
+  };
 
   const doctorAction = (action: 'pause' | 'resume') =>
     callAction(
@@ -424,6 +458,9 @@ export default function DoctorPage() {
                         <button type="button" onClick={() => completeEntry(current.id)} className="btn-success">
                           ✓ Mark complete
                         </button>
+                        <button type="button" onClick={() => setShowTransferForm((v) => !v)} className="btn-secondary text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                          Transfer patient
+                        </button>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => missEntry(current.id)} className="btn-secondary text-rose-500 hover:bg-rose-50 border-rose-200 flex-1" title="Patient didn't appear — add to missed queue">
                             Missed
@@ -434,6 +471,81 @@ export default function DoctorPage() {
                         </div>
                       </div>
                     </div>
+
+                    {/* Inline transfer form */}
+                    {showTransferForm && (
+                      <div className="rounded-xl bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-4 space-y-3 animate-enter">
+                        <div className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">Transfer patient to another professional</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <label className="flex flex-col gap-1 text-xs text-slate-600">
+                            <span>Destination professional</span>
+                            <select
+                              value={destDoctorId}
+                              onChange={(e) => setDestDoctorId(e.target.value)}
+                              className="input w-full text-sm font-sans"
+                            >
+                              <option value="">Select professional...</option>
+                              {doctorsList
+                                .filter((d) => d.id !== doctorId)
+                                .map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.user.name} {d.department?.name ? `(${d.department.name})` : ''}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-slate-600">
+                            <span>Transfer Reason (optional)</span>
+                            <input
+                              type="text"
+                              placeholder="e.g. Needs blood test"
+                              value={transferReason}
+                              onChange={(e) => setTransferReason(e.target.value)}
+                              className="input w-full text-sm"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                          <div className="flex gap-5">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm select-none">
+                              <input
+                                type="checkbox"
+                                checked={transferWalkin}
+                                onChange={(e) => setTransferWalkin(e.target.checked)}
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                              />
+                              <span className="text-slate-700 dark:text-slate-300">Walk-in</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer text-sm select-none">
+                              <input
+                                type="checkbox"
+                                checked={transferSlotType === 'FOLLOWUP'}
+                                onChange={(e) => setTransferSlotType(e.target.checked ? 'FOLLOWUP' : 'NEW')}
+                                className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <span className="text-slate-700 dark:text-slate-300">Follow-up</span>
+                            </label>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={transferEntry}
+                              disabled={!destDoctorId}
+                              className="btn-primary !py-1.5 !px-4 text-sm"
+                            >
+                              Transfer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowTransferForm(false)}
+                              className="btn-ghost !py-1.5 !px-3 text-sm"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Next up strip */}
                     {nextUp && (

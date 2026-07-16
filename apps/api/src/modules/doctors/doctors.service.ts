@@ -6,9 +6,12 @@ import { UpdateDoctorDto } from './dto/update-doctor.dto';
 export class DoctorsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(departmentId?: string) {
+  list(clinicId?: string, departmentId?: string) {
     return this.prisma.doctor.findMany({
-      where: departmentId ? { departmentId } : undefined,
+      where: {
+        ...(clinicId ? { clinicId } : {}),
+        ...(departmentId ? { departmentId } : {}),
+      },
       include: { user: true, department: true },
       orderBy: { user: { name: 'asc' } },
     });

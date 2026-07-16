@@ -8,11 +8,11 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
-import { DoctorStatus, EntryStatus, Prisma, Role, SlotType } from '@prisma/client';
+import { DoctorStatus, EntryStatus, Prisma, Role, SlotType, VisitStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { EtaService, EnrichedEntry } from './eta.service';
-import { JoinQueueDto, ReorderEntryDto } from './dto/queue.dto';
+import { ClearQueueDto, JoinQueueDto, ReorderEntryDto, TransferPatientDto } from './dto/queue.dto';
 import { QueueGateway } from './gateway/queue.gateway';
 import { clinicDefaults } from '../../config/clinic.config';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -270,10 +270,42 @@ export class QueueService {
     sortOrder?: number;
     missedCount?: number;
     insertAtPosition?: number;
+    visitId?: string;
   }) {
     const serviceDay = todayKey();
     return this.prisma.$transaction(
       async (tx) => {
+        const doctor = await tx.doctor.findUnique({
+          where: { id: input.doctorId },
+          select: { clinicId: true },
+        });
+        if (!doctor) throw new NotFoundException('Doctor profile not found');
+        const clinicId = doctor.clinicId;
+        if (!clinicId) throw new BadRequestException('Doctor is not assigned to a clinic');
+
+        let visitId = input.visitId;
+        if (!visitId) {
+          let visit = await tx.visit.findFirst({
+            where: {
+              clinicId,
+              patientId: input.patientId,
+              serviceDay,
+              status: VisitStatus.ACTIVE,
+            },
+          });
+          if (!visit) {
+            visit = await tx.visit.create({
+              data: {
+                clinicId,
+                patientId: input.patientId,
+                serviceDay,
+                status: VisitStatus.ACTIVE,
+              },
+            });
+          }
+          visitId = visit.id;
+        }
+
         const last = await tx.queueEntry.findFirst({
           where: { doctorId: input.doctorId, serviceDay },
           orderBy: { tokenNumber: 'desc' },
@@ -308,6 +340,7 @@ export class QueueService {
             slotType: input.slotType,
             sortOrder,
             missedCount: input.missedCount ?? 0,
+            visitId,
           },
           include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         });
@@ -501,6 +534,174 @@ export class QueueService {
       doctorId: missed.doctorId,
     });
     return entry;
+  }
+
+  async transfer(
+    entryId: string,
+    dto: TransferPatientDto,
+    userId: string,
+    clinicId: string,
+  ) {
+    const serviceDay = todayKey();
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Get the current entry and ensure it exists and belongs to the same clinic
+      const currentEntry = await tx.queueEntry.findUnique({
+        where: { id: entryId },
+        include: {
+          doctor: true,
+          patient: true,
+        },
+      });
+
+      if (!currentEntry) {
+        throw new NotFoundException('Current queue entry not found');
+      }
+
+      if (currentEntry.doctor.clinicId !== clinicId) {
+        throw new ForbiddenException('You do not have access to this patient entry');
+      }
+
+      // 2. Ensure destination doctor exists and belongs to the same clinic
+      const destinationDoctor = await tx.doctor.findUnique({
+        where: { id: dto.destinationDoctorId },
+        include: { user: true },
+      });
+
+      if (!destinationDoctor || destinationDoctor.clinicId !== clinicId) {
+        throw new BadRequestException('Destination doctor not found in this clinic');
+      }
+
+      if (destinationDoctor.id === currentEntry.doctorId) {
+        throw new BadRequestException('Cannot transfer patient to the same doctor');
+      }
+
+      // 3. Find or create the active Visit for this patient today
+      let visitId = currentEntry.visitId;
+      if (!visitId) {
+        let visit = await tx.visit.findFirst({
+          where: {
+            clinicId,
+            patientId: currentEntry.patientId,
+            serviceDay,
+            status: VisitStatus.ACTIVE,
+          },
+        });
+        if (!visit) {
+          visit = await tx.visit.create({
+            data: {
+              clinicId,
+              patientId: currentEntry.patientId,
+              serviceDay,
+              status: VisitStatus.ACTIVE,
+            },
+          });
+        }
+        visitId = visit.id;
+        // Update the current entry to link to this visit
+        await tx.queueEntry.update({
+          where: { id: currentEntry.id },
+          data: { visitId },
+        });
+      }
+
+      // 4. Update the current entry status to COMPLETED (since they are moving to the next stage)
+      if (currentEntry.status === EntryStatus.WAITING || currentEntry.status === EntryStatus.IN_CONSULTATION) {
+        await tx.queueEntry.update({
+          where: { id: currentEntry.id },
+          data: {
+            status: EntryStatus.COMPLETED,
+            completedAt: new Date(),
+          },
+        });
+        // Log event for the completed queue entry
+        await tx.queueEvent.create({
+          data: {
+            entryId: currentEntry.id,
+            doctorId: currentEntry.doctorId,
+            type: 'entry_completed',
+            payload: { byUserId: userId, note: 'Transferred to another professional' },
+          },
+        });
+      }
+
+      // 5. Create a new QueueEntry for the destination doctor under the same Visit
+      const orderingInput: OrderingInput = {
+        doctorId:         dto.destinationDoctorId,
+        priority:         currentEntry.priority,
+        walkin:           dto.walkin ?? false,
+        slotType:         dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
+      };
+
+      const sortOrder = FEATURES.FIFO_QUEUE_ORDERING
+        ? await fifoSortOrder(orderingInput, tx, serviceDay)
+        : await legacySortOrder(orderingInput, tx, serviceDay);
+
+      const last = await tx.queueEntry.findFirst({
+        where: { doctorId: dto.destinationDoctorId, serviceDay },
+        orderBy: { tokenNumber: 'desc' },
+        select: { tokenNumber: true },
+      });
+      const tokenNumber = (last?.tokenNumber ?? 0) + 1;
+
+      const newEntry = await tx.queueEntry.create({
+        data: {
+          doctorId: dto.destinationDoctorId,
+          patientId: currentEntry.patientId,
+          createdById: userId,
+          serviceDay,
+          tokenNumber,
+          priority: currentEntry.priority,
+          notes: currentEntry.notes,
+          status: EntryStatus.WAITING,
+          walkin: dto.walkin ?? false,
+          slotType: dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
+          sortOrder,
+          visitId,
+        },
+        include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
+      });
+
+      // 6. Create TransferLog
+      await tx.transferLog.create({
+        data: {
+          visitId,
+          transferredById: userId,
+          transferredFromId: currentEntry.doctorId,
+          transferredToId: dto.destinationDoctorId,
+          transferReason: dto.transferReason,
+        },
+      });
+
+      // Log queue event for the new entry
+      await tx.queueEvent.create({
+        data: {
+          entryId: newEntry.id,
+          doctorId: dto.destinationDoctorId,
+          type: 'entry_joined',
+          payload: { byUserId: userId, note: 'Transferred from another professional' },
+        },
+      });
+
+      return { currentEntry, newEntry };
+    });
+
+    // 7. Trigger asynchronous notifications and broadcasts outside the transaction
+    void this.broadcast(result.currentEntry.doctorId, 'patient_transferred_out', { entryId: entryId });
+    void this.broadcast(dto.destinationDoctorId, 'patient_transferred_in', { entryId: result.newEntry.id });
+
+    this.gateway.emitToDoctorRoom(dto.destinationDoctorId, 'patient_transferred_notification', {
+      message: `Patient ${result.currentEntry.patient.name} has been transferred to you`,
+      entryId: result.newEntry.id,
+    });
+
+    this.gateway.emitToPatientRoom(result.currentEntry.patientId, 'patient:queue:updated', {
+      eventType: 'transferred',
+      entryId: result.newEntry.id,
+      doctorId: dto.destinationDoctorId,
+    });
+
+    return result.newEntry;
   }
 
   async reorder(entryId: string, dto: ReorderEntryDto, byUserId?: string) {
@@ -857,11 +1058,19 @@ export class QueueService {
       throw new ConflictException(`Cannot transition ${entry.status} -> ${next}`);
     }
 
-    const updated = await this.prisma.queueEntry.update({
-      where: { id: entryId },
+    const updateResult = await this.prisma.queueEntry.updateMany({
+      where: { id: entryId, version: entry.version },
       data: { status: next, version: { increment: 1 }, ...extra },
+    });
+    if (updateResult.count === 0) {
+      throw new ConflictException('The queue entry was updated by another process. Please retry.');
+    }
+
+    const updated = await this.prisma.queueEntry.findUnique({
+      where: { id: entryId },
       include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
     });
+    if (!updated) throw new NotFoundException('Entry not found after update');
 
     if (next === EntryStatus.COMPLETED) {
       void this.eta.invalidateCache(entry.doctorId, entry.serviceDay);
