@@ -930,17 +930,32 @@ export class QueueService {
     );
   }
 
+  private broadcastDebounce = new Map<string, { timer: NodeJS.Timeout, events: Array<{ eventType: string, payload: unknown }> }>();
+
   private async broadcast(doctorId: string, eventType: string, payload: unknown) {
-    try {
-      const snap = await this.snapshot(doctorId);
-      this.gateway.emitToDoctorRoom(doctorId, 'queue:updated', {
-        doctorId,
-        eventType,
-        payload,
-        snapshot: snap,
-      });
-    } catch (err) {
-      this.logger.error(`broadcast failed for doctor ${doctorId}`, err as Error);
+    if (!this.broadcastDebounce.has(doctorId)) {
+      this.broadcastDebounce.set(doctorId, { timer: setTimeout(() => {}, 0), events: [] });
     }
+    const state = this.broadcastDebounce.get(doctorId)!;
+    clearTimeout(state.timer);
+    state.events.push({ eventType, payload });
+
+    state.timer = setTimeout(async () => {
+      this.broadcastDebounce.delete(doctorId);
+      try {
+        const snap = await this.snapshot(doctorId);
+        // We emit the last eventType as primary, but provide events array for clients that want all
+        const lastEvent = state.events[state.events.length - 1];
+        this.gateway.emitToDoctorRoom(doctorId, 'queue:updated', {
+          doctorId,
+          eventType: lastEvent.eventType,
+          payload: lastEvent.payload,
+          events: state.events,
+          snapshot: snap,
+        });
+      } catch (err) {
+        this.logger.error(`broadcast failed for doctor ${doctorId}`, err as Error);
+      }
+    }, 50);
   }
 }

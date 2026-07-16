@@ -320,7 +320,7 @@ describe('QueueService — reception join → patient sync', () => {
     expect(prisma._entries).toHaveLength(1);
 
     // Doctor room — the reception screen + display board listen here
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 150)); // wait for debounce
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
       'queue:updated',
@@ -549,7 +549,7 @@ describe('QueueService — pause / resume', () => {
     const { svc, prisma, gateway } = makeService();
     await svc.pauseDoctor('doc-1', 'r-1');
     expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 150)); // wait for debounce
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
       'queue:updated',

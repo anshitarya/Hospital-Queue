@@ -183,6 +183,8 @@ model QueueEntry {
   @@unique([doctorId, serviceDay, tokenNumber])
   @@index([doctorId, status])
   @@index([doctorId, serviceDay])
+  @@index([doctorId, serviceDay, status])
+  @@index([doctorId, status, completedAt(sort: Desc)])
   @@index([patientId])
 }
 
