@@ -193,7 +193,15 @@ async function walkinFollowupOrder(
       serviceDay,
       status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
     },
-    select: { id: true, sortOrder: true, tokenNumber: true },
+    select: {
+      id: true,
+      sortOrder: true,
+      tokenNumber: true,
+      walkin: true,
+      slotType: true,
+      priority: true,
+      status: true,
+    },
   });
   const sorted = [...allActive].sort(
     (a, b) => effectivePosition(a) - effectivePosition(b),
@@ -203,51 +211,27 @@ async function walkinFollowupOrder(
   let anchorId: string | null = null;
 
   if (isCombined) {
-    const last = await tx.queueEntry.findFirst({
-      where: {
-        doctorId: input.doctorId, serviceDay,
-        status:   { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-        sortOrder: { not: null }, priority: { lt: 100 },
-        OR: [{ walkin: true }, { slotType: SlotType.FOLLOWUP }],
-      },
-      orderBy: { sortOrder: 'desc' },
-      select:  { id: true },
-    });
+    const last = [...allActive]
+      .filter((e) => e.sortOrder !== null && e.priority < 100 && (e.walkin || e.slotType === SlotType.FOLLOWUP))
+      .sort((a, b) => b.sortOrder! - a.sortOrder!)[0];
     anchorId = last?.id ?? null;
 
   } else if (isWOOnly) {
-    const lastWalkin = await tx.queueEntry.findFirst({
-      where: {
-        doctorId: input.doctorId, serviceDay,
-        status:   { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-        sortOrder: { not: null }, priority: { lt: 100 },
-        walkin: true, slotType: { not: SlotType.FOLLOWUP },
-      },
-      orderBy: { sortOrder: 'desc' },
-      select:  { id: true },
-    });
+    const lastWalkin = [...allActive]
+      .filter((e) => e.sortOrder !== null && e.priority < 100 && e.walkin && e.slotType !== SlotType.FOLLOWUP)
+      .sort((a, b) => b.sortOrder! - a.sortOrder!)[0];
     if (lastWalkin) {
       anchorId = lastWalkin.id;
     } else {
       // No prior walk-in: anchor from the currently-serving patient.
-      const serving = await tx.queueEntry.findFirst({
-        where:  { doctorId: input.doctorId, serviceDay, status: EntryStatus.IN_CONSULTATION },
-        select: { id: true },
-      });
+      const serving = allActive.find((e) => e.status === EntryStatus.IN_CONSULTATION);
       anchorId = serving?.id ?? null;
     }
 
   } else if (isFUOnly) {
-    const lastFU = await tx.queueEntry.findFirst({
-      where: {
-        doctorId: input.doctorId, serviceDay,
-        status:   { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-        sortOrder: { not: null }, priority: { lt: 100 },
-        slotType: SlotType.FOLLOWUP,
-      },
-      orderBy: { sortOrder: 'desc' },
-      select:  { id: true },
-    });
+    const lastFU = [...allActive]
+      .filter((e) => e.sortOrder !== null && e.priority < 100 && e.slotType === SlotType.FOLLOWUP)
+      .sort((a, b) => b.sortOrder! - a.sortOrder!)[0];
     anchorId = lastFU?.id ?? null;
   }
 

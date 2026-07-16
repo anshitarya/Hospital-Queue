@@ -17,7 +17,7 @@
  * receptionist or admin user is authenticated.
  */
 
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef, memo } from 'react';
 import { api, ApiError, type QueueEntry, type Clinic, type Snapshot } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
 import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
@@ -132,7 +132,7 @@ export function QueueManager() {
   // Re-render avg label while a customer is in service (elapsed time ticks up).
   const [avgTick, setAvgTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setAvgTick((t) => t + 1), 5_000);
+    const id = setInterval(() => setAvgTick((t) => t + 1), 30_000);
     return () => clearInterval(id);
   }, []);
   const avgDisplay = useMemo(() => resolveAvgMinutes(snapshot), [snapshot, avgTick]);
@@ -253,7 +253,7 @@ export function QueueManager() {
     );
 
   // ── Entry actions ────────────────────────────────────────────────────────
-  const setEntryStatus = (id: string, action: 'complete' | 'skip' | 'cancel') =>
+  const setEntryStatus = useCallback((id: string, action: 'complete' | 'skip' | 'cancel') =>
     callAction(
       () => api(`/queue/entry/${id}/${action}`, { method: 'POST' }),
       action,
@@ -265,16 +265,16 @@ export function QueueManager() {
             : e,
         ),
       }),
-    );
+    ), [callAction]);
 
-  const markEmergency = (id: string) =>
+  const markEmergency = useCallback((id: string) =>
     callAction(
       () => api(`/queue/entry/${id}/reorder`, { method: 'POST', body: { priority: 100 } }),
       'Emergency',
       (s) => ({ ...s, entries: s.entries.map((e) => e.id === id ? { ...e, priority: 100 } : e) }),
-    );
+    ), [callAction]);
 
-  const missEntry = (id: string) =>
+  const missEntry = useCallback((id: string) =>
     callAction(
       () => api(`/queue/entry/${id}/miss`, { method: 'POST' }),
       'Mark missed',
@@ -288,9 +288,9 @@ export function QueueManager() {
             : s.missedEntries,
         };
       },
-    );
+    ), [callAction]);
 
-  const rejoinEntry = (id: string) =>
+  const rejoinEntry = useCallback((id: string) =>
     callAction(
       () => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }),
       'Rejoin',
@@ -319,12 +319,12 @@ export function QueueManager() {
           ],
         };
       },
-    );
+    ), [callAction]);
 
-  const moveEntry = (id: string, position: number) =>
-    callAction(() => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }), 'Move');
+  const moveEntry = useCallback((id: string, position: number) =>
+    callAction(() => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }), 'Move'), [callAction]);
 
-  const clearQueue = (includeMissed: boolean) => {
+  const clearQueue = useCallback((includeMissed: boolean) => {
     setShowClearConfirm(false);
     const waitingCount = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING').length;
     const missedCount  = includeMissed ? (snapshot?.missedEntries ?? []).length : 0;
@@ -341,9 +341,9 @@ export function QueueManager() {
       const n = waitingCount + missedCount;
       setToast({ type: 'ok', msg: `Cleared ${n} ${n === 1 ? L.customer.toLowerCase() : L.customerPlural.toLowerCase()}` });
     }
-  };
+  }, [callAction, selectedDoctorId, snapshot, L.customer, L.customerPlural]);
 
-  const cancelSelected = () => {
+  const cancelSelected = useCallback(() => {
     const ids = Array.from(selectedIds);
     setSelectMode(false);
     setSelectedIds(new Set());
@@ -356,7 +356,14 @@ export function QueueManager() {
         missedEntries: (s.missedEntries ?? []).filter((e) => !ids.includes(e.id)),
       }),
     );
-  };
+  }, [callAction, selectedIds]);
+
+  // Stable callbacks for QueueRow memoization
+  const handleComplete = useCallback((id: string) => setEntryStatus(id, 'complete'), [setEntryStatus]);
+  const handleCancel = useCallback((id: string) => setEntryStatus(id, 'cancel'), [setEntryStatus]);
+  const handleEmergency = useCallback((id: string) => markEmergency(id), [markEmergency]);
+  const handleMiss = useCallback((id: string) => missEntry(id), [missEntry]);
+  const handleMove = useCallback((id: string, pos: number) => moveEntry(id, pos), [moveEntry]);
 
   // ── Drag-and-drop handlers ────────────────────────────────────────────────
   const handleDragStart = (id: string) => setDragId(id);
@@ -661,11 +668,11 @@ export function QueueManager() {
                           entry={e}
                           orderNumber={orderMap.get(e.id)}
                           isDragging={dragId === e.id}
-                          onComplete={() => setEntryStatus(e.id, 'complete')}
-                          onCancel={() => setEntryStatus(e.id, 'cancel')}
-                          onEmergency={() => markEmergency(e.id)}
-                          onMiss={() => missEntry(e.id)}
-                          onMove={(pos) => moveEntry(e.id, pos)}
+                          onComplete={handleComplete}
+                          onCancel={handleCancel}
+                          onEmergency={handleEmergency}
+                          onMiss={handleMiss}
+                          onMove={handleMove}
                         />
                       </div>
                     </div>
@@ -751,18 +758,18 @@ export function QueueManager() {
 
 // ─── QueueRow ─────────────────────────────────────────────────────────────────
 
-function QueueRow({
+const QueueRow = memo(function QueueRow({
   entry, orderNumber, isDragging,
   onComplete, onCancel, onEmergency, onMiss, onMove,
 }: {
   entry: QueueEntry;
   orderNumber?: number;
   isDragging?: boolean;
-  onComplete: () => void;
-  onCancel: () => void;
-  onEmergency: () => void;
-  onMiss: () => void;
-  onMove: (position: number) => void;
+  onComplete: (id: string) => void;
+  onCancel: (id: string) => void;
+  onEmergency: (id: string) => void;
+  onMiss: (id: string) => void;
+  onMove: (id: string, position: number) => void;
 }) {
   const [movingTo,  setMovingTo]  = useState<number | ''>('');
   const [showMove,  setShowMove]  = useState(false);
@@ -773,7 +780,7 @@ function QueueRow({
 
   function submitMove() {
     if (movingTo === '' || movingTo < 1) return;
-    onMove(movingTo);
+    onMove(entry.id, movingTo);
     setMovingTo('');
     setShowMove(false);
   }
@@ -848,11 +855,11 @@ function QueueRow({
       <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
         {isInConsult && (
           <>
-            <button type="button" onClick={onComplete} className="btn-success !px-3 !py-1.5 text-xs">
+            <button type="button" onClick={() => onComplete(entry.id)} className="btn-success !px-3 !py-1.5 text-xs">
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5"><path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd"/></svg>
               Done
             </button>
-            <button type="button" onClick={onMiss}
+            <button type="button" onClick={() => onMiss(entry.id)}
               className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
               title="Patient didn't appear when called">Missed</button>
           </>
@@ -861,12 +868,12 @@ function QueueRow({
           <>
             <button type="button" onClick={() => setShowMove((v) => !v)}
               title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs">↕ Move</button>
-            <button type="button" onClick={onEmergency}
+            <button type="button" onClick={() => onEmergency(entry.id)}
               title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs">🚨</button>
-            <button type="button" onClick={onMiss}
+            <button type="button" onClick={() => onMiss(entry.id)}
               className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
               title="Patient didn't appear — add to missed queue">Missed</button>
-            <button type="button" onClick={onCancel}
+            <button type="button" onClick={() => onCancel(entry.id)}
               className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
               title="Remove patient from queue">Cancel</button>
           </>
@@ -874,4 +881,4 @@ function QueueRow({
       </div>
     </div>
   );
-}
+});

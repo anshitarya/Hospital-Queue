@@ -1,8 +1,8 @@
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { parseCookie } = require('cookie') as { parseCookie: (str: string) => Record<string, string> };
+import * as cookie from 'cookie';
+const parseCookie = (cookie as any).parseCookie as (str: string) => Record<string, string>;
 import {
   ConnectedSocket,
   MessageBody,
