@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -27,7 +27,7 @@ interface JoinInfo {
   etaMinutes: number;
 }
 
-export default function JoinPage() {
+function JoinPageContent() {
   const params = useSearchParams();
   const router = useRouter();
   const { user, loaded: ready } = useAuth();
@@ -195,5 +195,13 @@ export default function JoinPage() {
         )}
       </div>
     </main>
+  );
+}
+
+export default function JoinPage() {
+  return (
+    <Suspense fallback={<PageLoader label="Loading booking queue…" />}>
+      <JoinPageContent />
+    </Suspense>
   );
 }
