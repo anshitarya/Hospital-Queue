@@ -163,6 +163,7 @@ export interface Snapshot {
   movingAvgMinutes?: number | null;
   /** True if at least one entry has been called today (callNext fired). Used to suppress "queue not started" after all are done. */
   hasStartedToday?: boolean;
+  settings?: any;
 }
 
 export type SignupRequestStatus = 'PENDING' | 'CONTACTED' | 'APPROVED' | 'REJECTED';

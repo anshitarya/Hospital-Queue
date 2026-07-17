@@ -115,6 +115,7 @@ export class QueueService {
     missedEntries: Array<{ id: string; tokenNumber: number; patient: { id: string; name: string; phone?: string | null; customerPin?: string | null } | null; completedAt: string | null; missedCount: number }>;
     movingAvgMinutes: number | null;
     hasStartedToday: boolean;
+    settings: any;
   }> {
     const serviceDay = todayKey();
 
@@ -191,6 +192,7 @@ export class QueueService {
       // Only completed-history average; client derives in-progress estimate for display.
       movingAvgMinutes,
       hasStartedToday: calledToday > 0,
+      settings,
     };
   }
 
