@@ -625,7 +625,7 @@ export default function PatientPage() {
             sortedHistory.length > 0 ? (
               <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-4 pl-6 space-y-6 py-2">
                 {sortedHistory.map((entry) => {
-                  const branding = getClinicBranding(entry.doctor.clinicId);
+                  const branding = getClinicBranding(entry.doctor.clinicId || '');
                   const isComp = entry.status === 'COMPLETED';
                   const meta = STATUS_META[entry.status as keyof typeof STATUS_META] || {
                     label: entry.status,
