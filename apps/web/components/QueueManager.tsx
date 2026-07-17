@@ -125,7 +125,6 @@ export function QueueManager() {
   const queueListRef = useRef<HTMLDivElement>(null);
   const autoScrollRaf = useRef<number | null>(null);
   const lastPointerY = useRef(0);
-  const dragInitiatedRef = useRef(false);
 
   // ── Modals / toasts ─────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -612,10 +611,6 @@ export function QueueManager() {
       ev.preventDefault();
       return;
     }
-    if (!dragInitiatedRef.current) {
-      ev.preventDefault();
-      return;
-    }
     ev.dataTransfer.effectAllowed = 'move';
     ev.dataTransfer.setData('text/plain', id);
     setDragState({ id, startY: ev.clientY, committed: true });
@@ -971,14 +966,10 @@ export function QueueManager() {
                           className={`queue-list-item flex items-stretch ${
                             dragState?.id === e.id ? 'queue-row-dragging' : ''
                           }`}
-                          draggable={isWaitingDraggable}
-                          onDragStart={(ev) => handleDragStart(ev, e.id)}
-                          onDrag={handleDrag}
                           onDragOver={(ev) => {
                             if (waitingIndex >= 0) handleDragOverRow(ev, waitingIndex);
                           }}
                           onDrop={(ev) => handleDrop(ev, waitingEntries)}
-                          onDragEnd={handleDragEnd}
                         >
                           {selectMode && e.status === 'WAITING' && (
                             <label className="flex items-center pl-4 pr-2 cursor-pointer">
@@ -1005,8 +996,9 @@ export function QueueManager() {
                               onMoveBack={handleMoveBack}
                               onTransfer={handleTransfer}
                               doctors={allDoctors}
-                              onDragInitiated={() => { dragInitiatedRef.current = true; }}
-                              onDragReleased={() => { dragInitiatedRef.current = false; }}
+                              onDragStart={(ev) => handleDragStart(ev, e.id)}
+                              onDrag={handleDrag}
+                              onDragEnd={handleDragEnd}
                             />
                           </div>
                         </div>
@@ -1107,7 +1099,7 @@ export function QueueManager() {
 const QueueRow = memo(function QueueRow({
   entry, orderNumber, isDragging, actionInFlight,
   onComplete, onCancel, onEmergency, onMiss, onMove, onMoveBack, onTransfer, doctors,
-  onDragInitiated, onDragReleased,
+  onDragStart, onDrag, onDragEnd,
 }: {
   entry: QueueEntry;
   orderNumber?: number;
@@ -1121,8 +1113,9 @@ const QueueRow = memo(function QueueRow({
   onMoveBack: (id: string) => void;
   onTransfer: (id: string, destDoctorId: string, reason?: string, walkin?: boolean, slotType?: 'NEW' | 'FOLLOWUP') => void;
   doctors: Array<{ id: string; user: { name: string }; deptName?: string }>;
-  onDragInitiated: () => void;
-  onDragReleased: () => void;
+  onDragStart: (ev: React.DragEvent) => void;
+  onDrag: (ev: React.DragEvent) => void;
+  onDragEnd: () => void;
 }) {
   const [movingTo,  setMovingTo]  = useState<number | ''>('');
   const [showMove,  setShowMove]  = useState(false);
@@ -1164,10 +1157,10 @@ const QueueRow = memo(function QueueRow({
         {isDraggable && (
           <div
             data-drag-handle
-            onMouseDown={onDragInitiated}
-            onTouchStart={onDragInitiated}
-            onMouseUp={onDragReleased}
-            onTouchEnd={onDragReleased}
+            draggable={isDraggable}
+            onDragStart={onDragStart}
+            onDrag={onDrag}
+            onDragEnd={onDragEnd}
             className="drag-handle shrink-0 mt-1 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-500 transition-colors cursor-grab"
             title="Drag to reorder"
           >

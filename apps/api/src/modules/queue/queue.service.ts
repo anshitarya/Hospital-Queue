@@ -1568,6 +1568,12 @@ export class QueueService {
       return parseInt(tagged[1], 10);
     }
 
+    // Try finding the doctor index directly
+    const docIdx = steps.findIndex((s) => s?.doctorId === completed.doctorId);
+    if (docIdx >= 0) {
+      return docIdx;
+    }
+
     if (completed.visitId) {
       const completedInVisit = await this.prisma.queueEntry.count({
         where: {
@@ -1581,7 +1587,7 @@ export class QueueService {
       }
     }
 
-    return steps.findIndex((s) => s?.doctorId === completed.doctorId);
+    return -1;
   }
 
   private async notifyJoinedAsync(phone: string, tokenNumber: number, doctorId: string) {
