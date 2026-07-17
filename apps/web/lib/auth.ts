@@ -117,3 +117,17 @@ export async function verifyEmail(code: string) {
 export async function cancelPendingEmail() {
   return api<UserProfile>('/auth/email/cancel-pending', { method: 'POST' });
 }
+
+export async function registerCustomer(phone: string, name: string) {
+  return api<AuthResult & { pin: string }>('/auth/customer/register', {
+    method: 'POST',
+    body: { phone, name },
+  });
+}
+
+export async function changePin(currentPin: string, newPin: string) {
+  return api<{ ok: true }>('/auth/customer/change-pin', {
+    method: 'POST',
+    body: { currentPin, newPin },
+  });
+}

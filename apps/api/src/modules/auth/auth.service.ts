@@ -254,6 +254,73 @@ export class AuthService {
     return { ok: true };
   }
 
+  async registerCustomer(dto: { phone: string; name: string }): Promise<AuthResult & { pin: string }> {
+    if (!isValidIndianMobile(dto.phone)) {
+      throw new BadRequestException('Please enter a valid Indian mobile number');
+    }
+    const phone = normalizeIndianMobile(dto.phone).e164;
+    const existing = await this.prisma.user.findUnique({ where: { phone } });
+    if (existing) {
+      throw new ConflictException('This mobile number is already registered. Please log in instead.');
+    }
+
+    // Generate unique 4-digit PIN
+    let pin = '';
+    for (let r = 0; r < 50; r++) {
+      const candidate = String(Math.floor(Math.random() * 9000) + 1000);
+      const clash = await this.prisma.user.findFirst({
+        where: { customerPin: candidate },
+        select: { id: true },
+      });
+      if (!clash) {
+        pin = candidate;
+        break;
+      }
+    }
+    if (!pin) {
+      throw new ConflictException('Unable to assign a Customer PIN — please try again');
+    }
+
+    const user = await this.prisma.user.create({
+      data: {
+        role: Role.PATIENT,
+        name: dto.name,
+        phone,
+        customerPin: pin,
+        phoneVerified: true,
+      },
+    });
+
+    const authResult = await this.sign(user);
+    return {
+      ...authResult,
+      pin,
+    };
+  }
+
+  async changePin(userId: string, currentPin: string, newPin: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== Role.PATIENT || !user.customerPin) {
+      throw new BadRequestException('This account does not use a PIN');
+    }
+
+    if (!pinsEqual(user.customerPin, currentPin)) {
+      throw new UnauthorizedException('Current PIN is incorrect');
+    }
+
+    if (currentPin === newPin) {
+      throw new BadRequestException('New PIN must be different from current PIN');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { customerPin: newPin },
+    });
+
+    return { ok: true };
+  }
+
   private async sign(user: User): Promise<AuthResult> {
     const token = await this.jwt.signAsync({ sub: user.id, role: user.role });
     return {

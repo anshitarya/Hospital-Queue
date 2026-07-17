@@ -7,6 +7,7 @@ import {
   getProfile,
   updateProfile,
   changePassword,
+  changePin,
   requestEmailVerification,
   verifyEmail,
   cancelPendingEmail,
@@ -454,7 +455,7 @@ function EmailSection({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────── */
-/*  Security — change password                                                 */
+/*  Security — change password/pin                                             */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 function Security({
@@ -472,26 +473,110 @@ function Security({
   const [showPwd, setShowPwd] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  // Patients (OTP-only accounts) have no password to change.
+  // Patient PIN change states
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
+
   if (!profile.hasPassword) {
+    const pinRegex = /^\d{4}$/;
+    const pinOk = pinRegex.test(newPin);
+    const pinMatches = newPin === confirmPin && confirmPin.length > 0;
+    const pinDistinct = newPin !== currentPin || newPin === '';
+
+    const handlePinSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (busy) return;
+      if (!pinRegex.test(currentPin)) { onError('Current PIN must be exactly 4 digits'); return; }
+      if (!pinOk) { onError('New PIN must be exactly 4 digits'); return; }
+      if (!pinMatches) { onError('New PIN and confirmation PIN do not match'); return; }
+      if (!pinDistinct) { onError('New PIN must be different from current PIN'); return; }
+
+      setBusy(true);
+      try {
+        await changePin(currentPin, newPin);
+        setCurrentPin(''); setNewPin(''); setConfirmPin('');
+        onSuccess();
+      } catch (e) {
+        onError((e as ApiError).message);
+      } finally {
+        setBusy(false);
+      }
+    };
+
     return (
       <section className="card p-6">
-        <h3 className="text-lg font-semibold">Security</h3>
-        <div className="mt-3 rounded-lg bg-sky-50 ring-1 ring-sky-200 p-4 text-sm text-sky-900">
-          <div className="flex items-start gap-3">
-            <Icon.Shield className="h-5 w-5 mt-0.5 shrink-0" />
-            <div>
-              <div className="font-medium">PIN-based account</div>
-              <div className="text-sky-700 mt-0.5">
-                You sign in with your mobile number and permanent Customer PIN
-                {profile.customerPin ? (
-                  <> (<span className="font-mono font-semibold">{profile.customerPin}</span>)</>
-                ) : null}
-                — there&apos;s no password to change.
-              </div>
-            </div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold">Security & PIN</h3>
+            <p className="text-sm text-slate-500">Change your Customer Login PIN.</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setShowPin((s) => !s)}
+            className="text-xs text-slate-500 hover:text-slate-700 inline-flex items-center gap-1"
+          >
+            <Icon.Eye className="h-3.5 w-3.5" />
+            {showPin ? 'Hide' : 'Show'} PINs
+          </button>
         </div>
+
+        <form onSubmit={handlePinSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+          <Field label="Current 4-digit PIN" required>
+            <input
+              className="input"
+              type={showPin ? 'text' : 'password'}
+              maxLength={4}
+              pattern="\d*"
+              value={currentPin}
+              onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="e.g. 1234"
+              required
+            />
+          </Field>
+
+          <div className="hidden sm:block" />
+
+          <Field label="New 4-digit PIN" required>
+            <input
+              className="input"
+              type={showPin ? 'text' : 'password'}
+              maxLength={4}
+              pattern="\d*"
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="e.g. 5678"
+              required
+            />
+          </Field>
+
+          <Field label="Confirm New PIN" required>
+            <input
+              className="input"
+              type={showPin ? 'text' : 'password'}
+              maxLength={4}
+              pattern="\d*"
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              placeholder="e.g. 5678"
+              required
+            />
+            {confirmPin && !pinMatches && (
+              <p className="mt-1 text-xs text-rose-600">PINs don&apos;t match</p>
+            )}
+          </Field>
+
+          <div className="sm:col-span-2 flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <button
+              type="submit"
+              className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={busy || !currentPin || !pinOk || !pinMatches || !pinDistinct}
+            >
+              {busy ? 'Updating…' : 'Update PIN'}
+            </button>
+          </div>
+        </form>
       </section>
     );
   }
@@ -551,6 +636,8 @@ function Security({
             required
           />
         </Field>
+
+        <div className="hidden sm:block" />
 
         <Field label="New password" required>
           <input
