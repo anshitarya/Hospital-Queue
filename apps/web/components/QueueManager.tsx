@@ -30,6 +30,7 @@ import { EmptyState, EmptyIcons } from '@/components/EmptyState';
 import { getLabels } from '@/lib/labels';
 import { serviceDay } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
+import { Spinner } from '@/components/PageLoader';
 
 function doctorStorageKey(clinicId: string) {
   return `turnos_selected_doctor_${clinicId}`;
@@ -105,6 +106,10 @@ export function QueueManager() {
   const [slotType, setSlotType]                   = useState<'NEW' | 'FOLLOWUP'>('NEW');
   const [insertAtPosition, setInsertAtPosition]   = useState<number | ''>('');
 
+  // Doctor schedule/shifts target selection
+  const [doctorShifts, setDoctorShifts]           = useState<any[]>([]);
+  const [selectedShiftTime, setSelectedShiftTime] = useState<string>('');
+
   // ── Queue interaction state ─────────────────────────────────────────────
   const [queueSearch, setQueueSearch]     = useState('');
   const [missedSearch, setMissedSearch]   = useState('');
@@ -112,6 +117,7 @@ export function QueueManager() {
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [actionInFlight, setActionInFlight] = useState<Set<string>>(new Set());
+  const [doctorActionInFlight, setDoctorActionInFlight] = useState<string | null>(null);
 
   // ── Drag and drop ────────────────────────────────────────────────────────
   const [dragState, setDragState] = useState<{ id: string; startY: number; committed: boolean } | null>(null);
@@ -119,12 +125,41 @@ export function QueueManager() {
   const queueListRef = useRef<HTMLDivElement>(null);
   const autoScrollRaf = useRef<number | null>(null);
   const lastPointerY = useRef(0);
+  const dragInitiatedRef = useRef(false);
 
   // ── Modals / toasts ─────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
 
   const L = getLabels(clinic?.businessType);
+
+  // ── Doctor shifts fetch effect ──
+  useEffect(() => {
+    if (selectedDoctorId) {
+      api<any[]>(`/schedules/doctor/${selectedDoctorId}`)
+        .then((data) => {
+          const active = (data || []).filter((s) => !s.isHoliday);
+          setDoctorShifts(active);
+          setSelectedShiftTime('');
+        })
+        .catch(() => {
+          setDoctorShifts([]);
+          setSelectedShiftTime('');
+        });
+    } else {
+      setDoctorShifts([]);
+      setSelectedShiftTime('');
+    }
+  }, [selectedDoctorId]);
+
+  const todayDow = useMemo(() => {
+    const istDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    return istDate.getDay();
+  }, []);
+
+  const todaysShifts = useMemo(() => {
+    return doctorShifts.filter((s) => s.dayOfWeek === todayDow);
+  }, [doctorShifts, todayDow]);
 
   // ── Previous-visit lookup ────────────────────────────────────────────────
   useEffect(() => {
@@ -198,7 +233,11 @@ export function QueueManager() {
     patcher?: (s: Snapshot) => Snapshot,
   ) => {
     if (patcher) applyOptimistic(patcher);
-    return fn().catch((err) => {
+    const isDoctorAction = ['Call next', 'pause', 'resume', 'end-service', 'break', 'clear-queue'].includes(label);
+    if (isDoctorAction) setDoctorActionInFlight(label);
+    return fn().finally(() => {
+      if (isDoctorAction) setDoctorActionInFlight(null);
+    }).catch((err) => {
       const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
       setToast({ type: 'err', msg: `${label} failed: ${msg}` });
       revertOptimistic();
@@ -226,11 +265,13 @@ export function QueueManager() {
       walkin: capturedWalkin || undefined,
       slotType: capturedSlotType !== 'NEW' ? capturedSlotType : undefined,
       insertAtPosition: insertAtPosition !== '' ? insertAtPosition : undefined,
+      appointmentTime: selectedShiftTime || undefined,
     };
 
     // Reset form immediately
     setName(''); setPhone(''); setPhoneResult({ ok: false }); setPriority(0); setNotes('');
     setWalkin(false); setSlotType('NEW'); setInsertAtPosition('');
+    setSelectedShiftTime('');
     setPrevVisit(null); setPrevLookupPhone('');
     document.getElementById('qm-name')?.focus();
 
@@ -339,15 +380,24 @@ export function QueueManager() {
     });
   }, [callAction]);
 
-  const markEmergency = useCallback((id: string) =>
-    callAction(
+  const markEmergency = useCallback((id: string) => {
+    setActionInFlight((prev) => new Set(prev).add(id));
+    return callAction(
       () => api(`/queue/entry/${id}/reorder`, { method: 'POST', body: { priority: 100 } }),
       'Emergency',
       (s) => ({ ...s, entries: s.entries.map((e) => e.id === id ? { ...e, priority: 100 } : e) }),
-    ), [callAction]);
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
 
-  const missEntry = useCallback((id: string) =>
-    callAction(
+  const missEntry = useCallback((id: string) => {
+    setActionInFlight((prev) => new Set(prev).add(id));
+    return callAction(
       () => api(`/queue/entry/${id}/miss`, { method: 'POST' }),
       'Mark missed',
       (s) => {
@@ -360,10 +410,18 @@ export function QueueManager() {
             : s.missedEntries,
         };
       },
-    ), [callAction]);
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
 
-  const rejoinEntry = useCallback((id: string) =>
-    callAction(
+  const rejoinEntry = useCallback((id: string) => {
+    setActionInFlight((prev) => new Set(prev).add(id));
+    return callAction(
       () => api(`/queue/entry/${id}/rejoin`, { method: 'POST' }),
       'Rejoin',
       (s) => {
@@ -391,17 +449,33 @@ export function QueueManager() {
           ],
         };
       },
-    ), [callAction]);
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
 
-  const moveEntry = useCallback((id: string, position: number) =>
-    callAction(
+  const moveEntry = useCallback((id: string, position: number) => {
+    setActionInFlight((prev) => new Set(prev).add(id));
+    return callAction(
       () => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }),
       'Move',
       (s) => ({ ...s, entries: reorderWaitingEntries(s.entries, id, position) }),
-    ), [callAction]);
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
 
-  const moveBackEntry = useCallback((id: string) =>
-    callAction(
+  const moveBackEntry = useCallback((id: string) => {
+    setActionInFlight((prev) => new Set(prev).add(id));
+    return callAction(
       () => api(`/queue/entry/${id}/move-back`, { method: 'POST' }),
       'Move back',
       (s) => {
@@ -430,7 +504,14 @@ export function QueueManager() {
         }
         return s;
       },
-    ), [callAction]);
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
 
   const clearQueue = useCallback((includeMissed: boolean) => {
     setShowClearConfirm(false);
@@ -531,22 +612,19 @@ export function QueueManager() {
       ev.preventDefault();
       return;
     }
-    if (!(ev.target as Element).closest('[data-drag-handle]')) {
+    if (!dragInitiatedRef.current) {
       ev.preventDefault();
       return;
     }
     ev.dataTransfer.effectAllowed = 'move';
     ev.dataTransfer.setData('text/plain', id);
-    setDragState({ id, startY: ev.clientY, committed: false });
+    setDragState({ id, startY: ev.clientY, committed: true });
     setDropSlot(null);
   }, [selectMode]);
 
   const handleDrag = useCallback((ev: React.DragEvent) => {
     if (!dragState || ev.clientY === 0) return;
     startAutoScroll(ev.clientY);
-    if (!dragState.committed && Math.abs(ev.clientY - dragState.startY) >= DRAG_COMMIT_PX) {
-      setDragState((s) => (s ? { ...s, committed: true } : s));
-    }
   }, [dragState, startAutoScroll]);
 
   const handleDragOverRow = useCallback((ev: React.DragEvent, waitingIndex: number) => {
@@ -714,6 +792,23 @@ export function QueueManager() {
               )}
               <textarea className="input resize-none" placeholder="Notes (optional)" rows={2}
                 value={notes} onChange={(e) => setNotes(e.target.value)} />
+              {snapshot?.settings?.queueMode === 'LIVE_QUEUE' && todaysShifts.length > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Shift:</span>
+                  <select
+                    className="input flex-1"
+                    value={selectedShiftTime}
+                    onChange={(e) => setSelectedShiftTime(e.target.value)}
+                  >
+                    <option value="">Next Available (Default)</option>
+                    {todaysShifts.map((s, idx) => (
+                      <option key={s.id || idx} value={s.startTime}>
+                        Shift {idx + 1}: {s.startTime} - {s.endTime}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <label className="flex items-center gap-2 text-sm">
                 <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Position:</span>
                 <input className="input flex-1" type="number" min={1} placeholder="Auto (end of queue)"
@@ -741,17 +836,18 @@ export function QueueManager() {
                     <span className="text-amber-600 dark:text-amber-400 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
                   )}
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  <button type="button" onClick={callNext} className="btn-primary flex-1 !py-2 text-xs min-w-[100px]">
+                <div className="flex gap-2 flex-wrap items-center">
+                  {doctorActionInFlight && <Spinner className="h-4 w-4 text-brand-500 mr-1" />}
+                  <button type="button" onClick={callNext} disabled={!!doctorActionInFlight} className="btn-primary flex-1 !py-2 text-xs min-w-[100px] disabled:opacity-50">
                     ▶ Call next
                   </button>
                   {snapshot.doctor.status === 'PAUSED' ? (
-                    <button type="button" onClick={() => controlDoctor('resume')} className="btn-secondary !py-2 text-xs">Resume</button>
+                    <button type="button" onClick={() => controlDoctor('resume')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50">Resume</button>
                   ) : (
-                    <button type="button" onClick={() => controlDoctor('pause')} className="btn-secondary !py-2 text-xs">Pause</button>
+                    <button type="button" onClick={() => controlDoctor('pause')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50">Pause</button>
                   )}
-                  <button type="button" onClick={endServiceShift} title="Move waiting patients to next shift"
-                    className="btn-secondary !py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <button type="button" onClick={endServiceShift} title="Move waiting patients to next shift" disabled={!!doctorActionInFlight}
+                    className="btn-secondary !py-2 text-xs text-amber-700 dark:text-amber-400 disabled:opacity-50">
                     End shift
                   </button>
                 </div>
@@ -909,6 +1005,8 @@ export function QueueManager() {
                               onMoveBack={handleMoveBack}
                               onTransfer={handleTransfer}
                               doctors={allDoctors}
+                              onDragInitiated={() => { dragInitiatedRef.current = true; }}
+                              onDragReleased={() => { dragInitiatedRef.current = false; }}
                             />
                           </div>
                         </div>
@@ -976,9 +1074,16 @@ export function QueueManager() {
                       {e.patient?.phone && <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{e.patient.phone}</div>}
                     </div>
                   </div>
-                  <button type="button" onClick={() => rejoinEntry(e.id)}
-                    className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50 dark:hover:bg-brand-950/30 shrink-0">
-                    Rejoin queue
+                  <button type="button" onClick={() => rejoinEntry(e.id)} disabled={actionInFlight.has(e.id)}
+                    className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50 dark:hover:bg-brand-950/30 shrink-0 disabled:opacity-50 flex items-center gap-1.5">
+                    {actionInFlight.has(e.id) ? (
+                      <>
+                        <Spinner className="h-3 w-3" />
+                        <span>Rejoining…</span>
+                      </>
+                    ) : (
+                      'Rejoin queue'
+                    )}
                   </button>
                 </div>
               )) : (
@@ -1002,6 +1107,7 @@ export function QueueManager() {
 const QueueRow = memo(function QueueRow({
   entry, orderNumber, isDragging, actionInFlight,
   onComplete, onCancel, onEmergency, onMiss, onMove, onMoveBack, onTransfer, doctors,
+  onDragInitiated, onDragReleased,
 }: {
   entry: QueueEntry;
   orderNumber?: number;
@@ -1015,6 +1121,8 @@ const QueueRow = memo(function QueueRow({
   onMoveBack: (id: string) => void;
   onTransfer: (id: string, destDoctorId: string, reason?: string, walkin?: boolean, slotType?: 'NEW' | 'FOLLOWUP') => void;
   doctors: Array<{ id: string; user: { name: string }; deptName?: string }>;
+  onDragInitiated: () => void;
+  onDragReleased: () => void;
 }) {
   const [movingTo,  setMovingTo]  = useState<number | ''>('');
   const [showMove,  setShowMove]  = useState(false);
@@ -1054,7 +1162,15 @@ const QueueRow = memo(function QueueRow({
       <div className="flex items-start gap-3">
         {/* Drag handle */}
         {isDraggable && (
-          <div data-drag-handle className="drag-handle shrink-0 mt-1 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-500 transition-colors" title="Drag to reorder">
+          <div
+            data-drag-handle
+            onMouseDown={onDragInitiated}
+            onTouchStart={onDragInitiated}
+            onMouseUp={onDragReleased}
+            onTouchEnd={onDragReleased}
+            className="drag-handle shrink-0 mt-1 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-500 transition-colors cursor-grab"
+            title="Drag to reorder"
+          >
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
               <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
             </svg>
@@ -1179,7 +1295,8 @@ const QueueRow = memo(function QueueRow({
         </div>
       )}
 
-      <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
+      <div className="flex gap-1.5 mt-2.5 justify-end items-center flex-wrap">
+        {actionInFlight && <Spinner className="h-3.5 w-3.5 text-brand-500 mr-1" />}
         {isInConsult && (
           <>
             <button type="button" onClick={() => onComplete(entry.id)} disabled={actionInFlight}
@@ -1188,37 +1305,39 @@ const QueueRow = memo(function QueueRow({
               {actionInFlight ? 'Saving…' : 'Done'}
             </button>
             <button type="button" onClick={() => onMoveBack(entry.id)} disabled={actionInFlight}
-              className="btn-secondary !px-3 !py-1.5 text-xs"
+              className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50"
               title="Return patient to front of queue">
               ↩ Move back
             </button>
-            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50">
               Transfer
             </button>
-            <button type="button" onClick={() => onMiss(entry.id)}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
+            <button type="button" onClick={() => onMiss(entry.id)} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800 disabled:opacity-50"
               title="Patient didn't appear when called">Missed</button>
           </>
         )}
         {isWaiting && (
           <>
             <button type="button" onClick={() => onMoveBack(entry.id)} disabled={actionInFlight}
-              className="btn-secondary !px-3 !py-1.5 text-xs"
+              className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50"
               title="Move one position back in queue">
               ↩ Back
             </button>
-            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50">
               Transfer
             </button>
-            <button type="button" onClick={() => { setShowMove((v) => !v); setShowTransfer(false); }}
-              title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs">↕ Move</button>
-            <button type="button" onClick={() => onEmergency(entry.id)}
-              title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs">🚨</button>
-            <button type="button" onClick={() => onMiss(entry.id)}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800"
+            <button type="button" onClick={() => { setShowMove((v) => !v); setShowTransfer(false); }} disabled={actionInFlight}
+              title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50">↕ Move</button>
+            <button type="button" onClick={() => onEmergency(entry.id)} disabled={actionInFlight}
+              title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs disabled:opacity-50">🚨</button>
+            <button type="button" onClick={() => onMiss(entry.id)} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800 disabled:opacity-50"
               title="Patient didn't appear — add to missed queue">Missed</button>
-            <button type="button" onClick={() => onCancel(entry.id)}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+            <button type="button" onClick={() => onCancel(entry.id)} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
               title="Remove patient from queue">Cancel</button>
           </>
         )}

@@ -119,9 +119,15 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     setSaving(true);
     try {
       const flat = Array.from(byDay.entries()).flatMap(([, rows]) => rows);
+      const cleanShifts = flat.map((r) => ({
+        dayOfWeek: r.dayOfWeek,
+        startTime: r.startTime,
+        endTime: r.endTime,
+        isHoliday: r.isHoliday,
+      }));
       await api(`/schedules/doctor/${selectedDocId}`, {
         method: 'POST',
-        body: { shifts: flat },
+        body: { shifts: cleanShifts },
       });
       setSchedules(flat);
       setToast({ type: 'ok', msg: 'Schedules updated successfully' });

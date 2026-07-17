@@ -6,7 +6,7 @@ import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue, usePatientStream } from '@/lib/socket';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
-import { PageLoader } from '@/components/PageLoader';
+import { PageLoader, Spinner } from '@/components/PageLoader';
 import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
@@ -14,6 +14,7 @@ import { getLabels } from '@/lib/labels';
 import { formatTimeIst, serviceDay, serviceDaysAgo, entryServiceDay, formatDateIst, formatRelativeTimeIst } from '@/lib/datetime';
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
 import { Icon } from '@/components/Icons';
+import { BookingDirectory } from '@/components/BookingDirectory';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
@@ -159,7 +160,7 @@ export default function PatientPage() {
   const [expandedClinics, setExpandedClinics] = useState<Record<string, boolean>>({});
 
   // Filter & Search states
-  const [activeTab, setActiveTab]           = useState<'active' | 'upcoming' | 'completed' | 'cancelled'>('active');
+  const [activeTab, setActiveTab]           = useState<'active' | 'upcoming' | 'history' | 'discover'>('active');
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectedClinicId, setSelectedClinicId] = useState<string>('ALL');
 
@@ -318,8 +319,8 @@ export default function PatientPage() {
     // Tab filtering
     if (activeTab === 'active' && !isActive(e)) return false;
     if (activeTab === 'upcoming' && !isUpcoming(e)) return false;
-    if (activeTab === 'completed' && !isCompleted(e)) return false;
-    if (activeTab === 'cancelled' && !isCancelled(e)) return false;
+    if (activeTab === 'history' && !isCompleted(e) && !isCancelled(e)) return false;
+    if (activeTab === 'discover') return false; // discover tab shows BookingDirectory instead
 
     // Search query
     if (searchQuery) {
@@ -356,6 +357,14 @@ export default function PatientPage() {
       return acc;
     }, new Map<string, { clinic: { id: string; name: string; address: string | null; businessType: string }; entries: HistoryItem[] }>()).values()
   );
+
+  const sortedHistory = useMemo(() => {
+    return [...filteredHistory].sort((a, b) => {
+      const timeA = new Date(a.completedAt || a.joinedAt).getTime();
+      const timeB = new Date(b.completedAt || b.joinedAt).getTime();
+      return timeB - timeA;
+    });
+  }, [filteredHistory]);
 
   // List of all unique businesses for dropdown filter
   const uniqueBusinessesList = Array.from(
@@ -530,7 +539,7 @@ export default function PatientPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Status tab bar */}
             <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full md:w-auto">
-              {(['active', 'upcoming', 'completed', 'cancelled'] as const).map((tab) => (
+              {(['active', 'upcoming', 'history', 'discover'] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -606,151 +615,232 @@ export default function PatientPage() {
           </div>
         ))}
 
-        {/* ── Grouped Business Cards (Requirement 1, 3, 5, 8, 9, 15) ── */}
+        {/* ── Grouped Business Cards or Chronological History Feed ── */}
         <section className="space-y-4">
-          {groupedBusinesses.length > 0 ? (
-            groupedBusinesses.map(({ clinic, entries: businessEntries }) => {
-              const branding = getClinicBranding(clinic.id);
-              const category = getCategoryIcon(clinic.businessType);
-              const isExpanded = expandedClinics[clinic.id] ?? true;
+          {/* Discover tab — self-booking business directory */}
+          {activeTab === 'discover' && user && (
+            <BookingDirectory patientId={user.id} />
+          )}
+          {activeTab === 'history' ? (
+            sortedHistory.length > 0 ? (
+              <div className="relative border-l-2 border-slate-200 dark:border-slate-800 ml-4 pl-6 space-y-6 py-2">
+                {sortedHistory.map((entry) => {
+                  const branding = getClinicBranding(entry.doctor.clinicId);
+                  const isComp = entry.status === 'COMPLETED';
+                  const meta = STATUS_META[entry.status as keyof typeof STATUS_META] || {
+                    label: entry.status,
+                    cls: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700/50',
+                  };
 
-              // Filter out active vs other items for custom live container placement
-              const activeItems = businessEntries.filter(isActive);
-              const otherItems = businessEntries.filter((e) => !isActive(e));
+                  const formatPastDate = (dateStr: string) => {
+                    const date = new Date(dateStr);
+                    const now = new Date();
+                    const timeStr = formatTimeIst(dateStr);
+                    const todayStr = serviceDay(now);
+                    const yesterdayStr = serviceDay(new Date(now.getTime() - 86400000));
+                    const itemDayStr = serviceDay(date);
 
-              return (
-                <article
-                  key={clinic.id}
-                  className={`card overflow-hidden transition-all duration-200 border-t-[3px] ${branding.border} shadow-sm`}
-                  style={{ borderTopColor: `var(--color-${branding.accent}-500)` }}
-                >
-                  {/* Clinic Card Header */}
-                  <header className="px-4 py-3.5 bg-slate-50/50 dark:bg-slate-900/60 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Logo fallback */}
-                      <div className={`h-9 w-9 rounded-xl bg-gradient-to-br ${branding.gradient} flex items-center justify-center text-white text-xs font-bold shadow-sm shrink-0`}>
-                        {clinic.name.charAt(0)}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{clinic.name}</h3>
-                          <span className={`pill-sm ${branding.pill} px-2 py-0.5 shrink-0 flex items-center gap-1`}>
-                            <span>{category.emoji}</span>
-                            <span className="hidden sm:inline font-semibold text-[9px] uppercase tracking-wider">{category.label}</span>
-                          </span>
-                        </div>
-                        {clinic.address && (
-                          <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs sm:max-w-md">{clinic.address}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 rounded-full px-2.5 py-0.5">
-                        {businessEntries.length} {businessEntries.length === 1 ? 'appointment' : 'appointments'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(clinic.id)}
-                        className="btn-icon !p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
-                        aria-label={isExpanded ? 'Collapse business section' : 'Expand business section'}
-                      >
-                        {isExpanded ? (
-                          <Icon.ChevronDown className="h-4 w-4 text-slate-400 transform rotate-180 transition-transform" />
-                        ) : (
-                          <Icon.ChevronDown className="h-4 w-4 text-slate-400 transition-transform" />
-                        )}
-                      </button>
-                    </div>
-                  </header>
+                    if (itemDayStr === todayStr) {
+                      return `Today at ${timeStr}`;
+                    } else if (itemDayStr === yesterdayStr) {
+                      return `Yesterday at ${timeStr}`;
+                    } else {
+                      return `${formatDateIst(dateStr, { month: 'short', day: 'numeric' })} at ${timeStr}`;
+                    }
+                  };
 
-                  {/* Clinic Card Content */}
-                  {isExpanded && (
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800/60 p-4 space-y-4">
-                      {/* Prominent Active Live Queues First (Requirement 7) */}
-                      {activeItems.length > 0 && (
-                        <div className="space-y-4 pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Live Queue Tracking</span>
+                  const displayTime = formatPastDate(entry.completedAt || entry.joinedAt);
+
+                  return (
+                    <article key={entry.id} className="relative group animate-enter">
+                      <span className={`absolute -left-[31px] top-1.5 h-4 w-4 rounded-full border-2 border-white dark:border-slate-900 bg-gradient-to-br ${branding.gradient} shadow-sm shrink-0`} />
+                      
+                      <div className="card p-5 hover:shadow-md transition-shadow duration-200 bg-white dark:bg-slate-900">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                                {entry.doctor.clinic?.name ?? 'Clinic'}
+                              </span>
+                              <span className="text-slate-300 dark:text-slate-700">·</span>
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                {displayTime}
+                              </span>
+                            </div>
+                            
+                            <h4 className="font-semibold text-sm text-slate-700 dark:text-slate-300">
+                              {entry.doctor.user.name}
+                            </h4>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                              {entry.doctor.department?.name || 'General Specialty'}
+                            </p>
                           </div>
-                          {activeItems.map((entry) => (
-                            <ActiveAppointmentCard
-                              key={entry.id}
-                              entry={entry}
-                              branding={branding}
-                              onCompleted={handleCompleted}
-                              onPositionUpdate={handlePositionUpdate}
-                            />
-                          ))}
+                          
+                          <div className="flex items-center sm:flex-col sm:items-end gap-2 shrink-0">
+                            <span className="font-mono text-xs font-extrabold text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-900/60 px-2 py-0.5 rounded-lg border border-slate-100 dark:border-slate-800/80">
+                              {tokenDisplay(entry.tokenNumber)}
+                            </span>
+                            <span className={`pill ring-1 ring-inset capitalize text-[10px] py-0.5 px-2 ${meta.cls}`}>
+                              {meta.label}
+                            </span>
+                          </div>
                         </div>
-                      )}
 
-                      {/* Other entries (Upcoming, Completed, Cancelled) */}
-                      {otherItems.length > 0 && (
-                        <div className={`${activeItems.length > 0 ? 'pt-4' : ''} space-y-2`}>
-                          {activeItems.length > 0 && (
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">Other Appointments</span>
-                          )}
-                          {otherItems.map((entry) => {
-                            const meta = STATUS_META[entry.status as keyof typeof STATUS_META] || {
-                              label: entry.status,
-                              cls: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700/50',
-                              dot: 'bg-slate-400',
-                            };
-
-                            const isUpc = isUpcoming(entry);
-
-                            return (
-                              <div key={entry.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50/60 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 hover:bg-slate-100/40 dark:hover:bg-slate-900/80 transition-colors gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
-                                      {tokenDisplay(entry.tokenNumber)}
-                                    </span>
-                                    <span className="text-slate-300 dark:text-slate-700">·</span>
-                                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{entry.doctor.user.name}</span>
-                                  </div>
-                                  <p className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
-                                    <span>{entry.doctor.department?.name || 'General'}</span>
-                                    <span>·</span>
-                                    <span>
-                                      {isUpc && entry.appointmentTime
-                                        ? `Scheduled for ${formatDateIst(entry.appointmentTime, { month: 'short', day: 'numeric' })} at ${formatTimeIst(entry.appointmentTime)}`
-                                        : `Joined ${formatDateIst(entry.joinedAt, { month: 'short', day: 'numeric' })} at ${formatTimeIst(entry.joinedAt)}`
-                                      }
-                                    </span>
-                                  </p>
-                                </div>
-                                <span className={`pill ring-1 ring-inset shrink-0 capitalize ${meta.cls}`}>{meta.label}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </article>
-              );
-            })
-          ) : (
-            /* Contextual Empty States (Requirement 11) */
-            <div className="card p-12 text-center animate-fade-in ring-1 ring-slate-100 dark:ring-slate-800/60 bg-white dark:bg-slate-900">
-              <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/40 flex items-center justify-center text-3xl mb-4 shadow-inner">
-                {activeTab === 'active' ? '🩺' : activeTab === 'upcoming' ? '📅' : '📋'}
+                        {isComp && (
+                          <div className="border-t border-slate-100 dark:border-slate-800/60 mt-4 pt-4">
+                            <VisitRatingPanel entryId={entry.id} doctorName={entry.doctor.user.name} onDone={fetchHistory} />
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
-              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
-                {activeTab === 'active' && 'No active appointments'}
-                {activeTab === 'upcoming' && 'No upcoming appointments'}
-                {activeTab === 'completed' && 'No completed visits yet'}
-                {activeTab === 'cancelled' && 'No cancelled visits'}
-              </h3>
-              <p className="text-xs text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
-                {activeTab === 'active' && 'You currently have no live tracking queues running. Ask the reception desk to check you in.'}
-                {activeTab === 'upcoming' && 'No scheduled appointments in the pipeline. You can book an appointment to register.'}
-                {activeTab === 'completed' && 'Your history is empty. Your completed sessions will appear here automatically.'}
-                {activeTab === 'cancelled' && 'No cancelled, skipped, or missed sessions found.'}
-              </p>
-            </div>
+            ) : (
+              <div className="card p-12 text-center animate-fade-in ring-1 ring-slate-100 dark:ring-slate-800/60 bg-white dark:bg-slate-900">
+                <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/40 flex items-center justify-center text-3xl mb-4 shadow-inner">
+                  📋
+                </div>
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Your history is empty</h3>
+                <p className="text-xs text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
+                  Your completed, cancelled, missed, or skipped sessions will appear here automatically.
+                </p>
+              </div>
+            )
+          ) : (
+            groupedBusinesses.length > 0 ? (
+              groupedBusinesses.map(({ clinic, entries: businessEntries }) => {
+                const branding = getClinicBranding(clinic.id);
+                const category = getCategoryIcon(clinic.businessType);
+                const isExpanded = expandedClinics[clinic.id] ?? true;
+
+                const activeItems = businessEntries.filter(isActive);
+                const otherItems = businessEntries.filter((e) => !isActive(e));
+
+                return (
+                  <article
+                    key={clinic.id}
+                    className={`card overflow-hidden transition-all duration-200 border-t-[3px] ${branding.border} shadow-sm`}
+                    style={{ borderTopColor: `var(--color-${branding.accent}-500)` }}
+                  >
+                    <header className="px-4 py-3.5 bg-slate-50/50 dark:bg-slate-900/60 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`h-9 w-9 rounded-xl bg-gradient-to-br ${branding.gradient} flex items-center justify-center text-white text-xs font-bold shadow-sm shrink-0`}>
+                          {clinic.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{clinic.name}</h3>
+                            <span className={`pill-sm ${branding.pill} px-2 py-0.5 shrink-0 flex items-center gap-1`}>
+                              <span>{category.emoji}</span>
+                              <span className="hidden sm:inline font-semibold text-[9px] uppercase tracking-wider">{category.label}</span>
+                            </span>
+                          </div>
+                          {clinic.address && (
+                            <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs sm:max-w-md">{clinic.address}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-bold bg-slate-100 dark:bg-slate-800 rounded-full px-2.5 py-0.5">
+                          {businessEntries.length} {businessEntries.length === 1 ? 'appointment' : 'appointments'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpand(clinic.id)}
+                          className="btn-icon !p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"
+                          aria-label={isExpanded ? 'Collapse business section' : 'Expand business section'}
+                        >
+                          {isExpanded ? (
+                            <Icon.ChevronDown className="h-4 w-4 text-slate-400 transform rotate-180 transition-transform" />
+                          ) : (
+                            <Icon.ChevronDown className="h-4 w-4 text-slate-400 transition-transform" />
+                          )}
+                        </button>
+                      </div>
+                    </header>
+
+                    {isExpanded && (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-800/60 p-4 space-y-4">
+                        {activeItems.length > 0 && (
+                          <div className="space-y-4 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">Live Queue Tracking</span>
+                            </div>
+                            {activeItems.map((entry) => (
+                              <ActiveAppointmentCard
+                                key={entry.id}
+                                entry={entry}
+                                branding={branding}
+                                onCompleted={handleCompleted}
+                                onPositionUpdate={handlePositionUpdate}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {otherItems.length > 0 && (
+                          <div className={`${activeItems.length > 0 ? 'pt-4' : ''} space-y-2`}>
+                            {activeItems.length > 0 && (
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-2">Other Appointments</span>
+                            )}
+                            {otherItems.map((entry) => {
+                              const meta = STATUS_META[entry.status as keyof typeof STATUS_META] || {
+                                label: entry.status,
+                                cls: 'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:ring-slate-700/50',
+                                dot: 'bg-slate-400',
+                              };
+
+                              const isUpc = isUpcoming(entry);
+
+                              return (
+                                <div key={entry.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50/60 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 hover:bg-slate-100/40 dark:hover:bg-slate-900/80 transition-colors gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
+                                        {tokenDisplay(entry.tokenNumber)}
+                                      </span>
+                                      <span className="text-slate-300 dark:text-slate-700">·</span>
+                                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{entry.doctor.user.name}</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                                      <span>{entry.doctor.department?.name || 'General'}</span>
+                                      <span>·</span>
+                                      <span>
+                                        {isUpc && entry.appointmentTime
+                                          ? `Scheduled for ${formatDateIst(entry.appointmentTime, { month: 'short', day: 'numeric' })} at ${formatTimeIst(entry.appointmentTime)}`
+                                          : `Joined ${formatDateIst(entry.joinedAt, { month: 'short', day: 'numeric' })} at ${formatTimeIst(entry.joinedAt)}`
+                                        }
+                                      </span>
+                                    </p>
+                                  </div>
+                                  <span className={`pill ring-1 ring-inset shrink-0 capitalize ${meta.cls}`}>{meta.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })
+            ) : (
+              <div className="card p-12 text-center animate-fade-in ring-1 ring-slate-100 dark:ring-slate-800/60 bg-white dark:bg-slate-900">
+                <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/40 flex items-center justify-center text-3xl mb-4 shadow-inner">
+                  {activeTab === 'active' ? '🩺' : '📅'}
+                </div>
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+                  {activeTab === 'active' && 'No active appointments'}
+                  {activeTab === 'upcoming' && 'No upcoming appointments'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-2 max-w-sm mx-auto leading-relaxed">
+                  {activeTab === 'active' && 'You currently have no live tracking queues running. Ask the reception desk to check you in.'}
+                  {activeTab === 'upcoming' && 'No scheduled appointments in the pipeline. You can book an appointment to register.'}
+                </p>
+              </div>
+            )
           )}
         </section>
       </main>

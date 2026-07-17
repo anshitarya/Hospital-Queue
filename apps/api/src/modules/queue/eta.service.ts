@@ -2,6 +2,8 @@ import { Injectable, Optional, Logger } from '@nestjs/common';
 import { EntryStatus, QueueEntry } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { istDayOfWeek, istMinutesOfDay, parseHmToMinutes, istAppointmentDate } from '../../common/utils/schedule-slots';
+import { todayKey, addServiceDays } from '../../common/utils/timezone';
 
 type DoctorForEta = {
   avgConsultMinutes: number;
@@ -21,6 +23,7 @@ export interface EtaOptions {
   movingAvgMinutes?: number | null;
   breakRemainingMinutes?: number;
   settings?: any;
+  shifts?: any[];
 }
 
 // ─── Algorithm constants ──────────────────────────────────────────────────────
@@ -224,14 +227,42 @@ export class EtaService {
     const waiting    = entries.filter((e) => e.status === EntryStatus.WAITING);
 
     // How many minutes remain for the patient currently in consultation.
-    // Clamps to 0 if the consultation has already overrun the average — we
-    // never add negative time to downstream patients' ETAs.
     const remainingForCurrent = (() => {
       if (!inProgress) return 0;
       const start = inProgress.startedAt ?? inProgress.calledAt;
       if (!start) return 0;
       const elapsedMin = (Date.now() - start.getTime()) / 60_000;
       return Math.max(0, avgMin - elapsedMin);
+    })();
+
+    const now = new Date();
+    const currentDow = istDayOfWeek(now);
+    const currentMin = istMinutesOfDay(now);
+
+    const baselineTime = (() => {
+      if (!options.shifts || options.shifts.length === 0) return Date.now();
+      
+      const todayShifts = options.shifts.filter((s) => s.dayOfWeek === currentDow);
+      if (todayShifts.length === 0) return Date.now();
+
+      // Check if we are currently inside any shift
+      const activeShift = todayShifts.find((s) => {
+        const start = parseHmToMinutes(s.startTime);
+        const end = parseHmToMinutes(s.endTime);
+        return currentMin >= start && currentMin <= end;
+      });
+      if (activeShift) return Date.now();
+
+      // Check if there is an upcoming shift today
+      const upcomingShift = todayShifts.find((s) => {
+        const start = parseHmToMinutes(s.startTime);
+        return start > currentMin;
+      });
+      if (upcomingShift) {
+        return istAppointmentDate(todayKey(), upcomingShift.startTime).getTime();
+      }
+
+      return Date.now();
     })();
 
     const baseDelay = (doctor.delayMinutes ?? 0) + breakRemainingMinutes;
@@ -248,29 +279,47 @@ export class EtaService {
         };
       }
 
-      const idx        = waiting.findIndex((w) => w.id === entry.id);
-      const peopleAhead = idx; // 0 = next in line
+      // Group/partition waiting entries by their shift/appointmentTime
+      const sameShiftWaiting = waiting.filter((w) => {
+        const wTime = w.appointmentTime ? new Date(w.appointmentTime).getTime() : 0;
+        const eTime = entry.appointmentTime ? new Date(entry.appointmentTime).getTime() : 0;
+        return wTime === eTime;
+      });
+      const indexInShift = sameShiftWaiting.findIndex((w) => w.id === entry.id);
+      const peopleAhead = indexInShift >= 0 ? indexInShift : 0;
 
       if (settings && (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT')) {
         const appointmentTime = entry.appointmentTime ? new Date(entry.appointmentTime) : new Date();
         const etaAbsolute = new Date(appointmentTime.getTime() + baseDelay * 60_000);
         const etaMin = Math.max(0, (etaAbsolute.getTime() - Date.now()) / 60_000);
+        const roundedEta = etaMin > 0 && etaMin < 1 ? 1 : Math.round(etaMin);
         return {
           ...entry,
           peopleAhead,
-          etaMinutes:       Math.round(etaMin),
+          etaMinutes:       roundedEta,
           etaAbsolute:      etaAbsolute.toISOString(),
           movingAvgMinutes: Math.round(avgMin),
         };
       }
 
-      const etaMin     = remainingForCurrent + baseDelay + peopleAhead * avgMin;
+      const entryBaseline =
+        entry.appointmentTime && new Date(entry.appointmentTime).getTime() > baselineTime
+          ? new Date(entry.appointmentTime).getTime()
+          : baselineTime;
+
+      const shiftRemainingForCurrent =
+        peopleAhead === 0 && entryBaseline === Date.now() ? remainingForCurrent : 0;
+      const etaMin = shiftRemainingForCurrent + baseDelay + peopleAhead * avgMin;
+      const etaAbsolute = new Date(entryBaseline + etaMin * 60_000);
+      const finalEtaMin = Math.max(0, (etaAbsolute.getTime() - Date.now()) / 60_000);
+      // Count <1 min as 1 min so customers never see "0 min" for a non-zero wait.
+      const roundedEta = finalEtaMin > 0 && finalEtaMin < 1 ? 1 : Math.round(finalEtaMin);
 
       return {
         ...entry,
         peopleAhead,
-        etaMinutes:       Math.round(etaMin),
-        etaAbsolute:      new Date(Date.now() + etaMin * 60_000).toISOString(),
+        etaMinutes:       roundedEta,
+        etaAbsolute:      etaAbsolute.toISOString(),
         movingAvgMinutes: Math.round(avgMin),
       };
     });

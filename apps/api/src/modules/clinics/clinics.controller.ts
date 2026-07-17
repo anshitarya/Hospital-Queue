@@ -18,6 +18,7 @@ import { AddDoctorDto } from './dto/add-doctor.dto';
 import { AddReceptionistDto } from './dto/add-receptionist.dto';
 import { SetReceptionistAssignmentsDto } from './dto/set-receptionist-assignments.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 
 /**
@@ -38,6 +39,18 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 @Controller('clinics')
 export class ClinicsController {
   constructor(private readonly clinics: ClinicsService) {}
+
+  /* ════════════════════════════════════════════════════════════════════════
+   *  Public routes (no auth required — must be declared BEFORE any route
+   *  using a dynamic :id segment to avoid accidental matching).
+   * ═══════════════════════════════════════════════════════════════════════ */
+
+  /** Returns clinics that have self-booking enabled, with doctor queue info. */
+  @Public()
+  @Get('public/businesses')
+  listPublicBusinesses(@Query('search') search?: string) {
+    return this.clinics.listPublicBusinesses(search);
+  }
 
   /* ════════════════════════════════════════════════════════════════════════
    *  Caller-scoped routes ("my" = the caller's clinic)

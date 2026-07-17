@@ -34,6 +34,13 @@ export class QueueController {
     };
   }
 
+  /** Public join info for the QR self-booking landing page. */
+  @Public()
+  @Get('public/join-info/:doctorId')
+  getPublicJoinInfo(@Param('doctorId') doctorId: string) {
+    return this.queue.getPublicJoinInfo(doctorId);
+  }
+
   @Get('entry/:id')
   getEntry(@Param('id') id: string) {
     return this.queue.getPatientView(id);

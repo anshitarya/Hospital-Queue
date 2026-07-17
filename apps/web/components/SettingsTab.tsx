@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { type ToastMessage } from './Toast';
+import { QRCodePanel } from './QRCodePanel';
+import { Spinner } from './PageLoader';
 
 interface SettingsData {
   businessType: string;
@@ -20,6 +22,7 @@ interface SettingsData {
   emergencyJoinRule: string;
   vipJoinRule: string;
   autoQueueAssignment: boolean;
+  allowOnlineBooking: boolean;
 }
 
 /** Fields allowed by PATCH /business-settings/my (UpdateSettingsDto). */
@@ -41,6 +44,7 @@ const EDITABLE_FIELDS = [
   'emergencyJoinRule',
   'vipJoinRule',
   'autoQueueAssignment',
+  'allowOnlineBooking',
 ] as const;
 
 function parseSettings(raw: Record<string, unknown>): SettingsData {
@@ -62,6 +66,7 @@ function parseSettings(raw: Record<string, unknown>): SettingsData {
     emergencyJoinRule: String(raw.emergencyJoinRule ?? 'PRIORITY_QUEUE'),
     vipJoinRule: String(raw.vipJoinRule ?? 'PRIORITY_QUEUE'),
     autoQueueAssignment: Boolean(raw.autoQueueAssignment ?? false),
+    allowOnlineBooking: Boolean(raw.allowOnlineBooking ?? false),
   };
 }
 
@@ -73,12 +78,23 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [doctors, setDoctors] = useState<Array<{ id: string; user: { name: string }; specialization: string | null; clinic: { name: string } | null }>>([]);
+  const [qrDoctor, setQrDoctor] = useState<string | null>(null);
+  const [clinicName, setClinicName] = useState<string>('');
 
   useEffect(() => {
     async function load() {
       try {
-        const data = await api<Record<string, unknown>>('/business-settings/my');
+        const [data, docs] = await Promise.all([
+          api<Record<string, unknown>>('/business-settings/my'),
+          api<Array<{ id: string; user: { name: string }; specialization: string | null; clinic: { name: string } | null }>>('/clinics/my/doctors').catch(() => []),
+        ]);
         setSettings(parseSettings(data));
+        setDoctors(docs);
+        if (docs.length > 0) {
+          setQrDoctor(docs[0].id);
+          setClinicName(docs[0].clinic?.name ?? '');
+        }
       } catch {
         setToast({ type: 'err', msg: 'Failed to load business settings' });
       } finally {
@@ -106,7 +122,12 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
   };
 
   if (loading) {
-    return <div className="py-12 text-center text-slate-400 text-sm">Loading settings…</div>;
+    return (
+      <div className="py-16 flex flex-col items-center gap-4 text-slate-400">
+        <Spinner className="h-8 w-8" />
+        <span className="text-xs font-medium">Loading settings…</span>
+      </div>
+    );
   }
 
   if (!settings) {
@@ -273,6 +294,65 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
             <input type="checkbox" className="w-5 h-5 accent-teal-600 rounded cursor-pointer" checked={settings.autoQueueAssignment}
               onChange={(e) => setSettings({ ...settings, autoQueueAssignment: e.target.checked })} />
           </div>
+        </div>
+
+        {/* ── Self-Booking & QR Code ── */}
+        <div className="card p-5 space-y-5 border-2 border-brand-100 dark:border-brand-900/30">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm flex items-center gap-2">
+                🔗 Self-Booking &amp; QR Code
+                <span className="pill-sm bg-brand-100 text-brand-700 ring-brand-200 dark:bg-brand-900/40 dark:text-brand-300 dark:ring-brand-800 px-2 py-0.5">New</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-lg">
+                When enabled, patients can discover your business in the customer portal and join queues directly. Generate a QR code for each professional to print or share.
+              </p>
+            </div>
+            <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-5 h-5 accent-teal-600 rounded cursor-pointer"
+                checked={settings.allowOnlineBooking}
+                onChange={(e) => setSettings({ ...settings, allowOnlineBooking: e.target.checked })}
+              />
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                {settings.allowOnlineBooking ? 'Enabled' : 'Disabled'}
+              </span>
+            </label>
+          </div>
+
+          {settings.allowOnlineBooking && doctors.length > 0 && (
+            <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+              {/* Doctor selector */}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider shrink-0">QR for</label>
+                <select
+                  className="input flex-1 !py-1.5 text-xs"
+                  value={qrDoctor ?? ''}
+                  onChange={(e) => {
+                    const doc = doctors.find((d) => d.id === e.target.value);
+                    setQrDoctor(e.target.value);
+                    setClinicName(doc?.clinic?.name ?? '');
+                  }}
+                >
+                  {doctors.map((d) => (
+                    <option key={d.id} value={d.id}>{d.user.name}{d.specialization ? ` (${d.specialization})` : ''}</option>
+                  ))}
+                </select>
+              </div>
+              {qrDoctor && (
+                <QRCodePanel
+                  doctorId={qrDoctor}
+                  doctorName={doctors.find((d) => d.id === qrDoctor)?.user.name ?? ''}
+                  clinicName={clinicName}
+                />
+              )}
+            </div>
+          )}
+
+          {settings.allowOnlineBooking && doctors.length === 0 && (
+            <p className="text-xs text-slate-400 italic">Add professionals to your clinic to generate QR codes.</p>
+          )}
         </div>
 
         {/* Submit */}

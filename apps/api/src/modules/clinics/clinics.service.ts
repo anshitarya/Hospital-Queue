@@ -67,6 +67,80 @@ export class ClinicsService {
     }));
   }
 
+  /**
+   * Public endpoint — returns businesses where self-booking is allowed.
+   * Results can be filtered by a free-text `search` (matches clinic name or doctor name).
+   * Each result includes doctor list with queue depth for today.
+   */
+  async listPublicBusinesses(search?: string) {
+    const today = serviceDay();
+
+    // All clinics with online booking enabled
+    const settings = await this.prisma.businessSetting.findMany({
+      where: { allowOnlineBooking: true },
+      select: { clinicId: true },
+    });
+    const clinicIds = settings.map((s) => s.clinicId);
+    if (clinicIds.length === 0) return [];
+
+    const clinics = await this.prisma.clinic.findMany({
+      where: {
+        id: { in: clinicIds },
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                {
+                  doctors: {
+                    some: { user: { name: { contains: search, mode: 'insensitive' } } },
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        doctors: {
+          where: { status: { not: 'AWAY' } },
+          include: {
+            user: { select: { id: true, name: true } },
+            department: { select: { id: true, name: true } },
+            entries: {
+              where: {
+                serviceDay: today,
+                status: { in: ['WAITING', 'IN_CONSULTATION'] },
+              },
+              select: { id: true, status: true, appointmentTime: true },
+            },
+          },
+          orderBy: { user: { name: 'asc' } },
+        },
+        businessSetting: {
+          select: { queueMode: true, allowOnlineBooking: true, queueStarts: true, queueEnds: true },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return clinics.map((clinic) => ({
+      id: clinic.id,
+      name: clinic.name,
+      address: clinic.address,
+      businessType: clinic.businessType,
+      settings: clinic.businessSetting,
+      doctors: clinic.doctors.map((d) => ({
+        id: d.id,
+        name: d.user.name,
+        specialization: d.specialization,
+        department: d.department?.name,
+        status: d.status,
+        avgConsultMinutes: d.avgConsultMinutes,
+        queueLength: d.entries.filter((e) => e.status === 'WAITING').length,
+        inConsultation: d.entries.some((e) => e.status === 'IN_CONSULTATION'),
+      })),
+    }));
+  }
+
   create(dto: CreateClinicDto) {
     return this.prisma.clinic.create({ data: dto });
   }

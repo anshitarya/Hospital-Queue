@@ -24,11 +24,13 @@ import {
   calculateRejoinSortOrder,
   OrderingInput,
 } from './queue-ordering';
-import { istTimeSlot, serviceDay as istServiceDay } from '../../common/utils/timezone';
+import { istTimeSlot, serviceDay as istServiceDay, addServiceDays } from '../../common/utils/timezone';
 import {
   findNextSlot,
   istDayOfWeek,
   istMinutesOfDay,
+  parseHmToMinutes,
+  istAppointmentDate,
   type ScheduleShift,
 } from '../../common/utils/schedule-slots';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -99,11 +101,9 @@ export class QueueService {
     settings: { queueMode?: string | null },
   ): T[] {
     return [...rawEntries].sort((a, b) => {
-      if (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT') {
-        const timeA = a.appointmentTime ? new Date(a.appointmentTime).getTime() : Infinity;
-        const timeB = b.appointmentTime ? new Date(b.appointmentTime).getTime() : Infinity;
-        if (timeA !== timeB) return timeA - timeB;
-      }
+      const timeA = a.appointmentTime ? new Date(a.appointmentTime).getTime() : Infinity;
+      const timeB = b.appointmentTime ? new Date(b.appointmentTime).getTime() : Infinity;
+      if (timeA !== timeB) return timeA - timeB;
       return effectivePosition(a) - effectivePosition(b);
     });
   }
@@ -125,7 +125,7 @@ export class QueueService {
     if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
 
     // Run remaining reads in parallel (settings is read-only — no INSERT on hot path).
-    const [rawEntries, missedRaw, movingAvgMinutes, calledToday, settingsRow] = await Promise.all([
+    const [rawEntries, missedRaw, movingAvgMinutes, calledToday, settingsRow, shifts] = await Promise.all([
       this.prisma.queueEntry.findMany({
         where: {
           doctorId,
@@ -145,6 +145,10 @@ export class QueueService {
       doctor.clinicId
         ? this.prisma.businessSetting.findUnique({ where: { clinicId: doctor.clinicId } })
         : Promise.resolve(null),
+      this.prisma.professionalSchedule.findMany({
+        where: { doctorId, isHoliday: false },
+        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+      }),
     ]);
 
     const settings = settingsRow ?? DEFAULT_BUSINESS_SETTINGS;
@@ -173,6 +177,7 @@ export class QueueService {
       movingAvgMinutes: effectiveAvg,
       breakRemainingMinutes,
       settings,
+      shifts,
     });
 
     const current =
@@ -205,7 +210,7 @@ export class QueueService {
     const entry = await this.getEntry(entryId);
     const serviceDay = entry.serviceDay;
 
-    const [rawEntries, movingAvgMinutes, settingsRow] = await Promise.all([
+    const [rawEntries, movingAvgMinutes, settingsRow, shifts] = await Promise.all([
       this.prisma.queueEntry.findMany({
         where: {
           doctorId: entry.doctorId,
@@ -219,6 +224,10 @@ export class QueueService {
       entry.doctor.clinicId
         ? this.prisma.businessSetting.findUnique({ where: { clinicId: entry.doctor.clinicId } })
         : Promise.resolve(null),
+      this.prisma.professionalSchedule.findMany({
+        where: { doctorId: entry.doctorId, isHoliday: false },
+        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+      }),
     ]);
 
     const settings = settingsRow ?? DEFAULT_BUSINESS_SETTINGS;
@@ -237,6 +246,7 @@ export class QueueService {
         ? Math.max(0, (entry.doctor.breakUntil.getTime() - Date.now()) / 60_000)
         : 0,
       settings,
+      shifts,
     });
     const enrichedSelf = enriched.find((e) => e.id === entryId);
     const current =
@@ -247,6 +257,48 @@ export class QueueService {
       currentToken: current,
       doctor: entry.doctor,
       movingAvgMinutes,
+    };
+  }
+
+  /** Public join-info for the QR landing page — no auth required. */
+  async getPublicJoinInfo(doctorId: string) {
+    const serviceDay = todayKey();
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: {
+        user: { select: { name: true } },
+        department: { select: { name: true } },
+        clinic: { select: { id: true, name: true, address: true, businessType: true } },
+      },
+    });
+    if (!doctor) throw new NotFoundException('Doctor not found');
+
+    const [queueLength, settings] = await Promise.all([
+      this.prisma.queueEntry.count({
+        where: { doctorId, serviceDay, status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] } },
+      }),
+      doctor.clinicId
+        ? this.prisma.businessSetting.findUnique({ where: { clinicId: doctor.clinicId } })
+        : Promise.resolve(null),
+    ]);
+
+    if (!settings?.allowOnlineBooking) {
+      return { error: 'Self-booking is not enabled for this professional', allowOnlineBooking: false };
+    }
+
+    return {
+      allowOnlineBooking: true,
+      doctor: {
+        id: doctor.id,
+        name: doctor.user.name,
+        specialization: doctor.specialization,
+        department: doctor.department?.name,
+        status: doctor.status,
+        avgConsultMinutes: doctor.avgConsultMinutes,
+      },
+      clinic: doctor.clinic,
+      queueLength,
+      etaMinutes: Math.max(1, queueLength * doctor.avgConsultMinutes),
     };
   }
 
@@ -406,28 +458,35 @@ export class QueueService {
         let finalAppointmentTime: Date | null = null;
         let appointmentSlotStr: string | null = null;
 
-        if (
-          !input.fromWorkflow &&
-          (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT')
-        ) {
+        if (!input.fromWorkflow) {
           if (input.appointmentTime) {
             let parsedTime: Date;
             if (input.appointmentTime.includes('T')) {
               parsedTime = new Date(input.appointmentTime);
             } else {
-              parsedTime = new Date(`${serviceDay}T${input.appointmentTime}:00.000Z`);
+              parsedTime = new Date(`${serviceDay}T${input.appointmentTime}:00+05:30`);
             }
             finalAppointmentTime = parsedTime;
             appointmentSlotStr = input.appointmentTime.includes('T')
               ? input.appointmentTime.slice(11, 16)
               : input.appointmentTime;
           } else {
-            const allocated = await this.findNextAvailableSlot(tx, input.doctorId, settings, serviceDay, now);
-            if (allocated) {
-              finalAppointmentTime = allocated.time;
-              appointmentSlotStr = allocated.slotStr;
-            } else {
-              throw new BadRequestException('No available appointment slots left for today');
+            if (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT') {
+              const allocated = await this.findNextAvailableSlot(tx, input.doctorId, settings, serviceDay, now);
+              if (allocated) {
+                finalAppointmentTime = allocated.time;
+                appointmentSlotStr = allocated.slotStr;
+              } else {
+                throw new BadRequestException('No available appointment slots left for today');
+              }
+            } else if (settings.queueMode === 'LIVE_QUEUE') {
+              const nextShiftStart = await this.getNextAvailableShift(tx, input.doctorId, serviceDay, now);
+              if (nextShiftStart) {
+                finalAppointmentTime = nextShiftStart;
+                const hrs = String(nextShiftStart.getHours()).padStart(2, '0');
+                const mins = String(nextShiftStart.getMinutes()).padStart(2, '0');
+                appointmentSlotStr = `${hrs}:${mins}`;
+              }
             }
           }
         }
@@ -1402,19 +1461,43 @@ export class QueueService {
     const config = await this.prisma.workflowConfiguration.findUnique({
       where: { clinicId: doctor.clinicId },
     });
-    if (!config) return;
+    if (!config) {
+      if (completed.visitId) {
+        await this.prisma.visit.update({
+          where: { id: completed.visitId },
+          data: { status: VisitStatus.COMPLETED },
+        });
+      }
+      return;
+    }
 
     let steps = config.steps as unknown;
     while (typeof steps === 'string') {
       try { steps = JSON.parse(steps); } catch { return; }
     }
-    if (!Array.isArray(steps) || steps.length === 0) return;
+    if (!Array.isArray(steps) || steps.length === 0) {
+      if (completed.visitId) {
+        await this.prisma.visit.update({
+          where: { id: completed.visitId },
+          data: { status: VisitStatus.COMPLETED },
+        });
+      }
+      return;
+    }
 
     type WorkflowStep = { doctorId?: string; name?: string };
     const workflowSteps = steps as WorkflowStep[];
 
     const currentIdx = await this.resolveWorkflowStepIndex(completed, workflowSteps);
-    if (currentIdx < 0 || currentIdx >= workflowSteps.length - 1) return;
+    if (currentIdx < 0 || currentIdx >= workflowSteps.length - 1) {
+      if (completed.visitId) {
+        await this.prisma.visit.update({
+          where: { id: completed.visitId },
+          data: { status: VisitStatus.COMPLETED },
+        });
+      }
+      return;
+    }
 
     const nextStep = workflowSteps[currentIdx + 1];
     if (!nextStep?.doctorId) return;
@@ -1508,6 +1591,43 @@ export class QueueService {
       const doctorName = doctor?.user?.name ?? 'the doctor';
       await this.notifications.notifyJoined(phone, `#${tokenToCode(tokenNumber)}`, doctorName);
     } catch { /* never let notification errors surface to callers */ }
+  }
+
+  private async getNextAvailableShift(
+    tx: any,
+    doctorId: string,
+    serviceDay: string,
+    now: Date,
+  ): Promise<Date | null> {
+    const shifts = await tx.professionalSchedule.findMany({
+      where: { doctorId, isHoliday: false },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+    if (shifts.length === 0) return null;
+
+    const currentDow = istDayOfWeek(now);
+    const currentMin = istMinutesOfDay(now);
+
+    // Filter shifts for today
+    const todayShifts = shifts.filter((s) => s.dayOfWeek === currentDow);
+    const activeOrFutureToday = todayShifts.find((s) => parseHmToMinutes(s.endTime) > currentMin);
+
+    if (activeOrFutureToday) {
+      return istAppointmentDate(serviceDay, activeOrFutureToday.startTime);
+    }
+
+    // Check subsequent days
+    let dayOffset = 1;
+    while (dayOffset <= 14) {
+      const nextDayKey = addServiceDays(serviceDay, dayOffset);
+      const nextDow = istDayOfWeek(istAppointmentDate(nextDayKey, '12:00'));
+      const nextShifts = shifts.filter((s) => s.dayOfWeek === nextDow);
+      if (nextShifts.length > 0) {
+        return istAppointmentDate(nextDayKey, nextShifts[0].startTime);
+      }
+      dayOffset++;
+    }
+    return null;
   }
 
   private async findNextAvailableSlot(
