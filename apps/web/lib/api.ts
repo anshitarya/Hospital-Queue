@@ -142,6 +142,8 @@ export interface QueueEntry {
   etaMinutes?: number;
   etaAbsolute?: string;
   movingAvgMinutes?: number;
+  appointmentTime?: string | null;
+  appointmentSlot?: string | null;
 }
 export interface MissedEntry {
   id: string;
