@@ -5,7 +5,7 @@ RUN apt-get update -y \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm install --no-audit --no-fund
 
 # ── Stage 2: build Next.js ────────────────────────────────────────────────────
 FROM deps AS builder
