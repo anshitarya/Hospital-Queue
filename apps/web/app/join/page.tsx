@@ -30,7 +30,7 @@ interface JoinInfo {
 export default function JoinPage() {
   const params = useSearchParams();
   const router = useRouter();
-  const { user, ready } = useAuth();
+  const { user, loaded: ready } = useAuth();
   const doctorId = params.get('d');
 
   const [info, setInfo] = useState<JoinInfo | null>(null);
