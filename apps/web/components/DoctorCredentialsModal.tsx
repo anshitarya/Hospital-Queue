@@ -23,8 +23,8 @@ import { useState } from 'react';
  * the wording in the header.
  */
 export interface DoctorCredentials {
-  /** "doctor" | "receptionist" — drives header text only. Defaults to doctor. */
-  role?: 'doctor' | 'receptionist';
+  /** "doctor" | "receptionist" | "clinic_admin" — drives header text only. Defaults to doctor. */
+  role?: 'doctor' | 'receptionist' | 'clinic_admin';
   name: string;
   /** Whichever identifier the user will use to sign in — email or phone. */
   email: string | null;
@@ -47,7 +47,10 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
 
   const { name, email, phone, tempPassword, clinicName } = credentials;
   const role = credentials.role ?? 'doctor';
-  const roleLabel = role === 'receptionist' ? 'Receptionist' : 'Doctor';
+  const roleLabel =
+    role === 'receptionist' ? 'Receptionist'
+    : role === 'clinic_admin' ? 'Business Admin'
+    : 'Doctor';
   // Prefer email as the "primary" identifier shown first, but show both if present.
   const primaryId = email ?? phone ?? '—';
 

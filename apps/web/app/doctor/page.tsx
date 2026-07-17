@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { api, ApiError, type Doctor, type Snapshot } from '@/lib/api';
+import { api, ApiError, type Clinic, type Doctor, type Snapshot } from '@/lib/api';
 import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue } from '@/lib/socket';
 import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
@@ -11,12 +11,14 @@ import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { QueueHistoryTable } from '@/components/QueueHistoryTable';
+import { LeavesTab } from '@/components/LeavesTab';
 import { EntryStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
+import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst } from '@/lib/datetime';
 import { getLabels } from '@/lib/labels';
 
 interface ReceptionistRow {
@@ -28,12 +30,12 @@ interface ReceptionistRow {
 }
 
 export default function DoctorPage() {
-  const { user, ready } = useRequireRole(['DOCTOR', 'ADMIN', 'RECEPTIONIST']);
+  const { user, ready } = useRequireRole(['DOCTOR', 'ADMIN', 'RECEPTIONIST', 'CLINIC_ADMIN']);
   const [doctorId, setDoctorId] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
-  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history'>('queue', ['queue', 'staff', 'history']);
+  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history' | 'leaves'>('queue', ['queue', 'staff', 'history', 'leaves']);
 
   // Break form state (Feature 4)
   const [showBreakForm, setShowBreakForm] = useState(false);
@@ -60,8 +62,8 @@ export default function DoctorPage() {
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
 
   // All Records tab
-  const TODAY_STR = new Date().toISOString().slice(0, 10);
-  const SEVEN_AGO_STR = new Date(Date.now() - 6 * 86_400_000).toISOString().slice(0, 10);
+  const TODAY_STR = serviceDay();
+  const SEVEN_AGO_STR = serviceDaysAgo(6);
   const [recordsFrom, setRecordsFrom] = useState(SEVEN_AGO_STR);
   const [recordsTo, setRecordsTo]     = useState(TODAY_STR);
   const [recordsData, setRecordsData] = useState<RecordsResponse | null>(null);
@@ -133,18 +135,33 @@ export default function DoctorPage() {
 
   useEffect(() => {
     if (!ready || !user) return;
-    api<Doctor[]>('/doctors').then((all) => {
-      setDoctorsList(all);
-      const me = all.find((d) => d.userId === user.id);
-      if (me) {
-        setDoctorId(me.id);
-      } else if (user.role === 'ADMIN' || user.role === 'RECEPTIONIST') {
-        if (all.length > 0) setDoctorId(all[0].id);
-        else setLinkError('No doctors configured yet.');
-      } else {
-        setLinkError('No doctor profile linked to your account.');
-      }
-    }).catch(() => setLinkError('Failed to load doctor profile.'));
+    if (!user.clinicId) {
+      setLinkError(
+        user.role === 'ADMIN'
+          ? 'No clinic assigned. Open a clinic from the admin panel first.'
+          : 'No clinic assigned to your account.',
+      );
+      return;
+    }
+    api<Clinic>('/clinics/my')
+      .then((clinic) => {
+        const all = clinic.doctors ?? [];
+        setDoctorsList(all);
+        const me = all.find((d) => d.userId === user.id);
+        if (me) {
+          setDoctorId(me.id);
+        } else if (user.role === 'ADMIN' || user.role === 'RECEPTIONIST' || user.role === 'CLINIC_ADMIN') {
+          if (all.length > 0) setDoctorId(all[0].id);
+          else setLinkError('No doctors configured yet.');
+        } else {
+          setLinkError('No doctor profile linked to your account.');
+        }
+      })
+      .catch((err) => {
+        setLinkError(
+          err instanceof ApiError ? err.message : 'Failed to load doctor profile.',
+        );
+      });
   }, [ready, user]);
 
   const { snapshot: liveSnapshot, connected } = useDoctorQueue(doctorId);
@@ -199,7 +216,11 @@ export default function DoctorPage() {
     callAction(
       () => api(`/queue/entry/${id}/complete`, { method: 'POST' }),
       'Complete',
-      (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'COMPLETED' as const } : e) }),
+      (s) => ({
+        ...s,
+        currentToken: s.entries.find((e) => e.id === id)?.status === 'IN_CONSULTATION' ? null : s.currentToken,
+        entries: s.entries.filter((e) => e.id !== id),
+      }),
     );
 
   const cancelEntry = (id: string) =>
@@ -333,6 +354,15 @@ export default function DoctorPage() {
               <span className="ml-1.5 opacity-70 text-xs">({recList.length})</span>
             </button>
           )}
+          {user?.role === 'DOCTOR' && (
+            <button
+              type="button"
+              onClick={() => setTab('leaves')}
+              className={'tab ' + (tab === 'leaves' ? 'tab-active' : 'tab-inactive')}
+            >
+              Leave / Break
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setTab('history')}
@@ -352,7 +382,7 @@ export default function DoctorPage() {
                   <div className="flex items-center gap-2 text-amber-800 font-medium text-sm">
                     <span>{breakActive ? '☕' : '⏸'}</span>
                     {breakActive
-                      ? `On break — returning at ~${breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}`
+                      ? `On break — returning at ~${formatTimeIst(breakUntil!)}`
                       : `Queue is paused — new ${L.customerPlural.toLowerCase()} are on hold`
                     }
                   </div>
@@ -717,7 +747,7 @@ export default function DoctorPage() {
                         <div className="font-medium text-slate-700">~{e.etaMinutes} min</div>
                         {e.etaAbsolute && (
                           <div className="text-slate-400">
-                            {new Date(e.etaAbsolute).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                            {formatTimeIst(e.etaAbsolute)}
                           </div>
                         )}
                       </div>
@@ -802,7 +832,7 @@ export default function DoctorPage() {
                             </div>
                           </div>
                           <span className="text-xs text-slate-400 shrink-0 hidden sm:block">
-                            {new Date(r.createdAt).toLocaleDateString()}
+                            {formatDateIst(r.createdAt)}
                           </span>
                         </div>
                       ))}
@@ -812,6 +842,11 @@ export default function DoctorPage() {
               </div>
             </div>
           </section>
+        )}
+
+        {/* ── Leave / Break tab ── */}
+        {tab === 'leaves' && user?.role === 'DOCTOR' && (
+          <LeavesTab setToast={setToast} />
         )}
 
         {/* ── All Records tab ── */}
@@ -859,8 +894,8 @@ function AllRecordsTab({
   loading: boolean;
   onDateChange: (f: string, t: string) => void;
 }) {
-  const TODAY = new Date().toISOString().slice(0, 10);
-  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  const TODAY = serviceDay();
+  const daysAgo = (n: number) => serviceDaysAgo(n);
 
   const [search, setSearch]             = useState('');
   const [statusFilter, setStatusFilter] = useState<RecStatusFilter>('ALL');
@@ -888,8 +923,7 @@ function AllRecordsTab({
     const map = new Map<string, TrendPoint>();
     for (const e of data?.entries ?? []) {
       if (!map.has(e.serviceDay)) {
-        const d = new Date(e.serviceDay);
-        const label = d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+        const label = formatDateIst(`${e.serviceDay}T12:00:00+05:30`, { month: 'short', day: 'numeric' });
         map.set(e.serviceDay, { date: e.serviceDay, label, completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 });
       }
       const p = map.get(e.serviceDay)!;

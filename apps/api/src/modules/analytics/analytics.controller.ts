@@ -8,7 +8,7 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class AnalyticsController {
   constructor(private readonly service: AnalyticsService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN)
   @Get('dashboard')
   async getDashboardAnalytics(@CurrentUser() user: AuthUser) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');

@@ -101,13 +101,13 @@ export default function PrivacyPage() {
           <p>
             Turnos uses WebSockets (Socket.IO) to push live queue updates to all connected
             devices — customers see their position update in real time, and staff see the full
-            queue state live. The current queue state is held in Redis (an in-memory store) for
-            speed; it is also persisted to our PostgreSQL database (hosted on Neon) for history and
-            analytics.
+            queue state live. The authoritative queue state is stored in PostgreSQL (hosted on
+            Neon). Redis holds only short-lived data such as login OTPs, rate limits, and cached
+            wait-time averages — not the live queue itself.
           </p>
           <p>
-            These connections are encrypted over TLS. No data is held in Redis beyond what is
-            needed to serve the live queue.
+            These connections are encrypted over TLS. Redis entries expire automatically and
+            are never used as permanent storage.
           </p>
         </Section>
 

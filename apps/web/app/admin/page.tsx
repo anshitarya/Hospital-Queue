@@ -13,6 +13,7 @@ import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
+import { formatDateIst, formatDateTimeIst, formatTimeIst } from '@/lib/datetime';
 import { BUSINESS_TYPE_OPTIONS, getLabels, DEPARTMENT_PRESETS, type BusinessType } from '@/lib/labels';
 import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
 
@@ -33,6 +34,7 @@ export default function AdminPage() {
     createdAt: string;
   }
   const [clinicReceptionists, setClinicReceptionists] = useState<ReceptionistRow[]>([]);
+  const [clinicAdmins, setClinicAdmins] = useState<ReceptionistRow[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
 
@@ -57,6 +59,12 @@ export default function AdminPage() {
   const [recPhone, setRecPhone] = useState('');
   const [recPhoneResult, setRecPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [recBusy, setRecBusy] = useState(false);
+
+  const [baName, setBaName] = useState('');
+  const [baEmail, setBaEmail] = useState('');
+  const [baPhone, setBaPhone] = useState('');
+  const [baPhoneResult, setBaPhoneResult] = useState<PhoneValidationResult>({ ok: false });
+  const [baBusy, setBaBusy] = useState(false);
 
   // The credentials modal is shared — doctor AND receptionist creation both
   // push their response into this single state.
@@ -186,6 +194,15 @@ export default function AdminPage() {
     }
   }
 
+  async function loadClinicAdmins(clinicId: string) {
+    try {
+      const list = await api<ReceptionistRow[]>(`/clinics/${clinicId}/clinic-admins`);
+      setClinicAdmins(list);
+    } catch {
+      setClinicAdmins([]);
+    }
+  }
+
   async function loadDepartments(businessType?: string | null) {
     try {
       const btype = (businessType ?? 'CLINIC') as BusinessType;
@@ -218,10 +235,15 @@ export default function AdminPage() {
     setRecEmail('');
     setRecPhone('');
     setRecPhoneResult({ ok: false });
+    setBaName('');
+    setBaEmail('');
+    setBaPhone('');
+    setBaPhoneResult({ ok: false });
     await Promise.all([
       loadInviteCodes(clinic.id),
       loadClinicDoctors(clinic.id),
       loadClinicReceptionists(clinic.id),
+      loadClinicAdmins(clinic.id),
       loadDepartments(clinic.businessType),
     ]);
   }
@@ -244,7 +266,7 @@ export default function AdminPage() {
     name: string;
     email: string | null;
     phone: string | null;
-    role: 'doctor' | 'receptionist';
+    role: 'doctor' | 'receptionist' | 'clinic_admin';
   }) {
     if (!selectedClinic) return;
     const ok = window.confirm(
@@ -328,6 +350,69 @@ export default function AdminPage() {
       });
     } finally {
       setRecBusy(false);
+    }
+  }
+
+  async function addClinicAdmin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedClinic) return;
+    if (!baEmail && !baPhoneResult.ok) {
+      setToast({
+        type: 'err',
+        msg: 'Provide either an email or a valid mobile number for the business admin.',
+      });
+      return;
+    }
+    setBaBusy(true);
+    try {
+      const result = await api<{
+        user: { id: string; name: string; email: string | null; phone: string | null };
+        tempPassword: string;
+      }>(`/clinics/${selectedClinic.id}/clinic-admins`, {
+        method: 'POST',
+        body: {
+          name: baName,
+          email: baEmail || undefined,
+          phone: baPhoneResult.e164 || undefined,
+        },
+      });
+
+      setBaName('');
+      setBaEmail('');
+      setBaPhone('');
+      setBaPhoneResult({ ok: false });
+      setCreds({
+        role: 'clinic_admin',
+        name: result.user.name,
+        email: result.user.email,
+        phone: result.user.phone,
+        tempPassword: result.tempPassword,
+        clinicName: selectedClinic.name,
+      });
+      await Promise.all([
+        loadClinicAdmins(selectedClinic.id),
+        loadStats(),
+      ]);
+    } catch (err) {
+      setToast({
+        type: 'err',
+        msg: err instanceof ApiError ? err.message : 'Failed to add business admin',
+      });
+    } finally {
+      setBaBusy(false);
+    }
+  }
+
+  async function handleDeleteClinicAdmin(userId: string, name: string) {
+    if (!selectedClinic) return;
+    const ok = window.confirm(`Remove business admin "${name}" from ${selectedClinic.name}?`);
+    if (!ok) return;
+    try {
+      await api(`/clinics/${selectedClinic.id}/clinic-admins/${userId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `${name} removed.` });
+      await Promise.all([loadClinicAdmins(selectedClinic.id), loadStats()]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove business admin' });
     }
   }
 
@@ -442,6 +527,7 @@ export default function AdminPage() {
         setInviteCodes([]);
         setClinicDoctors([]);
         setClinicReceptionists([]);
+        setClinicAdmins([]);
       }
       await Promise.all([loadClinics(), loadStats()]);
     } catch (err) {
@@ -561,13 +647,25 @@ export default function AdminPage() {
   }
 
   async function approveSignupRequest(req: BusinessSignupRequest) {
-    if (!window.confirm(`Create business "${req.businessName}" and approve this request?`)) return;
+    if (!window.confirm(`Create business "${req.businessName}" and a business admin login for ${req.contactName}?`)) return;
     try {
-      const result = await api<{ request: BusinessSignupRequest; clinic: Clinic }>(
+      const result = await api<{
+        request: BusinessSignupRequest;
+        clinic: Clinic;
+        clinicAdmin: { user: { name: string; email: string | null; phone: string | null }; tempPassword: string };
+      }>(
         `/signup-requests/${req.id}/approve`,
         { method: 'POST', body: {} },
       );
-      setToast({ type: 'ok', msg: `Business "${result.clinic.name}" created — generate an invite code next.` });
+      setCreds({
+        role: 'clinic_admin',
+        name: result.clinicAdmin.user.name,
+        email: result.clinicAdmin.user.email,
+        phone: result.clinicAdmin.user.phone,
+        tempPassword: result.clinicAdmin.tempPassword,
+        clinicName: result.clinic.name,
+      });
+      setToast({ type: 'ok', msg: `Business "${result.clinic.name}" created with admin account.` });
       await Promise.all([loadClinics(), loadStats(), loadSignupRequests(requestFilter), loadPendingSignupCount()]);
       setTab('manage');
       await selectClinic(result.clinic);
@@ -658,7 +756,7 @@ export default function AdminPage() {
                           {req.contactName} · {req.email} · {req.phone}
                         </p>
                         <p className="text-xs text-slate-400 mt-1">
-                          Submitted {new Date(req.createdAt).toLocaleString()}
+                          Submitted {formatDateTimeIst(req.createdAt)}
                           {req.clinic && <> · Linked to <span className="font-medium text-slate-600">{req.clinic.name}</span></>}
                         </p>
                       </div>
@@ -933,7 +1031,7 @@ export default function AdminPage() {
                         <div className="text-xs mt-0.5">
                           {used && <span className="text-emerald-700">✓ Used by {ic.usedBy?.name}{ic.usedBy?.phone && ` (${ic.usedBy.phone})`}</span>}
                           {!used && expired && <span className="text-rose-500">Expired</span>}
-                          {active && <span className="text-slate-500">Expires {new Date(ic.expiresAt).toLocaleDateString()} {new Date(ic.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                          {active && <span className="text-slate-500">Expires {formatDateIst(ic.expiresAt)} {formatTimeIst(ic.expiresAt)}</span>}
                         </div>
                       </div>
                       {active && (
@@ -947,6 +1045,72 @@ export default function AdminPage() {
                 })}
               </div>
             )}
+          </section>
+        )}
+
+        {/* Business admins — full reception portal access */}
+        {selectedClinic && (
+          <section className="card overflow-hidden animate-fade-in">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="section-title">
+                  Business admins — <span className="text-brand-700">{selectedClinic.name}</span>
+                </h2>
+                <p className="section-sub">
+                  Owner/manager accounts with full reception portal access (queue, analytics, settings).
+                </p>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinicAdmins.length}</span>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                <form onSubmit={addClinicAdmin} className="space-y-2.5 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-100 text-violet-700 text-xs font-bold">+</span>
+                    New business admin
+                  </h3>
+                  <input className="input" placeholder="Full name" value={baName} onChange={(e) => setBaName(e.target.value)} required />
+                  <input className="input" type="email" placeholder="Email (for login)" value={baEmail} onChange={(e) => setBaEmail(e.target.value)} />
+                  <PhoneInput label={null} value={baPhone} onChange={(raw, result) => { setBaPhone(raw); setBaPhoneResult(result); }} autoComplete="off" />
+                  <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
+                  <button type="submit" className="btn-primary w-full" disabled={baBusy || (!baEmail && !baPhoneResult.ok)}>
+                    {baBusy ? 'Adding…' : 'Add business admin'}
+                  </button>
+                </form>
+                <div className="lg:col-span-3">
+                  {clinicAdmins.length === 0 ? (
+                    <div className="py-12 text-center rounded-xl ring-1 ring-slate-200 bg-slate-50">
+                      <div className="text-4xl mb-2">🏢</div>
+                      <p className="text-sm text-slate-500">No business admin yet.</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
+                      {clinicAdmins.map((a, idx) => (
+                        <div key={a.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                          <div className="min-w-0">
+                            <div className="font-medium text-slate-800 truncate">{a.name}</div>
+                            <div className="text-xs text-slate-400 flex flex-wrap gap-x-2 mt-0.5">
+                              {a.email && <span>{a.email}</span>}
+                              {a.email && a.phone && <span>·</span>}
+                              {a.phone && <span>{a.phone}</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span className="text-xs text-slate-400 hidden sm:block">{formatDateIst(a.createdAt)}</span>
+                            <button type="button" onClick={() => resetPassword({ userId: a.id, name: a.name, email: a.email, phone: a.phone, role: 'clinic_admin' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                              Reset pwd
+                            </button>
+                            <button type="button" onClick={() => handleDeleteClinicAdmin(a.id, a.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
         )}
 
@@ -998,7 +1162,7 @@ export default function AdminPage() {
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                              <span className="text-xs text-slate-400 hidden sm:block">{new Date(r.createdAt).toLocaleDateString()}</span>
+                              <span className="text-xs text-slate-400 hidden sm:block">{formatDateIst(r.createdAt)}</span>
                               <button type="button" onClick={() => startEditEmail(r.id, r.email)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                 Edit email
                               </button>

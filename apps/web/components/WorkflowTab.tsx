@@ -67,7 +67,10 @@ export function WorkflowTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     <div className="p-5 sm:p-6 max-w-3xl mx-auto space-y-6">
       <div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Multi-Step Workflow Routing</h2>
-        <p className="text-xs text-slate-400 mt-0.5">Design sequential customer routing workflows (e.g., Doctor → Lab → Billing → Completed)</p>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Route customers through sequential steps (e.g. Consultation → Lab → Billing).
+          After <strong>Call next</strong>, mark the customer <strong>Done</strong> to send them to the next professional&apos;s queue automatically.
+        </p>
       </div>
 
       <div className="card p-5 space-y-6">

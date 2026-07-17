@@ -80,7 +80,7 @@ export interface InviteCode {
   createdAt: string;
 }
 
-export type Role = 'PATIENT' | 'RECEPTIONIST' | 'DOCTOR' | 'ADMIN';
+export type Role = 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'DOCTOR' | 'ADMIN';
 export type EntryStatus =
   | 'WAITING'
   | 'IN_CONSULTATION'

@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { EntryStatus, VisitStatus } from '@prisma/client';
+import { formatHourLabel, istHour, serviceDay } from '../../common/utils/timezone';
 
 @Injectable()
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getDashboardAnalytics(clinicId: string) {
-    const today = new Date();
-    const serviceDay = today.toISOString().slice(0, 10);
+    const serviceDayKey = serviceDay();
 
     const doctors = await this.prisma.doctor.findMany({
       where: { clinicId },
@@ -28,14 +28,13 @@ export class AnalyticsService {
         returningCustomers: 0,
         newCustomers: 0,
         noShowPercentage: 0,
-        satisfactionScore: 4.8,
       };
     }
 
     const entries = await this.prisma.queueEntry.findMany({
       where: {
         doctorId: { in: doctorIds },
-        serviceDay,
+        serviceDay: serviceDayKey,
       },
       select: {
         status: true,
@@ -67,19 +66,23 @@ export class AnalyticsService {
 
       uniquePatients.add(e.patientId);
 
-      const hour = new Date(e.joinedAt).getHours();
+      const hour = istHour(e.joinedAt);
       hourlyCounts[hour]++;
 
-      if (e.status === EntryStatus.COMPLETED && e.calledAt) {
-        const waitTime = (new Date(e.calledAt).getTime() - new Date(e.joinedAt).getTime()) / 60_000;
-        if (waitTime >= 0) {
+      if (e.calledAt || e.startedAt) {
+        const waitStart = new Date(e.joinedAt).getTime();
+        const waitEnd = new Date(e.calledAt ?? e.startedAt!).getTime();
+        const waitTime = (waitEnd - waitStart) / 60_000;
+        if (waitTime >= 0 && e.status === EntryStatus.COMPLETED) {
           waitSum += waitTime;
           waitCount++;
           if (waitTime > maxWait) maxWait = waitTime;
         }
+      }
 
+      if (e.status === EntryStatus.COMPLETED && e.completedAt) {
         const start = e.startedAt ?? e.calledAt;
-        if (e.completedAt) {
+        if (start) {
           const serviceTime = (new Date(e.completedAt).getTime() - new Date(start).getTime()) / 60_000;
           if (serviceTime >= 0) {
             serviceSum += serviceTime;
@@ -101,22 +104,17 @@ export class AnalyticsService {
         peakHourVal = h;
       }
     }
-    const formatHour = (h: number) => {
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const hr = h % 12 || 12;
-      return `${hr} ${ampm}`;
-    };
-    const peakHour = maxHourCount > 0 ? formatHour(peakHourVal) : 'N/A';
+    const peakHour = maxHourCount > 0 ? formatHourLabel(peakHourVal) : 'N/A';
 
     const busyHours = hourlyCounts
       .map((count, hr) => ({ hr, count }))
       .filter((item) => item.count > 0)
       .sort((a, b) => b.count - a.count)
       .slice(0, 3)
-      .map((item) => formatHour(item.hr));
+      .map((item) => formatHourLabel(item.hr));
 
     const totalEntriesToday = entries.length;
-    const avgCustomersPerHour = totalEntriesToday / 8; 
+    const avgCustomersPerHour = totalEntriesToday / 8;
     const avgCustomersPerProfessional = doctorIds.length > 0 ? totalEntriesToday / doctorIds.length : 0;
 
     const patientIds = Array.from(uniquePatients);
@@ -165,7 +163,6 @@ export class AnalyticsService {
       returningCustomers: returningCount,
       newCustomers: newCount,
       noShowPercentage,
-      satisfactionScore: 4.8,
     };
   }
 }

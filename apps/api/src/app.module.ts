@@ -21,6 +21,7 @@ import { ProfessionalScheduleModule } from './modules/professional-schedule/prof
 import { LeaveManagementModule } from './modules/leave-management/leave-management.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
+import { RatingsModule } from './modules/ratings/ratings.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -43,6 +44,7 @@ import configuration from './config/configuration';
     LeaveManagementModule,
     AnalyticsModule,
     WorkflowModule,
+    RatingsModule,
   ],
   providers: [
     // Global request logger — runs around every HTTP handler.

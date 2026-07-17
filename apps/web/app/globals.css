@@ -238,8 +238,31 @@
   touch-action: none;
 }
 .drag-handle:active { cursor: grabbing; }
-.drag-over {
-  @apply ring-2 ring-brand-400 bg-brand-50/30;
+
+/* ── Queue drag-and-drop ─────────────────────────────────────────────────── */
+.queue-scroll {
+  scroll-behavior: smooth;
+}
+.queue-drop-placeholder {
+  @apply mx-3 my-1.5 rounded-xl border-2 border-dashed border-brand-400 bg-brand-50/60 dark:bg-brand-950/40;
+  height: 3.25rem;
+  animation: drop-placeholder-in 180ms ease-out;
+  transition: height 180ms ease, opacity 180ms ease, margin 180ms ease;
+}
+html.dark .queue-drop-placeholder {
+  @apply border-brand-500/70;
+}
+@keyframes drop-placeholder-in {
+  from { opacity: 0; transform: scaleY(0.5); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+.queue-row-dragging {
+  opacity: 0.35;
+  transform: scale(0.985);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.queue-list-item {
+  transition: transform 200ms ease, opacity 200ms ease;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

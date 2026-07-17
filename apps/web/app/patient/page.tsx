@@ -11,6 +11,7 @@ import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
 import { getLabels } from '@/lib/labels';
+import { formatTimeIst, serviceDay, serviceDaysAgo, entryServiceDay, formatDateIst, formatRelativeTimeIst } from '@/lib/datetime';
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
 import { Icon } from '@/components/Icons';
 
@@ -19,6 +20,7 @@ interface HistoryItem extends QueueEntry {
 }
 
 const REFRESH_INTERVAL_MS = 30_000;
+const REFRESH_INTERVAL_CONNECTED_MS = 120_000;
 const UPCOMING_THRESHOLD = 5; // show alert when ≤ this many people ahead
 
 // ─── Browser notification helpers ───────────────────────────────────────────
@@ -46,6 +48,7 @@ function playChime(urgent: boolean) {
     const notes = urgent
       ? [880, 1100, 880]      // two ascending + one for "your turn"
       : [660, 880];           // one gentle up-tone for "you're next"
+    const lastEnd = now + (notes.length - 1) * 0.25 + 0.4;
     notes.forEach((freq, i) => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -59,6 +62,7 @@ function playChime(urgent: boolean) {
       osc.start(now + i * 0.25);
       osc.stop(now + i * 0.25 + 0.4);
     });
+    setTimeout(() => { void ctx.close(); }, Math.ceil((lastEnd - now) * 1000) + 50);
   } catch {}
 }
 
@@ -106,7 +110,7 @@ export default function PatientPage() {
       // Detect newly-MISSED entries and fire notification + show persistent banner.
       // This runs in fetchHistory (triggered by usePatientStream) so it works even
       // if ActiveEntry unmounts before the socket snapshot updates.
-      const todayStr = new Date().toLocaleDateString('en-CA');
+      const todayStr = serviceDay();
       items
         .filter((e) => e.status === 'MISSED' && e.serviceDay === todayStr)
         .forEach((entry) => {
@@ -132,11 +136,17 @@ export default function PatientPage() {
   useEffect(() => {
     if (!ready) return;
     fetchHistory();
-    const t = setInterval(fetchHistory, REFRESH_INTERVAL_MS);
-    return () => clearInterval(t);
   }, [ready, fetchHistory]);
 
   const { connected: streamConnected } = usePatientStream(ready, fetchHistory);
+
+  // Poll as a fallback when the patient stream is down; slow down when it is up.
+  useEffect(() => {
+    if (!ready) return;
+    const intervalMs = streamConnected ? REFRESH_INTERVAL_CONNECTED_MS : REFRESH_INTERVAL_MS;
+    const t = setInterval(fetchHistory, intervalMs);
+    return () => clearInterval(t);
+  }, [ready, fetchHistory, streamConnected]);
 
   // Auto-clear missed banners when the customer rejoins (i.e. entry is back to WAITING/IN_CONSULTATION)
   useEffect(() => {
@@ -189,8 +199,7 @@ export default function PatientPage() {
 
   const handleCompleted = useCallback((updated: HistoryItem) => {
     setCompletedIds((prev) => new Set([...prev, updated.id]));
-    setTimeout(fetchHistory, 2000);
-  }, [fetchHistory]);
+  }, []);
 
   if (!ready) return <PageLoader label="Loading your queue…" />;
 
@@ -209,7 +218,7 @@ export default function PatientPage() {
   });
 
   // Missed today — across ALL clinics.
-  const todayLocal     = new Date().toLocaleDateString('en-CA');
+  const todayLocal     = serviceDay();
   const missedTodayAll = pastEntries.filter(
     (e) => e.status === 'MISSED' && e.serviceDay === todayLocal,
   );
@@ -461,11 +470,11 @@ type HistorySubTab       = 'log' | 'by-doctor';
 type HistoryPeriod       = 'all' | '30d' | '3m' | '1y' | 'custom';
 
 function daysAgoStr(n: number) {
-  return new Date(Date.now() - n * 86_400_000).toLocaleDateString('en-CA');
+  return serviceDaysAgo(n);
 }
 
 function HistoryView({ entries }: { entries: HistoryItem[] }) {
-  const TODAY = new Date().toLocaleDateString('en-CA');
+  const TODAY = serviceDay();
 
   const [period, setPeriod]         = useState<HistoryPeriod>('all');
   const [customFrom, setCustomFrom] = useState(daysAgoStr(29));
@@ -502,7 +511,7 @@ function HistoryView({ entries }: { entries: HistoryItem[] }) {
 
   // Filter entries
   const filtered = entries.filter((e) => {
-    const day = e.serviceDay ?? new Date(e.joinedAt).toLocaleDateString('en-CA');
+    const day = entryServiceDay(e);
     if (dateFrom && day < dateFrom) return false;
     if (dateTo   && day > dateTo)   return false;
     if (statusFilter !== 'ALL' && e.status !== statusFilter) return false;
@@ -522,7 +531,7 @@ function HistoryView({ entries }: { entries: HistoryItem[] }) {
   // Build trend points from filtered entries (grouped by serviceDay)
   const trendMap = new Map<string, { completed: number; missed: number; cancelled: number; total: number }>();
   filtered.forEach((e) => {
-    const day = e.serviceDay ?? new Date(e.joinedAt).toLocaleDateString('en-CA');
+    const day = entryServiceDay(e);
     if (!trendMap.has(day)) trendMap.set(day, { completed: 0, missed: 0, cancelled: 0, total: 0 });
     const d = trendMap.get(day)!;
     d.total++;
@@ -534,7 +543,7 @@ function HistoryView({ entries }: { entries: HistoryItem[] }) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, vals]) => ({
       date,
-      label: new Date(`${date}T12:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+      label: formatDateIst(`${date}T12:00:00+05:30`, { day: 'numeric', month: 'short' }),
       ...vals,
     }));
 
@@ -649,7 +658,7 @@ function HistoryDateGroupedView({ entries }: { entries: HistoryItem[] }) {
   );
   const byDate = new Map<string, HistoryItem[]>();
   sorted.forEach((e) => {
-    const key = new Date(e.joinedAt).toLocaleDateString('en-CA');
+    const key = entryServiceDay(e);
     if (!byDate.has(key)) byDate.set(key, []);
     byDate.get(key)!.push(e);
   });
@@ -870,7 +879,7 @@ function HistoryEntry({ entry }: { entry: HistoryItem }) {
           <div className="text-xs text-slate-400 mt-0.5">
             {entry.doctor.department?.name ?? 'General'}
             {' · '}
-            {new Date(entry.joinedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+            {formatTimeIst(entry.joinedAt)}
           </div>
         </div>
       </div>
@@ -897,6 +906,114 @@ function QueueWatcher({
   }, [live?.peopleAhead, entry.id, onPositionUpdate]);
 
   return null;
+}
+
+// ─── Post-visit rating ────────────────────────────────────────────────────────
+
+interface ProfessionalRating {
+  id: string;
+  rating: number;
+  comment: string | null;
+}
+
+function VisitRatingPanel({
+  entryId,
+  doctorName,
+  onDone,
+}: {
+  entryId: string;
+  doctorName: string;
+  onDone: () => void;
+}) {
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState('');
+  const [existing, setExisting] = useState<ProfessionalRating | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<ProfessionalRating | null>(`/ratings/entry/${entryId}`)
+      .then((r) => { if (r) setExisting(r); })
+      .catch(() => {});
+  }, [entryId]);
+
+  async function submit() {
+    if (rating < 1) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await api<ProfessionalRating>('/ratings', {
+        method: 'POST',
+        body: { entryId, rating, comment: comment.trim() || undefined },
+      });
+      setExisting(res);
+      setTimeout(onDone, 2000);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not submit rating');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (existing) {
+    return (
+      <div className="mt-5 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-4 py-4 text-left">
+        <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">Thank you for your feedback!</div>
+        <div className="text-2xl mt-2" aria-label={`${existing.rating} out of 5 stars`}>
+          {'★'.repeat(existing.rating)}{'☆'.repeat(5 - existing.rating)}
+        </div>
+        {existing.comment && (
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-2">{existing.comment}</p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-4 py-4 text-left">
+      <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+        Rate your visit with {doctorName}
+      </div>
+      <div className="flex gap-1 mt-3 justify-center" role="group" aria-label="Rating">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setRating(n)}
+            onMouseEnter={() => setHover(n)}
+            onMouseLeave={() => setHover(0)}
+            className="text-3xl leading-none transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-brand-400 rounded"
+            aria-label={`${n} star${n !== 1 ? 's' : ''}`}
+          >
+            {(hover || rating) >= n ? '★' : '☆'}
+          </button>
+        ))}
+      </div>
+      <textarea
+        className="input resize-none mt-3 text-sm"
+        rows={2}
+        placeholder="Optional comment"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+        maxLength={500}
+      />
+      {error && <p className="text-xs text-rose-600 mt-2">{error}</p>}
+      <div className="flex gap-2 mt-3 justify-center">
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={rating < 1 || submitting}
+          className="btn-primary !py-2 !px-4 text-sm disabled:opacity-50"
+        >
+          {submitting ? 'Submitting…' : 'Submit rating'}
+        </button>
+        <button type="button" onClick={onDone} className="btn-ghost !py-2 !px-4 text-sm text-slate-500">
+          Skip
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ─── Active entry card ────────────────────────────────────────────────────────
@@ -968,17 +1085,18 @@ function ActiveEntry({
   // Detect permanent termination (completed/cancelled/skipped/permanently missed)
   useEffect(() => {
     if (completedFired.current) return;
-    if (isMissedInQueue) return; // still in missed queue — not terminal yet
+    if (isMissedInQueue) return;
     if (snapshot !== null && !live) {
       completedFired.current = true;
       api<{ entry: QueueEntry }>(`/queue/entry/${entry.id}`)
         .then(({ entry: updated }) => {
           setFinalStatus(updated.status);
-          setTimeout(() => onCompleted({ ...entry, status: updated.status as HistoryItem['status'] }), 4000);
+          if (updated.status !== 'COMPLETED') {
+            setTimeout(() => onCompleted({ ...entry, status: updated.status as HistoryItem['status'] }), 4000);
+          }
         })
         .catch(() => {
           setFinalStatus('COMPLETED');
-          setTimeout(() => onCompleted(entry), 4000);
         });
     }
   }, [snapshot, live, isMissedInQueue, entry, onCompleted]);
@@ -1063,6 +1181,13 @@ function ActiveEntry({
         <div className="text-sm text-slate-500 mt-1">
           Token <span className="font-mono font-bold text-brand-700">{tokenDisplay(entry.tokenNumber)}</span> with {entry.doctor.user.name}
         </div>
+        {isDone && (
+          <VisitRatingPanel
+            entryId={entry.id}
+            doctorName={entry.doctor.user.name}
+            onDone={() => onCompleted({ ...entry, status: 'COMPLETED' })}
+          />
+        )}
       </section>
     );
   }
@@ -1112,7 +1237,7 @@ function ActiveEntry({
         {breakActive && (
           <div className="rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 text-center">
             ☕ Provider is on a short break — returning at{' '}
-            <strong>{breakUntil!.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</strong>
+            <strong>{formatTimeIst(breakUntil!)}</strong>
             {snapshot?.doctor?.breakNote && ` · ${snapshot.doctor.breakNote}`}
           </div>
         )}
@@ -1164,7 +1289,7 @@ function ActiveEntry({
                 </div>
                 {etaAbs && (
                   <div className="text-xs text-slate-500 mt-1">
-                    your turn ~{new Date(etaAbs).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                    your turn ~{formatTimeIst(etaAbs)}
                   </div>
                 )}
                 {avgDisplay && (
@@ -1247,23 +1372,18 @@ function ActiveEntry({
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function formatDateLabel(dateKey: string): string {
-  const today     = new Date().toLocaleDateString('en-CA');
-  const yesterday = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA');
+  const today     = serviceDay();
+  const yesterday = serviceDaysAgo(1);
   if (dateKey === today)     return 'Today';
   if (dateKey === yesterday) return 'Yesterday';
-  const d = new Date(`${dateKey}T12:00:00`);
-  const weekAgo = new Date(Date.now() - 6 * 86_400_000);
+  const d = new Date(`${dateKey}T12:00:00+05:30`);
+  const weekAgo = new Date(`${serviceDaysAgo(6)}T12:00:00+05:30`);
   if (d >= weekAgo) {
-    return d.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });
+    return formatDateIst(d, { weekday: 'long', day: 'numeric', month: 'short' });
   }
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+  return formatDateIst(d, { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 function formatRelative(d: Date) {
-  const diff = Math.round((Date.now() - d.getTime()) / 1000);
-  if (diff < 5)  return 'just now';
-  if (diff < 60) return `${diff}s ago`;
-  const min = Math.floor(diff / 60);
-  if (min < 60)  return `${min} min ago`;
-  return d.toLocaleTimeString();
+  return formatRelativeTimeIst(d);
 }

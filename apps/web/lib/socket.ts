@@ -19,49 +19,110 @@ export interface PatientStreamEvent {
   to?: string;
 }
 
+type RoomListener = (state: { snapshot: Snapshot | null; connected: boolean }) => void;
+
+interface SharedDoctorRoom {
+  refCount: number;
+  snapshot: Snapshot | null;
+  connected: boolean;
+  socket: Socket;
+  listeners: Set<RoomListener>;
+}
+
+/** One Socket.IO connection per doctorId — shared across all hook instances. */
+const sharedDoctorRooms = new Map<string, SharedDoctorRoom>();
+
+function notifyRoom(room: SharedDoctorRoom) {
+  const state = { snapshot: room.snapshot, connected: room.connected };
+  room.listeners.forEach((fn) => fn(state));
+}
+
+function acquireDoctorRoom(doctorId: string): SharedDoctorRoom {
+  const existing = sharedDoctorRooms.get(doctorId);
+  if (existing) {
+    existing.refCount += 1;
+    return existing;
+  }
+
+  const token =
+    typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
+  const socket = io(URL, {
+    transports: ['websocket'],
+    withCredentials: true,
+    auth: token ? { token } : undefined,
+  });
+
+  const room: SharedDoctorRoom = {
+    refCount: 1,
+    snapshot: null,
+    connected: false,
+    socket,
+    listeners: new Set(),
+  };
+
+  socket.on('connect', () => {
+    room.connected = true;
+    notifyRoom(room);
+    socket.emit(
+      'subscribe:doctor',
+      { doctorId },
+      (ack: { ok: boolean; snapshot?: Snapshot }) => {
+        if (ack?.snapshot) {
+          room.snapshot = ack.snapshot;
+          notifyRoom(room);
+        }
+      },
+    );
+  });
+  socket.on('disconnect', () => {
+    room.connected = false;
+    notifyRoom(room);
+  });
+  socket.on('queue:updated', (msg: { snapshot: Snapshot }) => {
+    if (msg?.snapshot) {
+      room.snapshot = msg.snapshot;
+      notifyRoom(room);
+    }
+  });
+
+  sharedDoctorRooms.set(doctorId, room);
+  return room;
+}
+
+function releaseDoctorRoom(doctorId: string, room: SharedDoctorRoom) {
+  room.refCount -= 1;
+  if (room.refCount > 0) return;
+  room.socket.emit('unsubscribe:doctor', { doctorId });
+  room.socket.disconnect();
+  sharedDoctorRooms.delete(doctorId);
+}
+
 /**
  * Subscribes to a doctor's queue room and keeps a local snapshot in sync.
  * - Initial snapshot arrives in the ack of `subscribe:doctor`.
  * - Subsequent updates arrive as `queue:updated` events.
- * - Tokens are read from localStorage so the same hook works for staff and patients.
+ * - Multiple components watching the same doctor share one WebSocket.
  *
- * The hook returns `{ snapshot, connected }`. Components render off `snapshot`.
+ * Returns `{ snapshot, connected }`. Components render off `snapshot`.
  */
 export function useDoctorQueue(doctorId: string | null) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [connected, setConnected] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     if (!doctorId) return;
 
-    const token =
-      typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
-    const socket = io(URL, {
-      transports: ['websocket'],
-      withCredentials: true,
-      auth: token ? { token } : undefined,
-    });
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      setConnected(true);
-      socket.emit(
-        'subscribe:doctor',
-        { doctorId },
-        (ack: { ok: boolean; snapshot?: Snapshot }) => {
-          if (ack?.snapshot) setSnapshot(ack.snapshot);
-        },
-      );
-    });
-    socket.on('disconnect', () => setConnected(false));
-    socket.on('queue:updated', (msg: { snapshot: Snapshot }) => {
-      if (msg?.snapshot) setSnapshot(msg.snapshot);
-    });
+    const room = acquireDoctorRoom(doctorId);
+    const listener: RoomListener = (state) => {
+      setSnapshot(state.snapshot);
+      setConnected(state.connected);
+    };
+    room.listeners.add(listener);
+    listener({ snapshot: room.snapshot, connected: room.connected });
 
     return () => {
-      socket.emit('unsubscribe:doctor', { doctorId });
-      socket.disconnect();
+      room.listeners.delete(listener);
+      releaseDoctorRoom(doctorId, room);
     };
   }, [doctorId]);
 

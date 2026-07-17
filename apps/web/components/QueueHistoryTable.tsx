@@ -1,22 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { formatTimeIst, serviceDay, serviceDaysAgo, addServiceDays } from '@/lib/datetime';
 import { api, ApiError, type HistoryEntry } from '@/lib/api';
 import { tokenDisplay, matchesTokenSearch } from '@/lib/tokenCode';
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return serviceDay();
 }
 
 function fmtTime(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  });
+  return formatTimeIst(iso);
 }
 
 function fmtDuration(minutes: number | null): string {
@@ -228,11 +224,7 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
           {/* Jump to yesterday */}
           <button
             type="button"
-            onClick={() => {
-              const d = new Date(date);
-              d.setDate(d.getDate() - 1);
-              setDate(d.toISOString().slice(0, 10));
-            }}
+            onClick={() => setDate(addServiceDays(date, -1))}
             className="btn-ghost !py-1.5 !px-2.5 text-xs"
             title="Previous day"
           >
@@ -253,9 +245,7 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
             type="button"
             disabled={date >= todayISO()}
             onClick={() => {
-              const d = new Date(date);
-              d.setDate(d.getDate() + 1);
-              const next = d.toISOString().slice(0, 10);
+              const next = addServiceDays(date, 1);
               if (next <= todayISO()) setDate(next);
             }}
             className="btn-ghost !py-1.5 !px-2.5 text-xs disabled:opacity-30"

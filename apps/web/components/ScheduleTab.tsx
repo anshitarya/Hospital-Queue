@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { type ToastMessage } from './Toast';
 
@@ -8,7 +8,7 @@ interface DoctorItem {
   department: string;
 }
 
-interface ScheduleRow {
+export interface ScheduleRow {
   dayOfWeek: number;
   startTime: string;
   endTime: string;
@@ -16,6 +16,14 @@ interface ScheduleRow {
 }
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function defaultOffDay(day: number): ScheduleRow {
+  return { dayOfWeek: day, startTime: '09:00', endTime: '17:00', isHoliday: true };
+}
+
+function defaultWorkingDay(day: number): ScheduleRow {
+  return { dayOfWeek: day, startTime: '09:00', endTime: '18:00', isHoliday: false };
+}
 
 export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setToast: (t: ToastMessage | null) => void }) {
   const [selectedDocId, setSelectedDocId] = useState(doctors[0]?.id || '');
@@ -29,12 +37,15 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
       setLoading(true);
       try {
         const data = await api<ScheduleRow[]>(`/schedules/doctor/${selectedDocId}`);
-        // Ensure all days 0-6 are present in the list
-        const daysMap = new Map(data.map((s) => [s.dayOfWeek, s]));
-        const fullList: ScheduleRow[] = Array.from({ length: 7 }, (_, i) => {
-          return daysMap.get(i) || { dayOfWeek: i, startTime: '09:00', endTime: '17:00', isHoliday: true };
-        });
-        setSchedules(fullList);
+        if (data.length === 0) {
+          setSchedules(
+            Array.from({ length: 7 }, (_, i) =>
+              i === 0 ? defaultOffDay(i) : defaultWorkingDay(i),
+            ),
+          );
+        } else {
+          setSchedules(data);
+        }
       } catch {
         setToast({ type: 'err', msg: 'Failed to load doctor schedules' });
       } finally {
@@ -44,10 +55,62 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     void load();
   }, [selectedDocId, setToast]);
 
-  const handleUpdate = (day: number, field: keyof ScheduleRow, val: any) => {
-    setSchedules((prev) =>
-      prev.map((s) => (s.dayOfWeek === day ? { ...s, [field]: val } : s))
-    );
+  const byDay = useMemo(() => {
+    const map = new Map<number, ScheduleRow[]>();
+    for (let d = 0; d < 7; d++) map.set(d, []);
+    for (const s of schedules) {
+      map.get(s.dayOfWeek)?.push(s);
+    }
+    for (let d = 0; d < 7; d++) {
+      if (map.get(d)!.length === 0) map.set(d, [defaultOffDay(d)]);
+    }
+    return map;
+  }, [schedules]);
+
+  const updateShift = (day: number, index: number, field: keyof ScheduleRow, val: string | boolean) => {
+    setSchedules((prev) => {
+      const dayRows = prev.filter((s) => s.dayOfWeek === day);
+      const other = prev.filter((s) => s.dayOfWeek !== day);
+      const updated = dayRows.map((s, i) => (i === index ? { ...s, [field]: val } : s));
+      return [...other, ...updated];
+    });
+  };
+
+  const addShift = (day: number) => {
+    setSchedules((prev) => {
+      const dayRows = prev.filter((s) => s.dayOfWeek === day);
+      const other = prev.filter((s) => s.dayOfWeek !== day);
+      const base = dayRows.length ? dayRows[dayRows.length - 1] : defaultWorkingDay(day);
+      const next: ScheduleRow = {
+        dayOfWeek: day,
+        startTime: '14:00',
+        endTime: '18:00',
+        isHoliday: false,
+      };
+      if (dayRows.every((r) => r.isHoliday)) {
+        return [...other, { ...defaultWorkingDay(day), startTime: '09:00', endTime: '13:00' }, next];
+      }
+      return [...other, ...dayRows.map((r) => ({ ...r, isHoliday: false })), next];
+    });
+  };
+
+  const removeShift = (day: number, index: number) => {
+    setSchedules((prev) => {
+      const dayRows = prev.filter((s) => s.dayOfWeek === day);
+      const other = prev.filter((s) => s.dayOfWeek !== day);
+      if (dayRows.length <= 1) {
+        return [...other, defaultOffDay(day)];
+      }
+      return [...other, ...dayRows.filter((_, i) => i !== index)];
+    });
+  };
+
+  const setDayOff = (day: number, off: boolean) => {
+    if (off) {
+      setSchedules((prev) => [...prev.filter((s) => s.dayOfWeek !== day), defaultOffDay(day)]);
+    } else {
+      setSchedules((prev) => [...prev.filter((s) => s.dayOfWeek !== day), defaultWorkingDay(day)]);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -55,10 +118,12 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     if (!selectedDocId) return;
     setSaving(true);
     try {
+      const flat = Array.from(byDay.entries()).flatMap(([, rows]) => rows);
       await api(`/schedules/doctor/${selectedDocId}`, {
         method: 'POST',
-        body: { shifts: schedules },
+        body: { shifts: flat },
       });
+      setSchedules(flat);
       setToast({ type: 'ok', msg: 'Schedules updated successfully' });
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update schedule' });
@@ -75,7 +140,9 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     <div className="p-5 sm:p-6 max-w-4xl mx-auto space-y-6">
       <div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Professional Working Schedules</h2>
-        <p className="text-xs text-slate-400 mt-0.5">Define multi-shift and weekly schedule configurations for each professional</p>
+        <p className="text-xs text-slate-400 mt-0.5">
+          Multiple shifts per day supported (e.g. 13:00–15:00 and 18:00–20:00 IST). First booking starts at shift start.
+        </p>
       </div>
 
       <div className="card p-5 space-y-4">
@@ -94,34 +161,47 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
         ) : (
           <form onSubmit={handleSave} className="space-y-4 pt-2">
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-              {schedules.map((s) => (
-                <div key={s.dayOfWeek} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="w-32">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{DAYS[s.dayOfWeek]}</span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-4">
-                    <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
-                      <input type="checkbox" className="w-4 h-4 rounded accent-teal-600 cursor-pointer"
-                        checked={!s.isHoliday} onChange={(e) => handleUpdate(s.dayOfWeek, 'isHoliday', !e.target.checked)} />
-                      Working Day
-                    </label>
-
-                    {!s.isHoliday && (
-                      <div className="flex items-center gap-2">
-                        <input className="input py-1 text-xs w-28" type="text" placeholder="HH:MM" value={s.startTime}
-                          onChange={(e) => handleUpdate(s.dayOfWeek, 'startTime', e.target.value)} required />
-                        <span className="text-slate-400 text-xs">to</span>
-                        <input className="input py-1 text-xs w-28" type="text" placeholder="HH:MM" value={s.endTime}
-                          onChange={(e) => handleUpdate(s.dayOfWeek, 'endTime', e.target.value)} required />
-                      </div>
+              {DAYS.map((dayName, day) => {
+                const rows = byDay.get(day) ?? [defaultOffDay(day)];
+                const isOff = rows.every((r) => r.isHoliday);
+                return (
+                  <div key={day} className="py-4 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm w-28">{dayName}</span>
+                      <label className="flex items-center gap-2 text-xs text-slate-500 cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4 rounded accent-teal-600"
+                          checked={!isOff} onChange={(e) => setDayOff(day, !e.target.checked)} />
+                        Working day
+                      </label>
+                      {!isOff && (
+                        <button type="button" onClick={() => addShift(day)}
+                          className="text-xs text-teal-600 hover:text-teal-700 font-semibold ml-auto">
+                          + Add shift
+                        </button>
+                      )}
+                    </div>
+                    {isOff ? (
+                      <p className="text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/20 px-2 py-1 rounded w-fit">Off / holiday</p>
+                    ) : (
+                      rows.map((s, idx) => (
+                        <div key={`${day}-${idx}`} className="flex flex-wrap items-center gap-2 pl-0 sm:pl-28">
+                          <span className="text-[10px] text-slate-400 uppercase w-14">Shift {idx + 1}</span>
+                          <input className="input py-1 text-xs w-24" type="text" placeholder="HH:MM" value={s.startTime}
+                            onChange={(e) => updateShift(day, idx, 'startTime', e.target.value)} required />
+                          <span className="text-slate-400 text-xs">to</span>
+                          <input className="input py-1 text-xs w-24" type="text" placeholder="HH:MM" value={s.endTime}
+                            onChange={(e) => updateShift(day, idx, 'endTime', e.target.value)} required />
+                          <span className="text-[10px] text-slate-400">IST</span>
+                          {rows.length > 1 && (
+                            <button type="button" onClick={() => removeShift(day, idx)}
+                              className="text-xs text-rose-500 hover:text-rose-600">Remove</button>
+                          )}
+                        </div>
+                      ))
                     )}
-                    {s.isHoliday && (
-                      <span className="text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/20 px-2 py-0.5 rounded">Holiday / Off-time</span>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="flex justify-end pt-3">
@@ -133,6 +213,49 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
           </form>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Compact editor for the add-professional form (optional). */
+export function ScheduleEditor({
+  shifts,
+  onChange,
+}: {
+  shifts: ScheduleRow[];
+  onChange: (rows: ScheduleRow[]) => void;
+}) {
+  const toggleDefault = (on: boolean) => {
+    if (on) {
+      onChange(
+        Array.from({ length: 7 }, (_, i) =>
+          i === 0 ? defaultOffDay(i) : i === 6
+            ? { dayOfWeek: 6, startTime: '09:00', endTime: '14:00', isHoliday: false }
+            : i === 1
+              ? { dayOfWeek: 1, startTime: '09:00', endTime: '13:00', isHoliday: false }
+              : defaultWorkingDay(i),
+        ).concat([
+          { dayOfWeek: 1, startTime: '14:00', endTime: '18:00', isHoliday: false },
+        ]),
+      );
+    } else {
+      onChange([]);
+    }
+  };
+
+  return (
+    <div className="space-y-2 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+      <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+        <input type="checkbox" className="rounded accent-teal-600"
+          checked={shifts.length > 0}
+          onChange={(e) => toggleDefault(e.target.checked)} />
+        Set default working schedule (Mon–Sat, dual shift Monday)
+      </label>
+      {shifts.length > 0 && (
+        <p className="text-[11px] text-slate-400">
+          You can fine-tune shifts after creation under Schedules. Times are IST.
+        </p>
+      )}
     </div>
   );
 }

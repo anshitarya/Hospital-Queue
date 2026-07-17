@@ -51,6 +51,20 @@ async function main() {
       },
     });
 
+    // Business admin — full reception portal access for the clinic owner.
+    await prisma.user.upsert({
+      where: { email: cfg.clinicAdmin.email },
+      update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd, role: Role.CLINIC_ADMIN },
+      create: {
+        email: cfg.clinicAdmin.email,
+        role: Role.CLINIC_ADMIN,
+        name: cfg.clinicAdmin.name,
+        passwordHash: pwd,
+        clinicId: clinic.id,
+        emailVerified: true,
+      },
+    });
+
     // Receptionist for this clinic.
     await prisma.user.upsert({
       where: { email: cfg.receptionist.email },

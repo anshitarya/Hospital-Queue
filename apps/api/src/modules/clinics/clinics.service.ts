@@ -11,7 +11,21 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CustomerService } from '../patients/customer.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
 import { AddDoctorDto } from './dto/add-doctor.dto';
+import { defaultWeeklyShifts, normalizeShiftInput } from '../../common/utils/default-schedule';
 import { AddReceptionistDto } from './dto/add-receptionist.dto';
+import { SetReceptionistAssignmentsDto } from './dto/set-receptionist-assignments.dto';
+import {
+  addServiceDays,
+  formatHourLabel,
+  istHour,
+  monthRangeStart,
+  recentMonthKeys,
+  recentServiceDays,
+  serviceDay,
+  serviceDaysAgo,
+} from '../../common/utils/timezone';
+import { CLINIC_PORTAL_ROLES, isClinicPortalRole } from '../../common/constants/clinic-portal-roles';
+import { AuthUser } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class ClinicsService {
@@ -37,7 +51,7 @@ export class ClinicsService {
     const receptionistCounts = ids.length
       ? await this.prisma.user.groupBy({
           by: ['clinicId'],
-          where: { clinicId: { in: ids }, role: Role.RECEPTIONIST },
+          where: { clinicId: { in: ids }, role: { in: CLINIC_PORTAL_ROLES } },
           _count: { _all: true },
         })
       : [];
@@ -72,7 +86,7 @@ export class ClinicsService {
       await Promise.all([
         this.prisma.clinic.count(),
         this.prisma.doctor.count(),
-        this.prisma.user.count({ where: { role: Role.RECEPTIONIST } }),
+        this.prisma.user.count({ where: { role: { in: CLINIC_PORTAL_ROLES } } }),
         this.prisma.user.count({ where: { role: Role.PATIENT } }),
         this.prisma.clinic.findMany({
           orderBy: { name: 'asc' },
@@ -81,7 +95,7 @@ export class ClinicsService {
             name: true,
             _count: { select: { doctors: true } },
             users: {
-              where: { role: Role.RECEPTIONIST },
+              where: { role: { in: CLINIC_PORTAL_ROLES } },
               select: { id: true },
             },
           },
@@ -128,19 +142,136 @@ export class ClinicsService {
    * doctor records (no other clinic metadata) so the admin UI can show them
    * inline under each clinic without an extra round-trip.
    */
-  async listDoctorsInClinic(clinicId: string) {
+  async listDoctorsInClinic(clinicId: string, caller?: AuthUser) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
     if (!clinic) throw new NotFoundException('Clinic not found');
-    return this.prisma.doctor.findMany({
+    const doctors = await this.prisma.doctor.findMany({
       where: { clinicId },
       include: { user: { select: { id: true, name: true, email: true, phone: true } }, department: true },
       orderBy: { user: { name: 'asc' } },
     });
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    return scope === null ? doctors : doctors.filter((d) => scope.includes(d.id));
+  }
+
+  /**
+   * Assigned doctor ids for a receptionist, or null when unrestricted (no rows).
+   */
+  async getAssignedDoctorIds(receptionistId: string, clinicId: string): Promise<string[] | null> {
+    const rows = await this.prisma.receptionistAssignment.findMany({
+      where: { receptionistId, clinicId },
+      select: { doctorId: true },
+    });
+    if (rows.length === 0) return null;
+    return rows.map((r) => r.doctorId);
+  }
+
+  /** Restricts receptionists to assigned doctors; clinic admins and platform admins see all. */
+  private async resolveScopedDoctorIds(caller: AuthUser | undefined, clinicId: string): Promise<string[] | null> {
+    if (!caller || caller.role !== Role.RECEPTIONIST || caller.clinicId !== clinicId) return null;
+    return this.getAssignedDoctorIds(caller.id, clinicId);
+  }
+
+  private filterIdsByScope(ids: string[], scope: string[] | null): string[] {
+    if (scope === null) return ids;
+    return ids.filter((id) => scope.includes(id));
+  }
+
+  async assertCallerCanAccessDoctor(caller: AuthUser, doctorId: string): Promise<void> {
+    if (!caller.clinicId) return;
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      select: { clinicId: true },
+    });
+    if (!doctor || doctor.clinicId !== caller.clinicId) {
+      throw new ForbiddenException('Not authorized: doctor belongs to a different clinic');
+    }
+    if (caller.role !== Role.RECEPTIONIST) return;
+    const assigned = await this.getAssignedDoctorIds(caller.id, caller.clinicId);
+    if (assigned !== null && !assigned.includes(doctorId)) {
+      throw new ForbiddenException('You are not assigned to manage this professional');
+    }
+  }
+
+  async getReceptionistAssignments(clinicId: string) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    const [receptionists, doctors, assignments] = await Promise.all([
+      this.listReceptionistsInClinic(clinicId),
+      this.prisma.doctor.findMany({
+        where: { clinicId },
+        include: { user: { select: { name: true } }, department: { select: { name: true } } },
+        orderBy: { user: { name: 'asc' } },
+      }),
+      this.prisma.receptionistAssignment.findMany({ where: { clinicId } }),
+    ]);
+
+    const byRecep = new Map<string, string[]>();
+    for (const row of assignments) {
+      const list = byRecep.get(row.receptionistId) ?? [];
+      list.push(row.doctorId);
+      byRecep.set(row.receptionistId, list);
+    }
+
+    return {
+      receptionists: receptionists.map((r) => ({
+        ...r,
+        doctorIds: byRecep.get(r.id) ?? [],
+      })),
+      doctors: doctors.map((d) => ({
+        id: d.id,
+        name: d.user.name,
+        department: d.department?.name ?? '—',
+      })),
+    };
+  }
+
+  async setReceptionistAssignments(clinicId: string, dto: SetReceptionistAssignmentsDto) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+
+    const receptionistIds = Object.keys(dto.assignments);
+    const allDoctorIds = [...new Set(Object.values(dto.assignments).flat())];
+
+    if (receptionistIds.length > 0) {
+      const validReceps = await this.prisma.user.count({
+        where: { id: { in: receptionistIds }, clinicId, role: Role.RECEPTIONIST },
+      });
+      if (validReceps !== receptionistIds.length) {
+        throw new BadRequestException('One or more receptionists are invalid for this clinic');
+      }
+    }
+
+    if (allDoctorIds.length > 0) {
+      const validDocs = await this.prisma.doctor.count({
+        where: { id: { in: allDoctorIds }, clinicId },
+      });
+      if (validDocs !== allDoctorIds.length) {
+        throw new BadRequestException('One or more professionals are invalid for this clinic');
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.receptionistAssignment.deleteMany({ where: { clinicId } });
+      const rows: { clinicId: string; receptionistId: string; doctorId: string }[] = [];
+      for (const [receptionistId, doctorIds] of Object.entries(dto.assignments)) {
+        const unique = [...new Set(doctorIds)];
+        for (const doctorId of unique) {
+          rows.push({ clinicId, receptionistId, doctorId });
+        }
+      }
+      if (rows.length > 0) {
+        await tx.receptionistAssignment.createMany({ data: rows });
+      }
+    });
+
+    return this.getReceptionistAssignments(clinicId);
   }
 
   // ── Receptionist / Doctor ──────────────────────────────────────────────────
 
-  async getMyClinic(clinicId: string) {
+  async getMyClinic(clinicId: string, caller?: AuthUser) {
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: clinicId },
       include: {
@@ -151,6 +282,10 @@ export class ClinicsService {
       },
     });
     if (!clinic) throw new NotFoundException('Clinic not found');
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    if (scope !== null) {
+      clinic.doctors = clinic.doctors.filter((d) => scope.includes(d.id));
+    }
     return clinic;
   }
 
@@ -204,6 +339,26 @@ export class ClinicsService {
         },
         include: { user: true, department: true },
       });
+
+      const shiftRows =
+        dto.shifts && dto.shifts.length > 0
+          ? normalizeShiftInput(dto.shifts)
+          : dto.useDefaultSchedule !== false
+            ? defaultWeeklyShifts()
+            : [];
+
+      if (shiftRows.length > 0) {
+        await tx.professionalSchedule.createMany({
+          data: shiftRows.map((s) => ({
+            doctorId: doctor.id,
+            dayOfWeek: s.dayOfWeek,
+            startTime: s.startTime,
+            endTime: s.endTime,
+            isHoliday: s.isHoliday ?? false,
+          })),
+        });
+      }
+
       return { doctor, tempPassword };
     });
   }
@@ -236,6 +391,47 @@ export class ClinicsService {
     // The shape of the return value matches `addDoctor` deliberately — the
     // frontend's DoctorCredentialsModal accepts both via the same prop type.
     return { user, tempPassword };
+  }
+
+  /**
+   * Business admin for a clinic — full reception-portal access for the owner.
+   */
+  async addClinicAdmin(clinicId: string, dto: AddReceptionistDto) {
+    const { passwordHash, tempPassword } = await this.prepareStaffCreation(
+      clinicId,
+      { email: dto.email, phone: dto.phone, role: 'business admin' },
+    );
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: dto.name,
+        email: dto.email ?? null,
+        phone: dto.phone ?? null,
+        role: Role.CLINIC_ADMIN,
+        passwordHash,
+        clinicId,
+        emailVerified: dto.email ? true : undefined,
+      },
+      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
+    });
+
+    return { user, tempPassword };
+  }
+
+  async listClinicAdminsInClinic(clinicId: string) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+    return this.prisma.user.findMany({
+      where: { clinicId, role: Role.CLINIC_ADMIN },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        createdAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
   }
 
   /**
@@ -273,8 +469,8 @@ export class ClinicsService {
       // caller has to send the matching clinicId on purpose.
       throw new ForbiddenException('User does not belong to this clinic');
     }
-    if (user.role !== Role.DOCTOR && user.role !== Role.RECEPTIONIST) {
-      throw new BadRequestException('Only doctor or receptionist passwords can be reset here');
+    if (!isClinicPortalRole(user.role) && user.role !== Role.DOCTOR) {
+      throw new BadRequestException('Only clinic staff passwords can be reset here');
     }
 
     const tempPassword = randomBytes(8).toString('hex');
@@ -321,7 +517,7 @@ export class ClinicsService {
    */
   private async prepareStaffCreation(
     clinicId: string,
-    opts: { email?: string; phone?: string; role: 'doctor' | 'receptionist' },
+    opts: { email?: string; phone?: string; role: 'doctor' | 'receptionist' | 'business admin' },
   ) {
     if (!opts.email && !opts.phone) {
       throw new BadRequestException(
@@ -418,8 +614,10 @@ export class ClinicsService {
    * Clinic-level dashboard stats: today's totals, per-doctor queue state,
    * and 7-day traffic. Used by the clinic admin portal.
    */
-  async getClinicDashboard(clinicId: string) {
-    const serviceDay = todayServiceDay();
+  async getClinicDashboard(clinicId: string, caller?: AuthUser) {
+    const serviceDayKey = serviceDay();
+
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
 
     const [clinic, doctors] = await Promise.all([
       this.prisma.clinic.findUnique({
@@ -428,32 +626,33 @@ export class ClinicsService {
       }),
       this.prisma.doctor.findMany({
         where: { clinicId },
-        include: { user: { select: { name: true } }, department: { select: { name: true } } },
+        include: { user: { select: { id: true, name: true } }, department: { select: { name: true } } },
         orderBy: { user: { name: 'asc' } },
       }),
     ]);
 
     if (!clinic) throw new NotFoundException('Clinic not found');
 
-    const doctorIds = doctors.map((d) => d.id);
+    const visibleDoctors = scope === null ? doctors : doctors.filter((d) => scope.includes(d.id));
+    const doctorIds = visibleDoctors.map((d) => d.id);
 
     const [todayStats, doctorQueues, weeklyEntries] = doctorIds.length
       ? await Promise.all([
           this.prisma.queueEntry.groupBy({
             by: ['status'],
-            where: { doctorId: { in: doctorIds }, serviceDay },
+            where: { doctorId: { in: doctorIds }, serviceDay: serviceDayKey },
             _count: { _all: true },
           }),
           this.prisma.queueEntry.groupBy({
             by: ['doctorId', 'status'],
-            where: { doctorId: { in: doctorIds }, serviceDay },
+            where: { doctorId: { in: doctorIds }, serviceDay: serviceDayKey },
             _count: { _all: true },
           }),
           this.prisma.queueEntry.groupBy({
             by: ['serviceDay'],
             where: {
               doctorId: { in: doctorIds },
-              serviceDay: { gte: last7DaysStart() },
+              serviceDay: { gte: serviceDaysAgo(6) },
               status: { in: [EntryStatus.COMPLETED, EntryStatus.SKIPPED, EntryStatus.CANCELLED] },
             },
             _count: { _all: true },
@@ -479,8 +678,9 @@ export class ClinicsService {
       dqMap.get(row.doctorId)![row.status] = row._count._all;
     }
 
-    const doctorList = doctors.map((d) => ({
+    const doctorList = visibleDoctors.map((d) => ({
       id: d.id,
+      userId: d.user.id,
       name: d.user.name,
       department: d.department?.name ?? '—',
       status: d.status,
@@ -494,12 +694,13 @@ export class ClinicsService {
 
     // Last-7-days traffic
     const weekMap = new Map(weeklyEntries.map((e) => [e.serviceDay, e._count._all]));
-    const weeklyTraffic = getLast7Days().map((date) => ({
+    const weeklyTraffic = recentServiceDays(7).map((date) => ({
       date,
-      label: new Date(date + 'T12:00:00').toLocaleDateString('en-IN', {
+      label: new Date(`${date}T12:00:00+05:30`).toLocaleDateString('en-IN', {
         weekday: 'short',
         day: 'numeric',
         month: 'short',
+        timeZone: 'Asia/Kolkata',
       }),
       count: weekMap.get(date) ?? 0,
     }));
@@ -548,9 +749,9 @@ export class ClinicsService {
     const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
     if (!doctor) throw new NotFoundException('Doctor not found');
     if (doctor.clinicId !== clinicId) throw new ForbiddenException('Doctor not in this clinic');
-    const serviceDay = new Date().toISOString().slice(0, 10);
+    const serviceDayKey = serviceDay();
     await this.prisma.queueEvent.deleteMany({ where: { doctorId } });
-    await this.prisma.queueEntry.deleteMany({ where: { doctorId, serviceDay, status: { in: ['WAITING'] } } });
+    await this.prisma.queueEntry.deleteMany({ where: { doctorId, serviceDay: serviceDayKey, status: { in: ['WAITING'] } } });
     await this.prisma.doctor.delete({ where: { id: doctorId } });
     return { deleted: true };
   }
@@ -559,8 +760,19 @@ export class ClinicsService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (user.clinicId !== clinicId) throw new ForbiddenException('User not in this clinic');
-    if (user.role !== Role.RECEPTIONIST) throw new BadRequestException('User is not a receptionist');
+    if (user.role !== Role.RECEPTIONIST && user.role !== Role.CLINIC_ADMIN) {
+      throw new BadRequestException('User is not clinic front-desk staff');
+    }
     // Null out clinic link rather than deleting — preserves patient queue history.
+    await this.prisma.user.update({ where: { id: userId }, data: { clinicId: null } });
+    return { deleted: true };
+  }
+
+  async adminDeleteClinicAdmin(clinicId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.clinicId !== clinicId) throw new ForbiddenException('User not in this clinic');
+    if (user.role !== Role.CLINIC_ADMIN) throw new BadRequestException('User is not a business admin');
     await this.prisma.user.update({ where: { id: userId }, data: { clinicId: null } });
     return { deleted: true };
   }
@@ -583,6 +795,7 @@ export class ClinicsService {
     dateParam?: string,
     from?: string,
     to?: string,
+    caller?: AuthUser,
   ) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
@@ -591,7 +804,11 @@ export class ClinicsService {
       where: { clinicId },
       select: { id: true },
     });
-    const doctorIds = doctors.map((d) => d.id);
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    const doctorIds = this.filterIdsByScope(
+      doctors.map((d) => d.id),
+      scope,
+    );
 
     if (!doctorIds.length) {
       return { period, points: [] };
@@ -606,7 +823,7 @@ export class ClinicsService {
 
     // ── Hourly ───────────────────────────────────────────────────────────────
     if (period === 'hourly') {
-      const targetDay = dateParam ?? todayServiceDay();
+      const targetDay = dateParam ?? serviceDay();
       const entries = await this.prisma.queueEntry.findMany({
         where: { doctorId: { in: doctorIds }, serviceDay: targetDay, status: { in: [...trackedStatuses] } },
         select: { status: true, completedAt: true, joinedAt: true },
@@ -615,7 +832,7 @@ export class ClinicsService {
       for (let h = 0; h < 24; h++) hourMap.set(h, {});
       for (const e of entries) {
         const ts = e.completedAt ?? e.joinedAt;
-        const hour = new Date(ts).getHours();
+        const hour = istHour(ts);
         const hm = hourMap.get(hour)!;
         hm[e.status] = (hm[e.status] ?? 0) + 1;
       }
@@ -626,8 +843,8 @@ export class ClinicsService {
         const cancelled = m[EntryStatus.CANCELLED] ?? 0;
         const skipped   = m[EntryStatus.SKIPPED]   ?? 0;
         return {
-          date: `${targetDay}T${String(h).padStart(2, '0')}:00:00`,
-          label: `${String(h).padStart(2, '0')}:00`,
+          date: `${targetDay}T${String(h).padStart(2, '0')}:00:00+05:30`,
+          label: formatHourLabel(h),
           completed, missed, cancelled, skipped,
           total: completed + missed + cancelled + skipped,
         };
@@ -639,20 +856,13 @@ export class ClinicsService {
     if (period === 'daily') {
       let dates: string[];
       if (from && to) {
-        // Build a day array between from and to (inclusive)
-        const start = new Date(from + 'T12:00:00');
-        const end   = new Date(to   + 'T12:00:00');
         dates = [];
-        for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          dates.push(d.toISOString().slice(0, 10));
+        for (let d = from; d <= to; d = addServiceDays(d, 1)) {
+          dates.push(d);
         }
-        if (dates.length > 366) dates = dates.slice(-366); // safety cap
+        if (dates.length > 366) dates = dates.slice(-366);
       } else {
-        dates = Array.from({ length: count }, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - (count - 1 - i));
-          return d.toISOString().slice(0, 10);
-        });
+        dates = Array.from({ length: count }, (_, i) => addServiceDays(serviceDay(), i - (count - 1)));
       }
       const rangeStart = dates[0];
       const rangeEnd   = dates[dates.length - 1];
@@ -677,7 +887,7 @@ export class ClinicsService {
         const skipped   = m[EntryStatus.SKIPPED]    ?? 0;
         return {
           date,
-          label: new Date(date + 'T12:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+          label: new Date(`${date}T12:00:00+05:30`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }),
           completed, missed, cancelled, skipped,
           total: completed + missed + cancelled + skipped,
         };
@@ -687,12 +897,7 @@ export class ClinicsService {
     }
 
     // ── Monthly ───────────────────────────────────────────────────────────────
-    const start = (() => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (count - 1));
-      d.setDate(1);
-      return d.toISOString().slice(0, 10);
-    })();
+    const start = monthRangeStart(count);
 
     const rows = await this.prisma.queueEntry.groupBy({
       by: ['serviceDay', 'status'],
@@ -708,11 +913,7 @@ export class ClinicsService {
       m[r.status] = (m[r.status] ?? 0) + r._count._all;
     }
 
-    const months = Array.from({ length: count }, (_, i) => {
-      const d = new Date();
-      d.setMonth(d.getMonth() - (count - 1 - i));
-      return d.toISOString().slice(0, 7);
-    });
+    const months = recentMonthKeys(count);
 
     const points = months.map((ym) => {
       const m = monthMap.get(ym) ?? {};
@@ -721,7 +922,7 @@ export class ClinicsService {
       const cancelled = m[EntryStatus.CANCELLED]  ?? 0;
       const skipped   = m[EntryStatus.SKIPPED]    ?? 0;
       const [year, mo] = ym.split('-');
-      const label = new Date(Number(year), Number(mo) - 1, 1).toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+      const label = new Date(`${year}-${mo}-01T12:00:00+05:30`).toLocaleDateString('en-IN', { month: 'short', year: '2-digit', timeZone: 'Asia/Kolkata' });
       return {
         date: ym + '-01',
         label,
@@ -737,7 +938,7 @@ export class ClinicsService {
    * Per-doctor breakdown for a date range — used by the histogram "past data" feature.
    * Returns each doctor's completed/missed/cancelled/skipped totals between `from` and `to`.
    */
-  async getDoctorAnalytics(clinicId: string, from: string, to: string) {
+  async getDoctorAnalytics(clinicId: string, from: string, to: string, caller?: AuthUser) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
@@ -746,7 +947,9 @@ export class ClinicsService {
       include: { user: { select: { name: true } }, department: { select: { name: true } } },
       orderBy: { user: { name: 'asc' } },
     });
-    const doctorIds = doctors.map((d) => d.id);
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    const visibleDoctors = scope === null ? doctors : doctors.filter((d) => scope.includes(d.id));
+    const doctorIds = visibleDoctors.map((d) => d.id);
     if (!doctorIds.length) return { from, to, doctors: [] };
 
     const trackedStatuses = [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED];
@@ -764,7 +967,7 @@ export class ClinicsService {
 
     return {
       from, to,
-      doctors: doctors.map((d) => {
+      doctors: visibleDoctors.map((d) => {
         const m = docMap.get(d.id) ?? {};
         return {
           id: d.id,
@@ -784,17 +987,34 @@ export class ClinicsService {
    * Paginated visit history for the clinic. Returns entries with patient/doctor info
    * plus a summary of totals for the selected date range.
    */
-  async getClinicHistory(clinicId: string, from: string, to: string, page = 1, limit = 50, scopedDoctorId?: string) {
+  async getClinicHistory(
+    clinicId: string,
+    from: string,
+    to: string,
+    page = 1,
+    limit = 50,
+    scopedDoctorId?: string,
+    caller?: AuthUser,
+  ) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
     const doctors = await this.prisma.doctor.findMany({ where: { clinicId }, select: { id: true } });
-    const doctorIds = doctors.map((d) => d.id);
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    let doctorIds = this.filterIdsByScope(
+      doctors.map((d) => d.id),
+      scope,
+    );
     if (!doctorIds.length) {
       return { entries: [], total: 0, page, pages: 0, summary: { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 } };
     }
 
-    // When a specific doctor is requested, verify they belong to this clinic.
+    if (scopedDoctorId) {
+      if (!doctorIds.includes(scopedDoctorId)) {
+        throw new ForbiddenException('You are not assigned to this professional');
+      }
+    }
+
     const filteredDoctorId = scopedDoctorId && doctorIds.includes(scopedDoctorId) ? scopedDoctorId : undefined;
 
     const trackedStatuses = [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED];
@@ -855,9 +1075,13 @@ export class ClinicsService {
     };
   }
 
-  async deleteClinicHistory(clinicId: string, from: string, to: string) {
+  async deleteClinicHistory(clinicId: string, from: string, to: string, caller?: AuthUser) {
     const doctors = await this.prisma.doctor.findMany({ where: { clinicId }, select: { id: true } });
-    const doctorIds = doctors.map((d) => d.id);
+    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    const doctorIds = this.filterIdsByScope(
+      doctors.map((d) => d.id),
+      scope,
+    );
     if (!doctorIds.length) return { deleted: 0 };
     const result = await this.prisma.queueEntry.deleteMany({
       where: {
@@ -869,6 +1093,292 @@ export class ClinicsService {
     return { deleted: result.count };
   }
 
+  async getStaffPerformanceReport(
+    clinicId: string,
+    from: string,
+    to: string,
+    search?: string,
+    caller?: AuthUser,
+  ) {
+    const doctors = await this.listDoctorsInClinic(clinicId, caller);
+    const visible = search
+      ? doctors.filter((d) => d.user.name.toLowerCase().includes(search.toLowerCase()))
+      : doctors;
+
+    const doctorIds = visible.map((d) => d.id);
+    if (!doctorIds.length) {
+      return { from, to, staff: [] };
+    }
+
+    const entries = await this.prisma.queueEntry.findMany({
+      where: {
+        doctorId: { in: doctorIds },
+        serviceDay: { gte: from, lte: to },
+      },
+      select: {
+        id: true,
+        doctorId: true,
+        serviceDay: true,
+        status: true,
+        calledAt: true,
+        startedAt: true,
+        completedAt: true,
+      },
+    });
+
+    const byDoctor = new Map<string, typeof entries>();
+    for (const e of entries) {
+      if (!byDoctor.has(e.doctorId)) byDoctor.set(e.doctorId, []);
+      byDoctor.get(e.doctorId)!.push(e);
+    }
+
+    const staff = visible.map((doc) => {
+      const list = byDoctor.get(doc.id) ?? [];
+      const completed = list.filter((e) => e.status === EntryStatus.COMPLETED);
+      const tokensGenerated = list.filter((e) => e.status !== EntryStatus.CANCELLED).length;
+
+      let totalServedMs = 0;
+      for (const e of completed) {
+        const start = e.startedAt ?? e.calledAt;
+        if (start && e.completedAt) {
+          totalServedMs += e.completedAt.getTime() - start.getTime();
+        }
+      }
+
+      const visitorsServed = completed.length;
+      const avgServedMs = visitorsServed > 0 ? Math.round(totalServedMs / visitorsServed) : 0;
+
+      let idleMs = 0;
+      const days = [...new Set(completed.map((e) => e.serviceDay))];
+      for (const day of days) {
+        const dayCompleted = completed.filter(
+          (e) => e.serviceDay === day && e.calledAt && e.completedAt,
+        );
+        if (dayCompleted.length === 0) continue;
+        const first = Math.min(...dayCompleted.map((e) => e.calledAt!.getTime()));
+        const last = Math.max(...dayCompleted.map((e) => e.completedAt!.getTime()));
+        let servedDay = 0;
+        for (const e of dayCompleted) {
+          const start = e.startedAt ?? e.calledAt!;
+          servedDay += e.completedAt!.getTime() - start.getTime();
+        }
+        idleMs += Math.max(0, last - first - servedDay);
+      }
+
+      return {
+        doctorId: doc.id,
+        staffName: doc.user.name,
+        department: doc.department?.name ?? '—',
+        visitorsServed,
+        tokensGenerated,
+        totalServedMs,
+        avgServedMs,
+        idleMs,
+      };
+    });
+
+    return { from, to, staff: staff.sort((a, b) => b.visitorsServed - a.visitorsServed) };
+  }
+
+  async exportStaffPerformanceCsv(
+    clinicId: string,
+    from: string,
+    to: string,
+    search?: string,
+    caller?: AuthUser,
+  ) {
+    const report = await this.getStaffPerformanceReport(clinicId, from, to, search, caller);
+    const header = [
+      'staffName',
+      'department',
+      'visitorsServed',
+      'tokensGenerated',
+      'totalServedSeconds',
+      'avgServedSeconds',
+      'idleSeconds',
+    ];
+    const escape = (v: string | number) => {
+      const s = String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = [
+      header.join(','),
+      ...report.staff.map((s) =>
+        [
+          s.staffName,
+          s.department,
+          s.visitorsServed,
+          s.tokensGenerated,
+          Math.round(s.totalServedMs / 1000),
+          Math.round(s.avgServedMs / 1000),
+          Math.round(s.idleMs / 1000),
+        ]
+          .map(escape)
+          .join(','),
+      ),
+    ];
+    return { csv: lines.join('\n'), count: report.staff.length, from, to };
+  }
+
+  async exportClinicHistoryCsv(clinicId: string, from: string, to: string, caller?: AuthUser) {
+    const data = await this.getClinicHistory(clinicId, from, to, 1, 10_000, undefined, caller);
+    const header = [
+      'tokenNumber',
+      'serviceDay',
+      'joinedAt',
+      'completedAt',
+      'consultMinutes',
+      'patientName',
+      'patientPhone',
+      'doctorName',
+      'department',
+      'status',
+    ];
+    const escape = (v: string | number | null | undefined) => {
+      const s = v == null ? '' : String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = [
+      header.join(','),
+      ...data.entries.map((e) =>
+        [
+          e.tokenNumber,
+          e.serviceDay,
+          e.joinedAt,
+          e.completedAt ?? '',
+          e.consultMinutes ?? '',
+          e.patient.name,
+          e.patient.phone,
+          e.doctor.name,
+          e.doctor.department,
+          e.status,
+        ]
+          .map(escape)
+          .join(','),
+      ),
+    ];
+    return { csv: lines.join('\n'), count: data.entries.length, from, to };
+  }
+
+  async importClinicHistoryCsv(clinicId: string, csv: string, caller?: AuthUser) {
+    if (caller?.role === Role.RECEPTIONIST) {
+      throw new ForbiddenException('Only business admins can import history');
+    }
+
+    const lines = csv.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) throw new BadRequestException('CSV must include a header row and at least one data row');
+
+    const header = lines[0].split(',').map((h) => h.trim().toLowerCase().replace(/\s+/g, ''));
+    const col = (...names: string[]) => {
+      for (const n of names) {
+        const i = header.indexOf(n.toLowerCase().replace(/\s+/g, ''));
+        if (i >= 0) return i;
+      }
+      return -1;
+    };
+    const iServiceDay = col('serviceday');
+    const iPatientName = col('patientname');
+    const iPatientPhone = col('patientphone');
+    const iDoctorName = col('doctorname');
+    const iStatus = col('status');
+    const iToken = col('tokennumber');
+    if (iServiceDay < 0 || iPatientName < 0 || iPatientPhone < 0 || iDoctorName < 0) {
+      throw new BadRequestException('CSV must include serviceDay, patientName, patientPhone, doctorName columns');
+    }
+
+    const doctors = await this.listDoctorsInClinic(clinicId, caller);
+    const doctorByName = new Map(doctors.map((d) => [d.user.name.toLowerCase(), d.id]));
+
+    let imported = 0;
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const cols = this.parseCsvLine(lines[i]);
+      try {
+        const serviceDayCol = cols[iServiceDay];
+        const patientName = cols[iPatientName];
+        const patientPhone = cols[iPatientPhone];
+        const doctorName = cols[iDoctorName];
+        const statusRaw = (iStatus >= 0 ? cols[iStatus] : 'COMPLETED').toUpperCase();
+        const tokenRaw = iToken >= 0 ? cols[iToken] : undefined;
+
+        if (!serviceDayCol || !patientName || !patientPhone || !doctorName) {
+          throw new Error('Missing required fields');
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDayCol)) {
+          throw new Error('serviceDay must be YYYY-MM-DD');
+        }
+
+        const doctorId = doctorByName.get(doctorName.toLowerCase());
+        if (!doctorId) throw new Error(`Unknown doctor: ${doctorName}`);
+
+        const patient = await this.customers.upsertByPhone(patientPhone, patientName);
+        const status = Object.values(EntryStatus).includes(statusRaw as EntryStatus)
+          ? (statusRaw as EntryStatus)
+          : EntryStatus.COMPLETED;
+
+        const last = await this.prisma.queueEntry.findFirst({
+          where: { doctorId, serviceDay: serviceDayCol },
+          orderBy: { tokenNumber: 'desc' },
+          select: { tokenNumber: true },
+        });
+        const tokenNumber = tokenRaw ? parseInt(tokenRaw, 10) : (last?.tokenNumber ?? 0) + 1;
+
+        await this.prisma.queueEntry.create({
+          data: {
+            doctorId,
+            patientId: patient.id,
+            serviceDay: serviceDayCol,
+            tokenNumber: Number.isFinite(tokenNumber) ? tokenNumber : 1,
+            status,
+            joinedAt: new Date(),
+            completedAt: status === EntryStatus.COMPLETED ? new Date() : null,
+          },
+        });
+        imported += 1;
+      } catch (e) {
+        errors.push(`Row ${i + 1}: ${(e as Error).message}`);
+      }
+    }
+
+    return { imported, errors: errors.slice(0, 20), totalRows: lines.length - 1 };
+  }
+
+  /** Minimal RFC4180-style CSV line parser (handles quoted fields). */
+  private parseCsvLine(line: string): string[] {
+    const out: string[] = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          cur += '"';
+          i += 1;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        out.push(cur);
+        cur = '';
+      } else {
+        cur += ch;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
   async updateStaffEmail(clinicId: string, userId: string, email: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
@@ -877,24 +1387,4 @@ export class ClinicsService {
     if (existing && existing.id !== userId) throw new BadRequestException('Email already in use');
     return this.prisma.user.update({ where: { id: userId }, data: { email } });
   }
-}
-
-function todayServiceDay(): string {
-  const d = new Date();
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
-
-function last7DaysStart(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 6);
-  return d.toISOString().slice(0, 10);
-}
-
-function getLast7Days(): string[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    return d.toISOString().slice(0, 10);
-  });
 }

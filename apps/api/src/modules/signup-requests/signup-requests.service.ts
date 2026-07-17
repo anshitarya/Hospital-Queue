@@ -98,6 +98,12 @@ export class SignupRequestsService {
       businessType: dto.businessType,
     });
 
+    const clinicAdmin = await this.clinics.addClinicAdmin(clinic.id, {
+      name: row.contactName,
+      email: row.email,
+      phone: row.phone,
+    });
+
     const request = await this.prisma.businessSignupRequest.update({
       where: { id },
       data: {
@@ -108,7 +114,7 @@ export class SignupRequestsService {
       include: { clinic: { select: { id: true, name: true } } },
     });
 
-    return { request, clinic };
+    return { request, clinic, clinicAdmin };
   }
 
   pendingCount() {

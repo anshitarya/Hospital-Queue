@@ -10,6 +10,7 @@ datasource db {
 enum Role {
   PATIENT
   RECEPTIONIST
+  CLINIC_ADMIN
   DOCTOR
   ADMIN
 }
@@ -64,8 +65,28 @@ model Clinic {
   doctors               Doctor[]
   signupRequests        BusinessSignupRequest[]
   visits                Visit[]
-  businessSetting       BusinessSetting?
-  workflowConfiguration WorkflowConfiguration?
+  businessSetting           BusinessSetting?
+  workflowConfiguration     WorkflowConfiguration?
+  receptionistAssignments   ReceptionistAssignment[]
+  professionalRatings     ProfessionalRating[]
+}
+
+// Maps receptionists to the professionals they manage (1 receptionist : N doctors).
+// No rows for a receptionist means they see all clinic professionals (backward compatible).
+model ReceptionistAssignment {
+  id             String   @id @default(cuid())
+  clinicId       String
+  clinic         Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  receptionistId String
+  receptionist   User     @relation("ReceptionistAssignments", fields: [receptionistId], references: [id], onDelete: Cascade)
+  doctorId       String
+  doctor         Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+
+  @@unique([receptionistId, doctorId])
+  @@index([clinicId])
+  @@index([receptionistId])
+  @@index([doctorId])
 }
 
 // One-use, time-limited code that lets a receptionist self-register.
@@ -119,7 +140,9 @@ model User {
   patientVisits      Visit[]       @relation("PatientVisits")
   transfersInitiated TransferLog[] @relation("TransfersInitiated")
   leaves             StaffLeave[]  @relation("UserLeaves")
-  approvedLeaves     StaffLeave[]  @relation("ApprovedLeaves")
+  approvedLeaves           StaffLeave[]             @relation("ApprovedLeaves")
+  receptionistAssignments  ReceptionistAssignment[] @relation("ReceptionistAssignments")
+  professionalRatings      ProfessionalRating[]     @relation("PatientRatings")
 
   @@index([role])
   @@index([clinicId])
@@ -162,8 +185,10 @@ model Doctor {
   walkinAllowed      Boolean                @default(true)
   followupPriority   Boolean                @default(false)
   specialization     String?
-  roomNumber         String?
-  updatedAt          DateTime               @updatedAt
+  roomNumber              String?
+  updatedAt               DateTime                 @updatedAt
+  receptionistAssignments ReceptionistAssignment[]
+  ratings                 ProfessionalRating[]
 
   @@index([departmentId])
   @@index([clinicId])
@@ -199,6 +224,7 @@ model QueueEntry {
   visit           Visit?      @relation(fields: [visitId], references: [id], onDelete: Cascade)
   appointmentTime DateTime?
   appointmentSlot String?
+  rating          ProfessionalRating?
 
   @@unique([doctorId, serviceDay, tokenNumber])
   @@index([doctorId, status])
@@ -355,6 +381,25 @@ model StaffLeave {
   updatedAt    DateTime   @updatedAt
 
   @@index([userId])
+}
+
+model ProfessionalRating {
+  id        String     @id @default(cuid())
+  clinicId  String
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  doctorId  String
+  doctor    Doctor     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   User       @relation("PatientRatings", fields: [patientId], references: [id], onDelete: Cascade)
+  entryId   String     @unique
+  entry     QueueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String?
+  createdAt DateTime   @default(now())
+
+  @@index([doctorId, createdAt])
+  @@index([clinicId])
+  @@index([patientId])
 }
 
 model WorkflowConfiguration {

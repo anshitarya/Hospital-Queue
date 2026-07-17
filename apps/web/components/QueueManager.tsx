@@ -17,7 +17,7 @@
  * receptionist or admin user is authenticated.
  */
 
-import { useEffect, useMemo, useState, useCallback, useRef, memo } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef, memo, Fragment } from 'react';
 import { api, ApiError, type QueueEntry, type Clinic, type Snapshot } from '@/lib/api';
 import { useDoctorQueue } from '@/lib/socket';
 import { useOptimisticSnapshot } from '@/lib/useOptimisticSnapshot';
@@ -28,10 +28,49 @@ import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput'
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { EmptyState, EmptyIcons } from '@/components/EmptyState';
 import { getLabels } from '@/lib/labels';
+import { serviceDay } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 
 function doctorStorageKey(clinicId: string) {
   return `turnos_selected_doctor_${clinicId}`;
+}
+
+const DRAG_COMMIT_PX = 10;
+const AUTO_SCROLL_EDGE = 56;
+const AUTO_SCROLL_SPEED = 10;
+
+/** 0-based insertion slot among waiting entries; null = no valid drop. */
+function computeMoveTarget(fromIdx: number, dropSlot: number, waitingCount: number): number | null {
+  if (dropSlot === fromIdx || dropSlot === fromIdx + 1) return null;
+  let target = dropSlot + 1;
+  if (fromIdx < dropSlot) target = dropSlot;
+  return Math.max(1, Math.min(target, waitingCount));
+}
+
+function reorderWaitingEntries(entries: QueueEntry[], id: string, targetPosition: number): QueueEntry[] {
+  const waiting = entries.filter((e) => e.status === 'WAITING');
+  const nonWaiting = entries.filter((e) => e.status !== 'WAITING');
+  const fromIdx = waiting.findIndex((e) => e.id === id);
+  if (fromIdx < 0) return entries;
+  const reordered = waiting.filter((e) => e.id !== id);
+  const toIdx = Math.max(0, Math.min(targetPosition - 1, reordered.length));
+  reordered.splice(toIdx, 0, waiting[fromIdx]);
+  const inConsult = nonWaiting.filter((e) => e.status === 'IN_CONSULTATION');
+  const other = nonWaiting.filter((e) => e.status !== 'IN_CONSULTATION');
+  return [...inConsult, ...reordered, ...other];
+}
+
+function DropPlaceholder() {
+  return (
+    <div
+      className="queue-drop-placeholder flex items-center justify-center"
+      aria-hidden
+    >
+      <span className="text-[11px] font-medium text-brand-600 dark:text-brand-400 tracking-wide">
+        Drop here
+      </span>
+    </div>
+  );
 }
 
 function fmtShortDate(iso: string | null): string {
@@ -72,10 +111,14 @@ export function QueueManager() {
   const [selectMode, setSelectMode]       = useState(false);
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [actionInFlight, setActionInFlight] = useState<Set<string>>(new Set());
 
   // ── Drag and drop ────────────────────────────────────────────────────────
-  const [dragId, setDragId]   = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<{ id: string; startY: number; committed: boolean } | null>(null);
+  const [dropSlot, setDropSlot] = useState<number | null>(null);
+  const queueListRef = useRef<HTMLDivElement>(null);
+  const autoScrollRaf = useRef<number | null>(null);
+  const lastPointerY = useRef(0);
 
   // ── Modals / toasts ─────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -155,10 +198,11 @@ export function QueueManager() {
     patcher?: (s: Snapshot) => Snapshot,
   ) => {
     if (patcher) applyOptimistic(patcher);
-    fn().catch((err) => {
+    return fn().catch((err) => {
       const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
       setToast({ type: 'err', msg: `${label} failed: ${msg}` });
       revertOptimistic();
+      throw err;
     });
   }, [applyOptimistic, revertOptimistic]);
 
@@ -199,7 +243,7 @@ export function QueueManager() {
           id: pendingId,
           doctorId: selectedDoctorId!,
           patientId: 'pending',
-          serviceDay: new Date().toISOString().split('T')[0],
+          serviceDay: serviceDay(),
           tokenNumber: 0,
           status: 'WAITING' as const,
           priority: body.priority ?? 0,
@@ -252,20 +296,48 @@ export function QueueManager() {
       }),
     );
 
+  const endServiceShift = () => {
+    if (!selectedDoctorId) return;
+    if (!window.confirm('End this shift and move waiting patients to the next available shift?')) return;
+    void callAction(
+      () => api<{ rolled: number; message: string }>(`/queue/doctor/${selectedDoctorId}/end-service`, { method: 'POST' }),
+      'end-service',
+      (s) => ({
+        ...s,
+        doctor: s.doctor ? { ...s.doctor, status: 'PAUSED' as const } : s.doctor,
+      }),
+    ).then((res) => {
+      if (res && typeof res === 'object' && 'message' in res) {
+        setToast({ type: 'ok', msg: (res as { message: string }).message });
+      }
+    });
+  };
+
   // ── Entry actions ────────────────────────────────────────────────────────
-  const setEntryStatus = useCallback((id: string, action: 'complete' | 'skip' | 'cancel') =>
+  const setEntryStatus = useCallback((id: string, action: 'complete' | 'skip' | 'cancel') => {
+    setActionInFlight((prev) => new Set(prev).add(id));
     callAction(
       () => api(`/queue/entry/${id}/${action}`, { method: 'POST' }),
       action,
-      (s) => ({
-        ...s,
-        entries: s.entries.map((e) =>
-          e.id === id
-            ? { ...e, status: (action === 'complete' ? 'COMPLETED' : action === 'skip' ? 'SKIPPED' : 'CANCELLED') as typeof e.status }
-            : e,
-        ),
-      }),
-    ), [callAction]);
+      (s) => {
+        const entry = s.entries.find((e) => e.id === id);
+        const nextStatus =
+          action === 'complete' ? 'COMPLETED' : action === 'skip' ? 'SKIPPED' : 'CANCELLED';
+        const wasInConsult = entry?.status === 'IN_CONSULTATION';
+        return {
+          ...s,
+          currentToken: wasInConsult ? null : s.currentToken,
+          entries: s.entries.filter((e) => e.id !== id),
+        };
+      },
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
 
   const markEmergency = useCallback((id: string) =>
     callAction(
@@ -305,7 +377,7 @@ export function QueueManager() {
               id: `pending-rejoin-${Date.now()}`,
               doctorId: s.doctor?.id ?? '',
               patientId: missed?.patient?.id ?? 'pending',
-              serviceDay: new Date().toISOString().split('T')[0],
+              serviceDay: serviceDay(),
               tokenNumber: 0,
               status: 'WAITING' as const,
               priority: 0,
@@ -322,7 +394,43 @@ export function QueueManager() {
     ), [callAction]);
 
   const moveEntry = useCallback((id: string, position: number) =>
-    callAction(() => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }), 'Move'), [callAction]);
+    callAction(
+      () => api(`/queue/entry/${id}/move`, { method: 'POST', body: { position } }),
+      'Move',
+      (s) => ({ ...s, entries: reorderWaitingEntries(s.entries, id, position) }),
+    ), [callAction]);
+
+  const moveBackEntry = useCallback((id: string) =>
+    callAction(
+      () => api(`/queue/entry/${id}/move-back`, { method: 'POST' }),
+      'Move back',
+      (s) => {
+        const entry = s.entries.find((e) => e.id === id);
+        if (!entry) return s;
+        if (entry.status === 'IN_CONSULTATION') {
+          return {
+            ...s,
+            currentToken: null,
+            entries: s.entries.map((e) =>
+              e.id === id ? { ...e, status: 'WAITING' as const } : e,
+            ),
+          };
+        }
+        const active = s.entries.filter(
+          (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
+        );
+        const order = new Map(
+          [...active]
+            .sort((a, b) => (a.sortOrder ?? a.tokenNumber) - (b.sortOrder ?? b.tokenNumber))
+            .map((e, i) => [e.id, i + 1]),
+        );
+        const pos = order.get(id);
+        if (pos !== undefined) {
+          return { ...s, entries: reorderWaitingEntries(s.entries, id, pos + 1) };
+        }
+        return s;
+      },
+    ), [callAction]);
 
   const clearQueue = useCallback((includeMissed: boolean) => {
     setShowClearConfirm(false);
@@ -364,6 +472,7 @@ export function QueueManager() {
   const handleEmergency = useCallback((id: string) => markEmergency(id), [markEmergency]);
   const handleMiss = useCallback((id: string) => missEntry(id), [missEntry]);
   const handleMove = useCallback((id: string, pos: number) => moveEntry(id, pos), [moveEntry]);
+  const handleMoveBack = useCallback((id: string) => moveBackEntry(id), [moveBackEntry]);
   const handleTransfer = useCallback(
     (id: string, destId: string, reason?: string, walkin?: boolean, slotType?: 'NEW' | 'FOLLOWUP') =>
       callAction(
@@ -378,21 +487,105 @@ export function QueueManager() {
   );
 
   // ── Drag-and-drop handlers ────────────────────────────────────────────────
-  const handleDragStart = (id: string) => setDragId(id);
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOver(id);
-  };
-  const handleDrop = (e: React.DragEvent, targetId: string) => {
-    e.preventDefault();
-    if (!dragId || dragId === targetId) { setDragId(null); setDragOver(null); return; }
-    const targetPos = orderMap.get(targetId);
-    if (targetPos !== undefined) moveEntry(dragId, targetPos);
-    setDragId(null);
-    setDragOver(null);
-  };
-  const handleDragEnd = () => { setDragId(null); setDragOver(null); };
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRaf.current !== null) {
+      cancelAnimationFrame(autoScrollRaf.current);
+      autoScrollRaf.current = null;
+    }
+  }, []);
+
+  const tickAutoScroll = useCallback(() => {
+    const el = queueListRef.current;
+    if (!el) {
+      autoScrollRaf.current = null;
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    const y = lastPointerY.current;
+    let dy = 0;
+    if (y < rect.top + AUTO_SCROLL_EDGE) dy = -AUTO_SCROLL_SPEED;
+    else if (y > rect.bottom - AUTO_SCROLL_EDGE) dy = AUTO_SCROLL_SPEED;
+    if (dy !== 0) {
+      el.scrollTop += dy;
+      autoScrollRaf.current = requestAnimationFrame(tickAutoScroll);
+    } else {
+      autoScrollRaf.current = null;
+    }
+  }, []);
+
+  const startAutoScroll = useCallback((clientY: number) => {
+    lastPointerY.current = clientY;
+    if (autoScrollRaf.current === null) {
+      autoScrollRaf.current = requestAnimationFrame(tickAutoScroll);
+    }
+  }, [tickAutoScroll]);
+
+  const resetDrag = useCallback(() => {
+    stopAutoScroll();
+    setDragState(null);
+    setDropSlot(null);
+  }, [stopAutoScroll]);
+
+  const handleDragStart = useCallback((ev: React.DragEvent, id: string) => {
+    if (selectMode) {
+      ev.preventDefault();
+      return;
+    }
+    if (!(ev.target as Element).closest('[data-drag-handle]')) {
+      ev.preventDefault();
+      return;
+    }
+    ev.dataTransfer.effectAllowed = 'move';
+    ev.dataTransfer.setData('text/plain', id);
+    setDragState({ id, startY: ev.clientY, committed: false });
+    setDropSlot(null);
+  }, [selectMode]);
+
+  const handleDrag = useCallback((ev: React.DragEvent) => {
+    if (!dragState || ev.clientY === 0) return;
+    startAutoScroll(ev.clientY);
+    if (!dragState.committed && Math.abs(ev.clientY - dragState.startY) >= DRAG_COMMIT_PX) {
+      setDragState((s) => (s ? { ...s, committed: true } : s));
+    }
+  }, [dragState, startAutoScroll]);
+
+  const handleDragOverRow = useCallback((ev: React.DragEvent, waitingIndex: number) => {
+    if (!dragState?.committed) return;
+    ev.preventDefault();
+    ev.dataTransfer.dropEffect = 'move';
+    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    const insertIdx = ev.clientY < rect.top + rect.height / 2 ? waitingIndex : waitingIndex + 1;
+    setDropSlot(insertIdx);
+    startAutoScroll(ev.clientY);
+  }, [dragState?.committed, startAutoScroll]);
+
+  const handleListDragOver = useCallback((ev: React.DragEvent) => {
+    if (!dragState?.committed) return;
+    ev.preventDefault();
+    startAutoScroll(ev.clientY);
+  }, [dragState?.committed, startAutoScroll]);
+
+  const handleDrop = useCallback((ev: React.DragEvent, waitingEntries: QueueEntry[]) => {
+    ev.preventDefault();
+    if (!dragState?.committed || dropSlot === null) {
+      resetDrag();
+      return;
+    }
+    const fromIdx = waitingEntries.findIndex((e) => e.id === dragState.id);
+    if (fromIdx < 0) {
+      resetDrag();
+      return;
+    }
+    const target = computeMoveTarget(fromIdx, dropSlot, waitingEntries.length);
+    if (target !== null) moveEntry(dragState.id, target);
+    resetDrag();
+  }, [dragState, dropSlot, moveEntry, resetDrag]);
+
+  const handleDragEnd = useCallback(() => {
+    resetDrag();
+  }, [resetDrag]);
+
+  useEffect(() => () => stopAutoScroll(), [stopAutoScroll]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
@@ -548,8 +741,8 @@ export function QueueManager() {
                     <span className="text-amber-600 dark:text-amber-400 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={callNext} className="btn-primary flex-1 !py-2 text-xs">
+                <div className="flex gap-2 flex-wrap">
+                  <button type="button" onClick={callNext} className="btn-primary flex-1 !py-2 text-xs min-w-[100px]">
                     ▶ Call next
                   </button>
                   {snapshot.doctor.status === 'PAUSED' ? (
@@ -557,6 +750,10 @@ export function QueueManager() {
                   ) : (
                     <button type="button" onClick={() => controlDoctor('pause')} className="btn-secondary !py-2 text-xs">Pause</button>
                   )}
+                  <button type="button" onClick={endServiceShift} title="Move waiting patients to next shift"
+                    className="btn-secondary !py-2 text-xs text-amber-700 dark:text-amber-400">
+                    End shift
+                  </button>
                 </div>
               </div>
             )}
@@ -609,10 +806,10 @@ export function QueueManager() {
               )}
             </div>
             {/* Drag hint */}
-            {(snapshot?.entries ?? []).filter((e) => e.status === 'WAITING').length > 1 && (
+            {(snapshot?.entries ?? []).filter((e) => e.status === 'WAITING').length > 1 && !queueSearch.trim() && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 flex items-center gap-1">
                 <svg viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
-                Drag rows to reorder the queue
+                Drag the ⋮⋮ handle to reorder — auto-scrolls on long queues
               </p>
             )}
             {showClearConfirm && (
@@ -642,55 +839,82 @@ export function QueueManager() {
           {(() => {
             const sq       = queueSearch.toLowerCase().trim();
             const entries  = snapshot?.entries ?? [];
+            const activeEntries = entries.filter(
+              (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
+            );
             const filtered = sq
-              ? entries.filter((e) =>
+              ? activeEntries.filter((e) =>
                   e.patient?.name?.toLowerCase().includes(sq) ||
                   (e.patient?.phone ?? '').includes(sq) ||
                   matchesTokenSearch(sq, e.tokenNumber),
                 )
-              : entries;
+              : activeEntries;
+            const waitingEntries = (snapshot?.entries ?? []).filter(
+              (e) => e.status === 'WAITING' && !e.id.startsWith('pending-'),
+            );
+            const dragAllowed = !sq && !selectMode;
+            const dragActive = dragAllowed && dragState?.committed === true;
             return (
-              <div className="divide-subtle">
+              <div
+                ref={queueListRef}
+                className="divide-subtle max-h-[min(60vh,32rem)] overflow-y-auto overscroll-contain queue-scroll"
+                onDragOver={handleListDragOver}
+                onDrop={(ev) => handleDrop(ev, waitingEntries)}
+              >
                 {filtered.length > 0 ? (
-                  filtered.map((e) => (
-                    <div
-                      key={e.id}
-                      className={`flex items-stretch transition-all duration-150 ${
-                        dragOver === e.id && dragId !== e.id ? 'ring-2 ring-brand-400 ring-inset' : ''
-                      } ${dragId === e.id ? 'opacity-40' : ''}`}
-                      draggable={e.status === 'WAITING' && !e.id.startsWith('pending-')}
-                      onDragStart={() => handleDragStart(e.id)}
-                      onDragOver={(ev) => handleDragOver(ev, e.id)}
-                      onDrop={(ev) => handleDrop(ev, e.id)}
-                      onDragEnd={handleDragEnd}
-                    >
-                      {selectMode && e.status === 'WAITING' && (
-                        <label className="flex items-center pl-4 pr-2 cursor-pointer">
-                          <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500"
-                            checked={selectedIds.has(e.id)}
-                            onChange={() => setSelectedIds((prev) => {
-                              const next = new Set(prev);
-                              next.has(e.id) ? next.delete(e.id) : next.add(e.id);
-                              return next;
-                            })} />
-                        </label>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <QueueRow
-                          entry={e}
-                          orderNumber={orderMap.get(e.id)}
-                          isDragging={dragId === e.id}
-                          onComplete={handleComplete}
-                          onCancel={handleCancel}
-                          onEmergency={handleEmergency}
-                          onMiss={handleMiss}
-                          onMove={handleMove}
-                          onTransfer={handleTransfer}
-                          doctors={allDoctors}
-                        />
-                      </div>
-                    </div>
-                  ))
+                  filtered.map((e) => {
+                    const waitingIndex = waitingEntries.findIndex((w) => w.id === e.id);
+                    const isWaitingDraggable =
+                      dragAllowed && e.status === 'WAITING' && !e.id.startsWith('pending-');
+                    const showPlaceholderBefore =
+                      dragActive && waitingIndex >= 0 && dropSlot === waitingIndex;
+                    return (
+                      <Fragment key={e.id}>
+                        {showPlaceholderBefore && <DropPlaceholder />}
+                        <div
+                          className={`queue-list-item flex items-stretch ${
+                            dragState?.id === e.id ? 'queue-row-dragging' : ''
+                          }`}
+                          draggable={isWaitingDraggable}
+                          onDragStart={(ev) => handleDragStart(ev, e.id)}
+                          onDrag={handleDrag}
+                          onDragOver={(ev) => {
+                            if (waitingIndex >= 0) handleDragOverRow(ev, waitingIndex);
+                          }}
+                          onDrop={(ev) => handleDrop(ev, waitingEntries)}
+                          onDragEnd={handleDragEnd}
+                        >
+                          {selectMode && e.status === 'WAITING' && (
+                            <label className="flex items-center pl-4 pr-2 cursor-pointer">
+                              <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500"
+                                checked={selectedIds.has(e.id)}
+                                onChange={() => setSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.has(e.id) ? next.delete(e.id) : next.add(e.id);
+                                  return next;
+                                })} />
+                            </label>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <QueueRow
+                              entry={e}
+                              orderNumber={orderMap.get(e.id)}
+                              isDragging={dragState?.id === e.id}
+                              actionInFlight={actionInFlight.has(e.id)}
+                              onComplete={handleComplete}
+                              onCancel={handleCancel}
+                              onEmergency={handleEmergency}
+                              onMiss={handleMiss}
+                              onMove={handleMove}
+                              onMoveBack={handleMoveBack}
+                              onTransfer={handleTransfer}
+                              doctors={allDoctors}
+                            />
+                          </div>
+                        </div>
+                      </Fragment>
+                    );
+                  })
                 ) : (
                   <EmptyState
                     icon={sq ? <EmptyIcons.Search /> : <EmptyIcons.Queue />}
@@ -698,6 +922,9 @@ export function QueueManager() {
                     description={sq ? 'Try a different name or phone number.' : selectedDoctorId ? 'Add a patient using the form on the left.' : ''}
                     size="md"
                   />
+                )}
+                {dragActive && dropSlot === waitingEntries.length && waitingEntries.length > 0 && (
+                  <DropPlaceholder />
                 )}
               </div>
             );
@@ -773,17 +1000,19 @@ export function QueueManager() {
 // ─── QueueRow ─────────────────────────────────────────────────────────────────
 
 const QueueRow = memo(function QueueRow({
-  entry, orderNumber, isDragging,
-  onComplete, onCancel, onEmergency, onMiss, onMove, onTransfer, doctors,
+  entry, orderNumber, isDragging, actionInFlight,
+  onComplete, onCancel, onEmergency, onMiss, onMove, onMoveBack, onTransfer, doctors,
 }: {
   entry: QueueEntry;
   orderNumber?: number;
   isDragging?: boolean;
+  actionInFlight?: boolean;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onEmergency: (id: string) => void;
   onMiss: (id: string) => void;
   onMove: (id: string, position: number) => void;
+  onMoveBack: (id: string) => void;
   onTransfer: (id: string, destDoctorId: string, reason?: string, walkin?: boolean, slotType?: 'NEW' | 'FOLLOWUP') => void;
   doctors: Array<{ id: string; user: { name: string }; deptName?: string }>;
 }) {
@@ -825,7 +1054,7 @@ const QueueRow = memo(function QueueRow({
       <div className="flex items-start gap-3">
         {/* Drag handle */}
         {isDraggable && (
-          <div className="drag-handle shrink-0 mt-1 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-500 transition-colors" title="Drag to reorder">
+          <div data-drag-handle className="drag-handle shrink-0 mt-1 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-500 transition-colors" title="Drag to reorder">
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
               <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
             </svg>
@@ -953,9 +1182,15 @@ const QueueRow = memo(function QueueRow({
       <div className="flex gap-1.5 mt-2.5 justify-end flex-wrap">
         {isInConsult && (
           <>
-            <button type="button" onClick={() => onComplete(entry.id)} className="btn-success !px-3 !py-1.5 text-xs">
+            <button type="button" onClick={() => onComplete(entry.id)} disabled={actionInFlight}
+              className="btn-success !px-3 !py-1.5 text-xs disabled:opacity-50">
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5"><path fillRule="evenodd" d="M12.416 3.376a.75.75 0 0 1 .208 1.04l-5 7.5a.75.75 0 0 1-1.154.114l-3-3a.75.75 0 0 1 1.06-1.06l2.353 2.353 4.493-6.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd"/></svg>
-              Done
+              {actionInFlight ? 'Saving…' : 'Done'}
+            </button>
+            <button type="button" onClick={() => onMoveBack(entry.id)} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs"
+              title="Return patient to front of queue">
+              ↩ Move back
             </button>
             <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
               Transfer
@@ -967,6 +1202,11 @@ const QueueRow = memo(function QueueRow({
         )}
         {isWaiting && (
           <>
+            <button type="button" onClick={() => onMoveBack(entry.id)} disabled={actionInFlight}
+              className="btn-secondary !px-3 !py-1.5 text-xs"
+              title="Move one position back in queue">
+              ↩ Back
+            </button>
             <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
               Transfer
             </button>

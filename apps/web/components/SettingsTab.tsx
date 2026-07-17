@@ -22,6 +22,53 @@ interface SettingsData {
   autoQueueAssignment: boolean;
 }
 
+/** Fields allowed by PATCH /business-settings/my (UpdateSettingsDto). */
+const EDITABLE_FIELDS = [
+  'businessType',
+  'queueMode',
+  'appointmentMode',
+  'tokenPrefix',
+  'queueNumberFormat',
+  'appointmentInterval',
+  'maxCustomersPerSlot',
+  'bufferTime',
+  'gracePeriod',
+  'noShowTimeout',
+  'walkinJoinRule',
+  'walkinJoinRuleParam',
+  'followupJoinRule',
+  'followupJoinRuleParam',
+  'emergencyJoinRule',
+  'vipJoinRule',
+  'autoQueueAssignment',
+] as const;
+
+function parseSettings(raw: Record<string, unknown>): SettingsData {
+  return {
+    businessType: String(raw.businessType ?? 'CLINIC'),
+    queueMode: String(raw.queueMode ?? 'LIVE_QUEUE'),
+    appointmentMode: String(raw.appointmentMode ?? 'HYBRID'),
+    tokenPrefix: String(raw.tokenPrefix ?? 'TK'),
+    queueNumberFormat: String(raw.queueNumberFormat ?? 'NUMBER'),
+    appointmentInterval: Number(raw.appointmentInterval ?? 15),
+    maxCustomersPerSlot: Number(raw.maxCustomersPerSlot ?? 1),
+    bufferTime: Number(raw.bufferTime ?? 0),
+    gracePeriod: Number(raw.gracePeriod ?? 4),
+    noShowTimeout: Number(raw.noShowTimeout ?? 15),
+    walkinJoinRule: String(raw.walkinJoinRule ?? 'END_OF_QUEUE'),
+    walkinJoinRuleParam: Number(raw.walkinJoinRuleParam ?? 0),
+    followupJoinRule: String(raw.followupJoinRule ?? 'END_OF_QUEUE'),
+    followupJoinRuleParam: Number(raw.followupJoinRuleParam ?? 0),
+    emergencyJoinRule: String(raw.emergencyJoinRule ?? 'PRIORITY_QUEUE'),
+    vipJoinRule: String(raw.vipJoinRule ?? 'PRIORITY_QUEUE'),
+    autoQueueAssignment: Boolean(raw.autoQueueAssignment ?? false),
+  };
+}
+
+function settingsPayload(settings: SettingsData): Record<string, unknown> {
+  return Object.fromEntries(EDITABLE_FIELDS.map((key) => [key, settings[key]]));
+}
+
 export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) => void }) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,8 +77,8 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
   useEffect(() => {
     async function load() {
       try {
-        const data = await api<SettingsData>('/business-settings/my');
-        setSettings(data);
+        const data = await api<Record<string, unknown>>('/business-settings/my');
+        setSettings(parseSettings(data));
       } catch {
         setToast({ type: 'err', msg: 'Failed to load business settings' });
       } finally {
@@ -48,7 +95,7 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
     try {
       await api('/business-settings/my', {
         method: 'PATCH',
-        body: settings,
+        body: settingsPayload(settings),
       });
       setToast({ type: 'ok', msg: 'Settings updated successfully' });
     } catch (err) {
@@ -193,6 +240,9 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
         {/* Timing parameters */}
         <div className="card p-5 space-y-4">
           <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Timeout & Buffer Parameters</h3>
+          <p className="text-xs text-slate-400">
+            Buffer adds padding between appointments in time-slot mode. Grace period controls how far back a missed patient rejoins in the queue. No-show timeout is reserved for automatic missed marking (coming soon).
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="label text-xs font-semibold text-slate-500 uppercase">Buffer Time (Minutes)</label>

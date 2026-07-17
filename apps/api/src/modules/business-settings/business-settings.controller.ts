@@ -9,14 +9,14 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class BusinessSettingsController {
   constructor(private readonly service: BusinessSettingsService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
   @Get('my')
   async getMySettings(@CurrentUser() user: AuthUser) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
     return this.service.getSettings(user.clinicId);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN)
   @Patch('my')
   async updateMySettings(@CurrentUser() user: AuthUser, @Body() dto: UpdateSettingsDto) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');

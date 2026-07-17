@@ -13,7 +13,6 @@ interface AnalyticsData {
   returningCustomers: number;
   newCustomers: number;
   noShowPercentage: number;
-  satisfactionScore: number;
 }
 
 export function AnalyticsTab({ setToast }: { setToast: (t: ToastMessage | null) => void }) {
@@ -42,21 +41,30 @@ export function AnalyticsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     return <div className="py-12 text-center text-rose-500 text-sm">No data loaded.</div>;
   }
 
-  const { todayStats: stats, averages, peakHour, busyHours, avgCustomersPerHour, avgCustomersPerProfessional, returningCustomers, newCustomers, noShowPercentage, satisfactionScore } = data;
+  const {
+    todayStats: stats,
+    averages,
+    peakHour,
+    busyHours,
+    avgCustomersPerHour,
+    avgCustomersPerProfessional,
+    returningCustomers,
+    newCustomers,
+    noShowPercentage,
+  } = data;
 
   return (
     <div className="p-5 sm:p-6 max-w-6xl mx-auto space-y-6">
       <div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Real-time Business Intelligence Console</h2>
-        <p className="text-xs text-slate-400 mt-0.5 font-medium">Evaluate operations efficiency, wait times, satisfaction levels, and peak periods</p>
+        <p className="text-xs text-slate-400 mt-0.5 font-medium">Evaluate operations efficiency, wait times, and peak periods · All times in IST</p>
       </div>
 
       {/* Row 1: Operations Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricBox title="Avg Wait Time" value={`${averages.avgWaitTime} min`} subtitle={`Max Wait: ${averages.maxWaitTime} min`} color="teal" />
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+        <MetricBox title="Avg Wait Time" value={`${averages.avgWaitTime} min`} subtitle={`Max Wait: ${averages.maxWaitTime} min · completed today`} color="teal" />
         <MetricBox title="Avg Service Time" value={`${averages.avgServiceTime} min`} subtitle={`Max Service: ${averages.maxServiceTime} min`} color="blue" />
         <MetricBox title="No-Show Rate" value={`${noShowPercentage}%`} subtitle={`${stats.missed} total no-shows`} color="amber" />
-        <MetricBox title="Satisfaction Rating" value={`${satisfactionScore} / 5`} subtitle="Based on reviews" color="green" />
       </div>
 
       {/* Row 2: Charts and Distributions */}
@@ -67,7 +75,7 @@ export function AnalyticsTab({ setToast }: { setToast: (t: ToastMessage | null) 
             <div className="bg-slate-50 dark:bg-slate-700/20 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
               <span className="text-xs text-slate-400 font-semibold uppercase">Peak Traffic Hour</span>
               <p className="text-2xl font-bold text-slate-800 dark:text-slate-100 mt-1">{peakHour}</p>
-              <span className="text-[10px] text-slate-500 mt-1 block">Hour with highest visitor join rate</span>
+              <span className="text-[10px] text-slate-500 mt-1 block">Hour with highest visitor join rate (IST)</span>
             </div>
             <div className="bg-slate-50 dark:bg-slate-700/20 p-4 rounded-2xl border border-slate-100 dark:border-slate-800">
               <span className="text-xs text-slate-400 font-semibold uppercase">Busy Hours Window</span>

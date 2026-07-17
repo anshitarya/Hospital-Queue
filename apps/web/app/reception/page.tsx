@@ -21,13 +21,15 @@ import { ScheduleTab } from '@/components/ScheduleTab';
 import { LeavesTab } from '@/components/LeavesTab';
 import { WorkflowTab } from '@/components/WorkflowTab';
 import { AnalyticsTab } from '@/components/AnalyticsTab';
+import { ReceptionistAssignmentsTab } from '@/components/ReceptionistAssignmentsTab';
+import { formatDateIst, formatTimeIst, formatDurationHms, serviceDay, serviceDaysAgo } from '@/lib/datetime';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = 'dashboard' | 'queue' | 'history' | 'staff' | 'settings' | 'schedule' | 'leaves' | 'workflows' | 'analytics';
 
 interface DashboardDoctor {
-  id: string; name: string; department: string;
+  id: string; userId?: string; name: string; department: string;
   status: 'AVAILABLE' | 'PAUSED' | 'OFFLINE';
   waiting: number; inConsultation: number;
   completed: number; missed: number; skipped: number; cancelled: number;
@@ -59,8 +61,7 @@ function fmtDate(iso: string | null): string {
 }
 
 function fmtTime(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return formatTimeIst(iso);
 }
 
 function fmtDuration(mins: number | null | undefined): string {
@@ -149,8 +150,8 @@ interface DoctorAnalytics { from: string; to: string; doctors: DoctorAnalyticsRo
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff', 'settings', 'schedule', 'leaves', 'workflows', 'analytics'];
-const TODAY = new Date().toISOString().slice(0, 10);
-const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+const TODAY = serviceDay();
+const daysAgo = (n: number) => serviceDaysAgo(n);
 const SEVEN_AGO = daysAgo(6);
 
 // ─── Nav config ───────────────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ type BookingPeriod = '7d' | '30d' | '3m' | '12m' | 'hourly' | 'custom';
 type DocPeriod     = '7d' | '30d' | '3m' | '12m' | 'today'  | 'custom';
 
 export default function ReceptionPage() {
-  const { ready } = useRequireRole(['RECEPTIONIST', 'ADMIN']);
+  const { ready } = useRequireRole(['RECEPTIONIST', 'CLINIC_ADMIN', 'ADMIN']);
   const { user } = useAuth();
 
   // ── Tab — persisted in localStorage so refresh keeps the user here ──
@@ -227,6 +228,7 @@ export default function ReceptionPage() {
   const [docPhoneResult, setDocPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [docDeptId, setDocDeptId]           = useState('');
   const [docAvg, setDocAvg]                 = useState(7);
+  const [docUseDefaultSchedule, setDocUseDefaultSchedule] = useState(true);
   const [docBusy, setDocBusy]               = useState(false);
   const [departments, setDepartments]       = useState<DepartmentOption[]>([]);
   const [creds, setCreds]                   = useState<DoctorCredentials | null>(null);
@@ -318,13 +320,13 @@ export default function ReceptionPage() {
   }, [activeTab, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || (activeTab !== 'dashboard' && activeTab !== 'queue')) return;
     const id = setInterval(() => {
       void loadDashboard(true);
       void loadAnalytics(bookingPeriod, bookingFrom, bookingTo, bookingHourlyDate);
     }, 30_000);
     return () => clearInterval(id);
-  }, [ready, bookingPeriod, bookingFrom, bookingTo, bookingHourlyDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, activeTab, bookingPeriod, bookingFrom, bookingTo, bookingHourlyDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addDoctor(e: React.FormEvent) {
     e.preventDefault();
@@ -355,10 +357,12 @@ export default function ReceptionPage() {
           phone: docPhoneResult.e164 || undefined,
           departmentId: deptId,
           avgConsultMinutes: docAvg,
+          useDefaultSchedule: docUseDefaultSchedule,
         },
       });
       setDocName(''); setDocEmail(''); setDocPhone('');
       setDocPhoneResult({ ok: false }); setDocDeptId(''); setDocAvg(7);
+      setDocUseDefaultSchedule(true);
       setCreds({
         role: 'doctor',
         name: result.doctor.user.name,
@@ -382,7 +386,7 @@ export default function ReceptionPage() {
   const doctors = data?.doctors ?? [];
   const histDoctors = doctorAnalytics?.doctors ?? doctors;
 
-  const todayDate = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const todayDate = formatDateIst(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   const refresh = () => {
     void loadDashboard(true);
@@ -614,6 +618,13 @@ export default function ReceptionPage() {
         {activeTab === 'staff' && (
           <div className="p-5 sm:p-6 space-y-5">
 
+            {(user?.role === 'CLINIC_ADMIN' || user?.role === 'ADMIN') && (
+              <ReceptionistAssignmentsTab
+                businessType={data?.clinic?.businessType}
+                setToast={setToast}
+              />
+            )}
+
             {/* Add doctor form */}
             <div className="card p-5">
               <h2 className="section-title mb-4 flex items-center gap-2">
@@ -640,6 +651,14 @@ export default function ReceptionPage() {
                   <input className="input flex-1" type="number" min={1} max={120} value={docAvg}
                     onChange={(e) => setDocAvg(Number(e.target.value))} required />
                   <span className="text-xs text-slate-400 shrink-0">{L.perCustomer}</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2 cursor-pointer">
+                  <input type="checkbox" className="rounded accent-brand-600"
+                    checked={docUseDefaultSchedule}
+                    onChange={(e) => setDocUseDefaultSchedule(e.target.checked)} />
+                  <span className="text-slate-600 dark:text-slate-400 text-sm">
+                    Apply default working schedule (Mon–Sat, multiple shifts — editable under Schedules)
+                  </span>
                 </label>
                 <button type="submit" className="btn-primary sm:col-span-2" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
                   {docBusy ? (
@@ -795,9 +814,402 @@ function printHistory(entries: HistoryEntry[], L: ReturnType<typeof getLabels>, 
   win.document.close();
 }
 
+// ─── Reports hub ──────────────────────────────────────────────────────────────
+
+type HistoryReport =
+  | 'catalog'
+  | 'visit-entries'
+  | 'by-provider'
+  | 'staff-performance'
+  | 'ratings'
+  | 'queue-overview'
+  | 'staff-leaves';
+
+interface ReportCard {
+  id: HistoryReport;
+  title: string;
+  description: string;
+  category: string;
+}
+
+const HISTORY_REPORTS: ReportCard[] = [
+  {
+    id: 'visit-entries',
+    category: 'Queue',
+    title: 'Visit entries',
+    description: 'Detailed log of every queue visit with status, duration, and patient info.',
+  },
+  {
+    id: 'by-provider',
+    category: 'Queue',
+    title: 'By provider',
+    description: 'Visit counts and breakdown grouped by each professional.',
+  },
+  {
+    id: 'queue-overview',
+    category: 'Queue',
+    title: 'Overview per period',
+    description: 'Daily visit trend — completed, missed, and cancelled over the selected range.',
+  },
+  {
+    id: 'staff-performance',
+    category: 'Staff',
+    title: 'Staff performance',
+    description: 'Visitors served, tokens generated, served time, and idle time per professional.',
+  },
+  {
+    id: 'ratings',
+    category: 'Staff',
+    title: 'Ratings & feedback',
+    description: 'Customer ratings and comments submitted after completed visits.',
+  },
+  {
+    id: 'staff-leaves',
+    category: 'Staff',
+    title: 'Staff leave report',
+    description: 'Leave and break requests in the selected period with status breakdown.',
+  },
+];
+
+interface StaffPerformanceRow {
+  doctorId: string;
+  staffName: string;
+  department: string;
+  visitorsServed: number;
+  tokensGenerated: number;
+  totalServedMs: number;
+  avgServedMs: number;
+  idleMs: number;
+}
+
+interface RatingsReport {
+  from: string;
+  to: string;
+  total: number;
+  average: number;
+  byDoctor: Array<{ doctorId: string; name: string; department: string; count: number; avg: number }>;
+  entries: Array<{
+    id: string;
+    rating: number;
+    comment: string | null;
+    createdAt: string;
+    doctor: { name: string; department: string };
+    patient: { name: string };
+    tokenNumber: number;
+    serviceDay: string;
+  }>;
+}
+
+interface LeaveAnalyticsReport {
+  from: string;
+  to: string;
+  totals: { requests: number; pending: number; approved: number; rejected: number; cancelled: number };
+  byType: Array<{ type: string; count: number }>;
+  byStatus: Array<{ status: string; count: number }>;
+  topStaff: Array<{ name: string; role: string; count: number; days: number }>;
+}
+
+function ReportCatalog({
+  active,
+  onSelect,
+}: {
+  active: HistoryReport;
+  onSelect: (id: HistoryReport) => void;
+}) {
+  const categories = [...new Set(HISTORY_REPORTS.map((r) => r.category))];
+  return (
+    <div className="space-y-5">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Reports by service</h3>
+        <p className="text-xs text-slate-500 mt-1">Choose a report to view, filter, and export.</p>
+      </div>
+      {categories.map((cat) => (
+        <div key={cat}>
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{cat}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {HISTORY_REPORTS.filter((r) => r.category === cat).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onSelect(r.id)}
+                className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
+                  active === r.id
+                    ? 'border-teal-500 bg-teal-50/60 dark:bg-teal-900/20 ring-2 ring-teal-500/20'
+                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+              >
+                <div className="font-semibold text-sm text-slate-800 dark:text-slate-100">{r.title}</div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{r.description}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StaffPerformanceReportView({
+  from,
+  to,
+  search,
+  onSearchChange,
+  labels: L,
+}: {
+  from: string;
+  to: string;
+  search: string;
+  onSearchChange: (v: string) => void;
+  labels: ReturnType<typeof getLabels>;
+}) {
+  const [rows, setRows] = useState<StaffPerformanceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+    api<{ staff: StaffPerformanceRow[] }>(`/clinics/my/reports/staff-performance?from=${from}&to=${to}${q}`)
+      .then((r) => setRows(r.staff))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [from, to, search]);
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+      const res = await api<{ csv: string }>(`/clinics/my/reports/staff-performance/export?from=${from}&to=${to}${q}`);
+      const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `staff-performance-${from}-${to}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function exportPdf() {
+    const win = window.open('', '_blank', 'width=900,height=700');
+    if (!win) return;
+    const body = rows.map((r) => `
+      <tr>
+        <td>${r.staffName}</td>
+        <td>${r.visitorsServed}</td>
+        <td>${r.tokensGenerated}</td>
+        <td>${formatDurationHms(r.totalServedMs)}</td>
+        <td>${formatDurationHms(r.avgServedMs)}</td>
+        <td>${formatDurationHms(r.idleMs)}</td>
+      </tr>`).join('');
+    win.document.write(`<!DOCTYPE html><html><head><title>Staff Performance</title>
+      <style>body{font-family:Arial,sans-serif;font-size:12px;margin:24px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left}th{background:#f1f5f9}</style>
+      </head><body><h2>Staff performance report</h2><p>${from} → ${to}</p>
+      <table><thead><tr><th>${L.provider}</th><th>Visitors served</th><th>Tokens generated</th><th>Total served</th><th>Avg served</th><th>Idle time</th></tr></thead><tbody>${body}</tbody></table></body></html>`);
+    win.document.close();
+    win.print();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder={`Search ${L.provider.toLowerCase()}…`}
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="input !py-1.5 text-xs max-w-xs"
+        />
+        <div className="ml-auto flex gap-2">
+          <button type="button" onClick={() => void exportCsv()} disabled={exporting}
+            className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 rounded-lg disabled:opacity-50">
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+          <button type="button" onClick={exportPdf}
+            className="px-3 py-1.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 rounded-lg">
+            Export PDF
+          </button>
+        </div>
+      </div>
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto">
+        {loading ? (
+          <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="py-16 text-center text-sm text-slate-400">No data for this period.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 text-left text-xs text-slate-500 uppercase tracking-wide">
+                <th className="px-4 py-3 font-semibold">{L.provider}</th>
+                <th className="px-4 py-3 font-semibold">Visitors served</th>
+                <th className="px-4 py-3 font-semibold">Tokens generated</th>
+                <th className="px-4 py-3 font-semibold">Total served time</th>
+                <th className="px-4 py-3 font-semibold">Average served time</th>
+                <th className="px-4 py-3 font-semibold">Idle time</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              {rows.map((r) => (
+                <tr key={r.doctorId} className="hover:bg-slate-50/60 dark:hover:bg-slate-700/20">
+                  <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100">{r.staffName}</td>
+                  <td className="px-4 py-3 tabular-nums">{r.visitorsServed}</td>
+                  <td className="px-4 py-3 tabular-nums">{r.tokensGenerated}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{formatDurationHms(r.totalServedMs)}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{formatDurationHms(r.avgServedMs)}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{formatDurationHms(r.idleMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RatingsReportView({
+  from,
+  to,
+  search,
+  onSearchChange,
+  labels: L,
+}: {
+  from: string;
+  to: string;
+  search: string;
+  onSearchChange: (v: string) => void;
+  labels: ReturnType<typeof getLabels>;
+}) {
+  const [report, setReport] = useState<RatingsReport | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    const q = search.trim() ? `&search=${encodeURIComponent(search.trim())}` : '';
+    api<RatingsReport>(`/ratings/clinic?from=${from}&to=${to}${q}`)
+      .then(setReport)
+      .catch(() => setReport(null))
+      .finally(() => setLoading(false));
+  }, [from, to, search]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder={`Search ${L.provider.toLowerCase()}…`}
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="input !py-1.5 text-xs max-w-xs"
+        />
+        {report && (
+          <div className="ml-auto flex gap-4 text-sm">
+            <span className="text-slate-500">{report.total} rating{report.total !== 1 ? 's' : ''}</span>
+            <span className="font-semibold text-amber-600">Avg {report.average} ★</span>
+          </div>
+        )}
+      </div>
+      {report && report.byDoctor.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {report.byDoctor.map((d) => (
+            <div key={d.doctorId} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3">
+              <div className="text-xs text-slate-500 truncate">{d.name}</div>
+              <div className="text-lg font-bold text-amber-600 mt-1">{d.avg} ★</div>
+              <div className="text-[10px] text-slate-400">{d.count} review{d.count !== 1 ? 's' : ''}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto">
+        {loading ? (
+          <div className="py-16 text-center text-sm text-slate-400">Loading…</div>
+        ) : !report?.entries.length ? (
+          <div className="py-16 text-center text-sm text-slate-400">No ratings in this period.</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 text-left text-xs text-slate-500 uppercase tracking-wide">
+                <th className="px-4 py-3 font-semibold">Date</th>
+                <th className="px-4 py-3 font-semibold">{L.provider}</th>
+                <th className="px-4 py-3 font-semibold">{L.customer}</th>
+                <th className="px-4 py-3 font-semibold">Rating</th>
+                <th className="px-4 py-3 font-semibold">Comment</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              {report.entries.map((e) => (
+                <tr key={e.id}>
+                  <td className="px-4 py-3 text-xs">{e.serviceDay}</td>
+                  <td className="px-4 py-3">{e.doctor.name}</td>
+                  <td className="px-4 py-3">{e.patient.name}</td>
+                  <td className="px-4 py-3 text-amber-500">{'★'.repeat(e.rating)}{'☆'.repeat(5 - e.rating)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 max-w-xs truncate">{e.comment ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LeavesReportView({ from, to }: { from: string; to: string }) {
+  const [report, setReport] = useState<LeaveAnalyticsReport | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    api<LeaveAnalyticsReport>(`/leaves/analytics?from=${from}&to=${to}`)
+      .then(setReport)
+      .catch(() => setReport(null))
+      .finally(() => setLoading(false));
+  }, [from, to]);
+
+  if (loading) return <div className="py-16 text-center text-sm text-slate-400">Loading…</div>;
+  if (!report) return <div className="py-16 text-center text-sm text-slate-400">Could not load leave report.</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <StatCard label="Requests" value={report.totals.requests} color="teal" />
+        <StatCard label="Pending" value={report.totals.pending} color="amber" />
+        <StatCard label="Approved" value={report.totals.approved} color="green" />
+        <StatCard label="Rejected" value={report.totals.rejected} color="red" />
+        <StatCard label="Cancelled" value={report.totals.cancelled} color="slate" />
+      </div>
+      {report.topStaff.length > 0 && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 text-left text-xs text-slate-500 uppercase tracking-wide">
+                <th className="px-4 py-3 font-semibold">Staff</th>
+                <th className="px-4 py-3 font-semibold">Role</th>
+                <th className="px-4 py-3 font-semibold">Requests</th>
+                <th className="px-4 py-3 font-semibold">Days</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              {report.topStaff.map((s, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-3 font-medium">{s.name}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{s.role.replace('_', ' ')}</td>
+                  <td className="px-4 py-3 tabular-nums">{s.count}</td>
+                  <td className="px-4 py-3 tabular-nums">{s.days}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── History Tab (redesigned) ─────────────────────────────────────────────────
 
-type HistorySubTab = 'entries' | 'by-doctor';
 type StatusFilter  = 'ALL' | 'COMPLETED' | 'MISSED' | 'CANCELLED' | 'SKIPPED';
 
 function HistoryTab({
@@ -812,7 +1224,12 @@ function HistoryTab({
   onRefresh: () => void;
   labels: ReturnType<typeof getLabels>;
 }) {
-  const [subTab, setSubTab]           = useState<HistorySubTab>('entries');
+  const { user } = useAuth();
+  const canImport = user?.role === 'CLINIC_ADMIN' || user?.role === 'ADMIN';
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [activeReport, setActiveReport] = useState<HistoryReport>('catalog');
+  const [staffSearch, setStaffSearch] = useState('');
   const [search, setSearch]           = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [selectedOfficer, setSelectedOfficer] = useState<string>('ALL');
@@ -868,6 +1285,43 @@ function HistoryTab({
   ];
 
   const hasFilters = search || statusFilter !== 'ALL' || selectedOfficer !== 'ALL';
+
+  const activeReportMeta = HISTORY_REPORTS.find((r) => r.id === activeReport);
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const res = await api<{ csv: string; count: number }>(`/clinics/my/history/export?from=${from}&to=${to}`);
+      const blob = new Blob([res.csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `visit-history-${from}-${to}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* ignore */
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const res = await api<{ imported: number; errors: string[] }>('/clinics/my/history/import', {
+        method: 'POST',
+        body: { csv: text },
+      });
+      alert(`Imported ${res.imported} record(s).${res.errors?.length ? `\n\nIssues:\n${res.errors.join('\n')}` : ''}`);
+      onRefresh();
+    } catch {
+      alert('Import failed. Use CSV with columns: serviceDay, patientName, patientPhone, doctorName, status');
+    } finally {
+      setImporting(false);
+    }
+  }
 
   return (
     <div className="p-6 space-y-5">
@@ -934,8 +1388,8 @@ function HistoryTab({
         <StatCard label="Skipped"   value={summary.skipped}   color="slate" />
       </div>
 
-      {/* ── Trend chart ── */}
-      {trendPoints.length > 1 && (
+      {/* ── Trend chart (queue overview) ── */}
+      {(activeReport === 'catalog' || activeReport === 'queue-overview') && trendPoints.length > 1 && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Visit Trend</h3>
@@ -949,36 +1403,117 @@ function HistoryTab({
         </div>
       )}
 
-      {/* ── Sub-tabs ── */}
-      <div className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700">
-        {([['entries', `Visit Entries${hasFilters ? ` (${filtered.length})` : ''}`], ['by-doctor', `By ${L.provider}`]] as [HistorySubTab, string][]).map(([t, label]) => (
-          <button key={t} type="button" onClick={() => setSubTab(t)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              subTab === t ? 'border-teal-600 text-teal-600' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}>{label}</button>
-        ))}
-        <div className="ml-auto pb-1 flex items-center gap-2">
+      {/* ── Report navigation ── */}
+      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setActiveReport('catalog')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            activeReport === 'catalog'
+              ? 'border-teal-600 text-teal-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          All reports
+        </button>
+        {activeReport !== 'catalog' && activeReportMeta && (
+          <span className="px-4 py-2.5 text-sm font-medium border-b-2 border-teal-600 text-teal-600 -mb-px">
+            {activeReportMeta.title}
+          </span>
+        )}
+        {activeReport !== 'catalog' && (
           <button
             type="button"
-            onClick={() => printHistory(filtered, L, from, to)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+            onClick={() => setActiveReport('catalog')}
+            className="ml-auto text-xs text-slate-500 hover:text-teal-600 pb-2"
           >
-            <PrintIcon className="w-3.5 h-3.5" />
-            Print
+            ← Back to reports
           </button>
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-lg transition-colors"
-          >
-            <TrashIcon className="w-3.5 h-3.5" />
-            Delete period
-          </button>
-        </div>
+        )}
+        {(activeReport === 'visit-entries' || activeReport === 'by-provider') && (
+          <div className="ml-auto pb-1 flex items-center gap-2 flex-wrap justify-end w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => void exportCsv()}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </button>
+            <button
+              type="button"
+              onClick={() => printHistory(filtered, L, from, to)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-colors"
+            >
+              <PrintIcon className="w-3.5 h-3.5" />
+              Export PDF
+            </button>
+            {canImport && (
+              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/30 hover:bg-teal-100 dark:hover:bg-teal-900/50 rounded-lg cursor-pointer transition-colors">
+                {importing ? 'Importing…' : 'Import CSV'}
+                <input
+                  type="file"
+                  accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="hidden"
+                  disabled={importing}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleImportFile(f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+            {activeReport === 'visit-entries' && (
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-lg transition-colors"
+              >
+                <TrashIcon className="w-3.5 h-3.5" />
+                Delete period
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
+      {activeReport === 'catalog' && (
+        <ReportCatalog active={activeReport} onSelect={setActiveReport} />
+      )}
+
+      {activeReport === 'staff-performance' && (
+        <StaffPerformanceReportView
+          from={from}
+          to={to}
+          search={staffSearch}
+          onSearchChange={setStaffSearch}
+          labels={L}
+        />
+      )}
+
+      {activeReport === 'ratings' && (
+        <RatingsReportView
+          from={from}
+          to={to}
+          search={staffSearch}
+          onSearchChange={setStaffSearch}
+          labels={L}
+        />
+      )}
+
+      {activeReport === 'staff-leaves' && (
+        <LeavesReportView from={from} to={to} />
+      )}
+
+      {activeReport === 'queue-overview' && trendPoints.length <= 1 && (
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 py-16 text-center text-sm text-slate-400">
+          Not enough data for a trend chart in this period.
+        </div>
+      )}
+
       {/* ── Delete confirmation modal ── */}
-      {showDeleteConfirm && (
+      {showDeleteConfirm && activeReport === 'visit-entries' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl ring-1 ring-slate-200 dark:ring-slate-700 p-6 max-w-sm w-full mx-4 space-y-4">
             <div className="flex items-center gap-3">
@@ -1020,7 +1555,7 @@ function HistoryTab({
       )}
 
       {/* ── Visit Entries ── */}
-      {subTab === 'entries' && (
+      {activeReport === 'visit-entries' && (
         <div className="space-y-4">
           {officerGroups.length > 0 && (
             <OfficerSelectorPills
@@ -1075,8 +1610,8 @@ function HistoryTab({
         </div>
       )}
 
-      {/* ── By Doctor ── */}
-      {subTab === 'by-doctor' && (
+      {/* ── By Provider ── */}
+      {activeReport === 'by-provider' && (
         <ByDoctorView entries={filtered} labels={L} />
       )}
     </div>

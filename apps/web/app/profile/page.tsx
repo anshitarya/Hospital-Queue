@@ -13,6 +13,7 @@ import {
   type UserProfile,
 } from '@/lib/auth';
 import { useRequireRole } from '@/lib/useRequireRole';
+import { formatDateIst } from '@/lib/datetime';
 import { formatIndianMobile } from '@/lib/phone';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
@@ -33,7 +34,7 @@ import { Icon } from '@/components/Icons';
  * support / admin. This prevents account hijack via SIM-swap pretexting.
  */
 export default function ProfilePage() {
-  const { user, ready } = useRequireRole(['PATIENT', 'RECEPTIONIST', 'DOCTOR', 'ADMIN']);
+  const { user, ready } = useRequireRole(['PATIENT', 'RECEPTIONIST', 'CLINIC_ADMIN', 'DOCTOR', 'ADMIN']);
   const setSession = useAuth((s) => s.setSession);
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -121,11 +122,11 @@ function IdentityCard({ profile }: { profile: UserProfile }) {
   const roleColor =
     profile.role === 'ADMIN' ? 'from-purple-500 to-purple-700' :
     profile.role === 'DOCTOR' ? 'from-sky-500 to-sky-700' :
-    profile.role === 'RECEPTIONIST' ? 'from-emerald-500 to-emerald-700' :
+    profile.role === 'RECEPTIONIST' || profile.role === 'CLINIC_ADMIN' ? 'from-emerald-500 to-emerald-700' :
     'from-slate-500 to-slate-700';
 
   const roleLabel = displayRole(profile.role);
-  const memberSince = new Date(profile.createdAt).toLocaleDateString(undefined, {
+  const memberSince = formatDateIst(profile.createdAt, {
     year: 'numeric', month: 'long', day: 'numeric',
   });
 
@@ -603,7 +604,11 @@ function Security({
 
 function displayRole(role: UserProfile['role']) {
   if (role === 'PATIENT') return '—';
-  return role.charAt(0) + role.slice(1).toLowerCase();
+  if (role === 'CLINIC_ADMIN') return 'Business Admin';
+  if (role === 'RECEPTIONIST') return 'Receptionist';
+  if (role === 'DOCTOR') return 'Doctor';
+  if (role === 'ADMIN') return 'Admin';
+  return String(role);
 }
 
 function Field({

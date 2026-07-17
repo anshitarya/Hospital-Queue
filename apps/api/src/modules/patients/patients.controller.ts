@@ -9,14 +9,14 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class PatientsController {
   constructor(private readonly patients: PatientsService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.ADMIN, Role.DOCTOR)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN, Role.DOCTOR)
   @Get('search')
   search(@Query('phone') phone: string) {
     if (!phone) return null;
     return this.patients.searchByPhone(phone);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN)
   @Post()
   upsert(@Body() dto: CreatePatientDto) {
     return this.patients.upsertByPhone(dto);

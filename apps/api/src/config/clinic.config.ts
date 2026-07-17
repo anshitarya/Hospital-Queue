@@ -30,6 +30,10 @@ export interface ClinicSeedConfig {
     name: string;
     email: string;
   };
+  clinicAdmin: {
+    name: string;
+    email: string;
+  };
   doctors: Array<{
     name: string;
     email: string;
@@ -55,6 +59,10 @@ export const SEED_CLINICS: ClinicSeedConfig[] = [
       name:  'Front Desk',
       email: 'reception@clinic.local',
     },
+    clinicAdmin: {
+      name:  'Business Admin',
+      email: 'admin.demo@clinic.local',
+    },
     doctors: [
       { name: 'Dr. Anjali Sharma', email: 'dr.sharma@clinic.local',  department: 'General Medicine' },
       { name: 'Dr. Rahul Menon',   email: 'dr.menon@clinic.local',   department: 'General Medicine' },
@@ -78,6 +86,10 @@ export const SEED_CLINICS: ClinicSeedConfig[] = [
       name:  'Reception Desk 2',
       email: 'reception2@clinic.local',
     },
+    clinicAdmin: {
+      name:  'Business Admin 2',
+      email: 'admin2@clinic.local',
+    },
     doctors: [
       { name: 'Dr. First Doctor',  email: 'dr.first@clinic2.local',  department: 'General Medicine' },
       { name: 'Dr. Second Doctor', email: 'dr.second@clinic2.local', department: 'General Medicine' },
@@ -99,6 +111,10 @@ export const SEED_CLINICS: ClinicSeedConfig[] = [
     receptionist: {
       name:  'Reception Desk 3',
       email: 'reception3@clinic.local',
+    },
+    clinicAdmin: {
+      name:  'Business Admin 3',
+      email: 'admin3@clinic.local',
     },
     doctors: [
       { name: 'Dr. Vikram Nair',    email: 'dr.nair@clinic3.local',    department: 'Orthopedics' },

@@ -9,13 +9,13 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class ProfessionalScheduleController {
   constructor(private readonly service: ProfessionalScheduleService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
   @Get('doctor/:doctorId')
   async getDoctorSchedule(@CurrentUser() user: AuthUser, @Param('doctorId') doctorId: string) {
     return this.service.getDoctorSchedule(doctorId);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.ADMIN, Role.DOCTOR)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN, Role.DOCTOR)
   @Post('doctor/:doctorId')
   async setDoctorSchedule(
     @CurrentUser() user: AuthUser,
