@@ -1599,7 +1599,7 @@ export class QueueService {
     serviceDay: string,
     now: Date,
   ): Promise<Date | null> {
-    const shifts = await tx.professionalSchedule.findMany({
+    const shifts: ScheduleShift[] = await tx.professionalSchedule.findMany({
       where: { doctorId, isHoliday: false },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
@@ -1609,8 +1609,8 @@ export class QueueService {
     const currentMin = istMinutesOfDay(now);
 
     // Filter shifts for today
-    const todayShifts = shifts.filter((s) => s.dayOfWeek === currentDow);
-    const activeOrFutureToday = todayShifts.find((s) => parseHmToMinutes(s.endTime) > currentMin);
+    const todayShifts = shifts.filter((s: ScheduleShift) => s.dayOfWeek === currentDow);
+    const activeOrFutureToday = todayShifts.find((s: ScheduleShift) => parseHmToMinutes(s.endTime) > currentMin);
 
     if (activeOrFutureToday) {
       return istAppointmentDate(serviceDay, activeOrFutureToday.startTime);
@@ -1621,7 +1621,7 @@ export class QueueService {
     while (dayOffset <= 14) {
       const nextDayKey = addServiceDays(serviceDay, dayOffset);
       const nextDow = istDayOfWeek(istAppointmentDate(nextDayKey, '12:00'));
-      const nextShifts = shifts.filter((s) => s.dayOfWeek === nextDow);
+      const nextShifts = shifts.filter((s: ScheduleShift) => s.dayOfWeek === nextDow);
       if (nextShifts.length > 0) {
         return istAppointmentDate(nextDayKey, nextShifts[0].startTime);
       }

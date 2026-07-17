@@ -3,7 +3,7 @@ import { EntryStatus, QueueEntry } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { istDayOfWeek, istMinutesOfDay, parseHmToMinutes, istAppointmentDate } from '../../common/utils/schedule-slots';
-import { todayKey, addServiceDays } from '../../common/utils/timezone';
+import { serviceDay, addServiceDays } from '../../common/utils/timezone';
 
 type DoctorForEta = {
   avgConsultMinutes: number;
@@ -259,7 +259,7 @@ export class EtaService {
         return start > currentMin;
       });
       if (upcomingShift) {
-        return istAppointmentDate(todayKey(), upcomingShift.startTime).getTime();
+        return istAppointmentDate(serviceDay(), upcomingShift.startTime).getTime();
       }
 
       return Date.now();
