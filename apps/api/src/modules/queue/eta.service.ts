@@ -3,7 +3,7 @@ import { EntryStatus, QueueEntry } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { istDayOfWeek, istMinutesOfDay, parseHmToMinutes, istAppointmentDate } from '../../common/utils/schedule-slots';
-import { serviceDay, addServiceDays } from '../../common/utils/timezone';
+import { serviceDay as getIstServiceDay, addServiceDays } from '../../common/utils/timezone';
 
 type DoctorForEta = {
   avgConsultMinutes: number;
@@ -145,14 +145,46 @@ export class EtaService {
       }
     }
 
-    // ── 2. DB read ────────────────────────────────────────────────────────────
+    // ── 2. Determine target day (run-time avg or last active day in past 7 days) ──
+    const todayStr = serviceDay || getIstServiceDay();
+    const activeDays = await this.prisma.queueEntry.groupBy({
+      by: ['serviceDay'],
+      where: {
+        doctorId,
+        status: EntryStatus.COMPLETED,
+        completedAt: { not: null },
+        OR: [{ startedAt: { not: null } }, { calledAt: { not: null } }],
+      },
+      orderBy: { serviceDay: 'desc' },
+      take: 8,
+    });
+
+    const validDays = activeDays
+      .map((d) => d.serviceDay)
+      .filter((day) => {
+        const diffMs = new Date(`${todayStr}T12:00:00+05:30`).getTime() - new Date(`${day}T12:00:00+05:30`).getTime();
+        const diffDays = Math.round(diffMs / 86_400_000);
+        return diffDays >= 0 && diffDays <= 7;
+      });
+
+    let targetDay: string | undefined;
+    if (validDays.includes(todayStr)) {
+      targetDay = todayStr;
+    } else if (validDays.length > 0) {
+      targetDay = validDays[0];
+    }
+
+    if (!targetDay) {
+      return null; // Fall back to static avgConsultMinutes
+    }
+
     const rows = await this.prisma.queueEntry.findMany({
       where: {
         doctorId,
         status: EntryStatus.COMPLETED,
         completedAt: { not: null },
         OR: [{ startedAt: { not: null } }, { calledAt: { not: null } }],
-        ...(serviceDay ? { serviceDay } : {}),
+        serviceDay: targetDay,
       },
       orderBy: { completedAt: 'desc' },
       take: WINDOW,
@@ -259,7 +291,7 @@ export class EtaService {
         return start > currentMin;
       });
       if (upcomingShift) {
-        return istAppointmentDate(serviceDay(), upcomingShift.startTime).getTime();
+        return istAppointmentDate(getIstServiceDay(), upcomingShift.startTime).getTime();
       }
 
       return Date.now();

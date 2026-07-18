@@ -14,7 +14,7 @@ import {
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
 import { formatDateIst, formatDateTimeIst, formatTimeIst } from '@/lib/datetime';
-import { BUSINESS_TYPE_OPTIONS, getLabels, DEPARTMENT_PRESETS, type BusinessType } from '@/lib/labels';
+import { BUSINESS_TYPE_OPTIONS, getLabels, departmentPresetsFor, normalizeBusinessType, type BusinessType } from '@/lib/labels';
 import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
 
 export default function AdminPage() {
@@ -35,6 +35,7 @@ export default function AdminPage() {
   }
   const [clinicReceptionists, setClinicReceptionists] = useState<ReceptionistRow[]>([]);
   const [clinicAdmins, setClinicAdmins] = useState<ReceptionistRow[]>([]);
+  const [clinicManagers, setClinicManagers] = useState<(ReceptionistRow & { locations?: { location: { name: string } }[] })[]>([]);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [loadingClinics, setLoadingClinics] = useState(true);
 
@@ -65,6 +66,12 @@ export default function AdminPage() {
   const [baPhone, setBaPhone] = useState('');
   const [baPhoneResult, setBaPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [baBusy, setBaBusy] = useState(false);
+
+  const [mgrName, setMgrName] = useState('');
+  const [mgrEmail, setMgrEmail] = useState('');
+  const [mgrPhone, setMgrPhone] = useState('');
+  const [mgrPhoneResult, setMgrPhoneResult] = useState<PhoneValidationResult>({ ok: false });
+  const [mgrBusy, setMgrBusy] = useState(false);
 
   // The credentials modal is shared — doctor AND receptionist creation both
   // push their response into this single state.
@@ -203,12 +210,22 @@ export default function AdminPage() {
     }
   }
 
+  async function loadClinicManagers(clinicId: string) {
+    try {
+      const list = await api<(ReceptionistRow & { locations?: { location: { name: string } }[] })[]>(
+        `/clinics/${clinicId}/managers`,
+      );
+      setClinicManagers(list);
+    } catch {
+      setClinicManagers([]);
+    }
+  }
+
   async function loadDepartments(businessType?: string | null) {
     try {
-      const btype = (businessType ?? 'CLINIC') as BusinessType;
-      const presets = DEPARTMENT_PRESETS[btype] ?? [];
+      const btype = normalizeBusinessType(businessType);
+      const presets = departmentPresetsFor(businessType);
       if (btype !== 'CLINIC' && presets.length > 0) {
-        // Non-clinic: show only business-specific presets, not medical DB ones
         setDepartments(presets.map((p) => ({ id: `__new__${p}`, name: p })));
       } else {
         const fromDb = await api<DepartmentOption[]>('/clinics/my/departments');
@@ -244,6 +261,7 @@ export default function AdminPage() {
       loadClinicDoctors(clinic.id),
       loadClinicReceptionists(clinic.id),
       loadClinicAdmins(clinic.id),
+      loadClinicManagers(clinic.id),
       loadDepartments(clinic.businessType),
     ]);
   }
@@ -266,7 +284,7 @@ export default function AdminPage() {
     name: string;
     email: string | null;
     phone: string | null;
-    role: 'doctor' | 'receptionist' | 'clinic_admin';
+    role: 'doctor' | 'receptionist' | 'clinic_admin' | 'manager';
   }) {
     if (!selectedClinic) return;
     const ok = window.confirm(
@@ -403,6 +421,58 @@ export default function AdminPage() {
     }
   }
 
+  async function addManager(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedClinic) return;
+    if (!mgrEmail && !mgrPhoneResult.ok) {
+      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the branch manager.' });
+      return;
+    }
+    setMgrBusy(true);
+    try {
+      const result = await api<{
+        user: { id: string; name: string; email: string | null; phone: string | null };
+        tempPassword: string;
+      }>(`/clinics/${selectedClinic.id}/managers`, {
+        method: 'POST',
+        body: {
+          name: mgrName,
+          email: mgrEmail || undefined,
+          phone: mgrPhoneResult.e164 || undefined,
+        },
+      });
+      setMgrName('');
+      setMgrEmail('');
+      setMgrPhone('');
+      setMgrPhoneResult({ ok: false });
+      setCreds({
+        role: 'manager',
+        name: result.user.name,
+        email: result.user.email,
+        phone: result.user.phone,
+        tempPassword: result.tempPassword,
+        clinicName: selectedClinic.name,
+      });
+      await loadClinicManagers(selectedClinic.id);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add branch manager' });
+    } finally {
+      setMgrBusy(false);
+    }
+  }
+
+  async function handleDeleteManager(userId: string, name: string) {
+    if (!selectedClinic) return;
+    if (!window.confirm(`Remove branch manager ${name}?`)) return;
+    try {
+      await api(`/clinics/${selectedClinic.id}/managers/${userId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `${name} removed.` });
+      await loadClinicManagers(selectedClinic.id);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove manager' });
+    }
+  }
+
   async function handleDeleteClinicAdmin(userId: string, name: string) {
     if (!selectedClinic) return;
     const ok = window.confirm(`Remove business admin "${name}" from ${selectedClinic.name}?`);
@@ -528,6 +598,7 @@ export default function AdminPage() {
         setClinicDoctors([]);
         setClinicReceptionists([]);
         setClinicAdmins([]);
+        setClinicManagers([]);
       }
       await Promise.all([loadClinics(), loadStats()]);
     } catch (err) {
@@ -584,6 +655,7 @@ export default function AdminPage() {
       await Promise.all([
         loadClinicDoctors(selectedClinic.id),
         loadClinicReceptionists(selectedClinic.id),
+        loadClinicManagers(selectedClinic.id),
       ]);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update email' });
@@ -1114,6 +1186,86 @@ export default function AdminPage() {
           </section>
         )}
 
+        {/* Branch managers — location-scoped day-to-day operators */}
+        {selectedClinic && (
+          <section className="card overflow-hidden animate-fade-in">
+            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="section-title">
+                  Branch managers — <span className="text-brand-700">{selectedClinic.name}</span>
+                </h2>
+                <p className="section-sub">
+                  Per-branch operators with reception portal access. Created from the business admin portal staff tab.
+                </p>
+              </div>
+              <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinicManagers.length}</span>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                <form onSubmit={addManager} className="space-y-2.5 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
+                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-amber-100 text-amber-700 text-xs font-bold">+</span>
+                    New branch manager
+                  </h3>
+                  <input className="input" placeholder="Full name" value={mgrName} onChange={(e) => setMgrName(e.target.value)} required />
+                  <input className="input" type="email" placeholder="Email (for login)" value={mgrEmail} onChange={(e) => setMgrEmail(e.target.value)} />
+                  <PhoneInput label={null} value={mgrPhone} onChange={(raw, result) => { setMgrPhone(raw); setMgrPhoneResult(result); }} autoComplete="off" />
+                  <p className="text-[11px] text-slate-400">At least one of email / mobile is required. Assign branch from the business admin portal if needed.</p>
+                  <button type="submit" className="btn-primary w-full" disabled={mgrBusy || (!mgrEmail && !mgrPhoneResult.ok)}>
+                    {mgrBusy ? 'Adding…' : 'Add branch manager'}
+                  </button>
+                </form>
+                <div className="lg:col-span-3">
+              {clinicManagers.length === 0 ? (
+                <div className="py-12 text-center rounded-xl ring-1 ring-slate-200 bg-slate-50">
+                  <div className="text-4xl mb-2">🧭</div>
+                  <p className="text-sm text-slate-500">No branch managers yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
+                  {clinicManagers.map((m, idx) => (
+                    <div key={m.id} className={`px-4 py-3.5 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-800 truncate">{m.name}</div>
+                          <div className="text-xs text-slate-400 flex flex-wrap gap-x-2 mt-0.5">
+                            {m.email && <span>{m.email}</span>}
+                            {m.email && m.phone && <span>·</span>}
+                            {m.phone && <span>{m.phone}</span>}
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-500 shrink-0 text-right hidden sm:block">
+                          {m.locations?.map((l) => l.location.name).join(', ') || '—'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {editEmailUserId === m.id ? (
+                          <>
+                            <input className="input !py-1.5 text-xs flex-1 min-w-[160px]" value={editEmailValue}
+                              onChange={(e) => setEditEmailValue(e.target.value)} placeholder="New email" />
+                            <button type="button" className="btn-primary !px-2.5 !py-1.5 text-xs" disabled={editEmailBusy}
+                              onClick={() => void saveEditEmail(m.id)}>Save</button>
+                            <button type="button" className="btn-secondary !px-2.5 !py-1.5 text-xs"
+                              onClick={() => { setEditEmailUserId(null); setEditEmailValue(''); }}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" onClick={() => startEditEmail(m.id, m.email)} className="btn-secondary !px-2.5 !py-1.5 text-xs">Edit email</button>
+                            <button type="button" onClick={() => resetPassword({ userId: m.id, name: m.name, email: m.email, phone: m.phone, role: 'manager' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">Reset pwd</button>
+                            <button type="button" onClick={() => handleDeleteManager(m.id, m.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">Remove</button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* Staff / Receptionists panel */}
         {selectedClinic && (() => {
           const RL = getLabels(selectedClinic.businessType);
@@ -1230,6 +1382,7 @@ export default function AdminPage() {
                     value={docDeptId}
                     onChange={setDocDeptId}
                     required
+                    allowCustom
                     placeholder={`Search ${SL.department.toLowerCase()}…`}
                     label={`Select ${SL.department.toLowerCase()}`}
                   />

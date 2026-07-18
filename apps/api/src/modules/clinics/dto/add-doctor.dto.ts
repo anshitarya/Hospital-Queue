@@ -70,4 +70,10 @@ export class AddDoctorDto {
   @ValidateNested({ each: true })
   @Type(() => ScheduleShiftDto)
   shifts?: ScheduleShiftDto[];
+
+  /** Branch(es) where this professional practices. Defaults to caller's selected branch. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  locationIds?: string[];
 }

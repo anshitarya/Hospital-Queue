@@ -64,7 +64,7 @@ export async function loginWithPin(phone: string, pin: string) {
 
 export interface UserProfile {
   id: string;
-  role: 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'DOCTOR' | 'ADMIN';
+  role: 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'MANAGER' | 'DOCTOR' | 'ADMIN';
   name: string;
   email: string | null;
   emailVerified: boolean;

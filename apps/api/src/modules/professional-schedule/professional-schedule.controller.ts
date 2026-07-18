@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Param, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Param, Query } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ProfessionalScheduleService } from './professional-schedule.service';
 import { SetScheduleDto } from './dto/update-schedule.dto';
@@ -9,19 +9,26 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class ProfessionalScheduleController {
   constructor(private readonly service: ProfessionalScheduleService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN)
   @Get('doctor/:doctorId')
-  async getDoctorSchedule(@CurrentUser() user: AuthUser, @Param('doctorId') doctorId: string) {
-    return this.service.getDoctorSchedule(doctorId);
+  async getDoctorSchedule(
+    @CurrentUser() user: AuthUser,
+    @Param('doctorId') doctorId: string,
+    @Query('locationId') locationId: string,
+  ) {
+    if (!locationId) throw new BadRequestException('locationId query param is required');
+    return this.service.getDoctorSchedule(doctorId, locationId, user);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN, Role.DOCTOR)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN, Role.DOCTOR)
   @Post('doctor/:doctorId')
   async setDoctorSchedule(
     @CurrentUser() user: AuthUser,
     @Param('doctorId') doctorId: string,
+    @Query('locationId') locationId: string,
     @Body() dto: SetScheduleDto,
   ) {
-    return this.service.setDoctorSchedule(doctorId, dto);
+    if (!locationId) throw new BadRequestException('locationId query param is required');
+    return this.service.setDoctorSchedule(doctorId, locationId, dto, user);
   }
 }

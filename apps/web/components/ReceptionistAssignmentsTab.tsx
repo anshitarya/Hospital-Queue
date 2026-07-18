@@ -27,9 +27,11 @@ interface AssignmentsResponse {
 export function ReceptionistAssignmentsTab({
   businessType,
   setToast,
+  locationId,
 }: {
   businessType?: BusinessType | string | null;
   setToast: (t: ToastMessage | null) => void;
+  locationId?: string | null;
 }) {
   const L = getLabels(businessType);
   const [data, setData] = useState<AssignmentsResponse | null>(null);
@@ -41,7 +43,8 @@ export function ReceptionistAssignmentsTab({
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api<AssignmentsResponse>('/clinics/my/receptionist-assignments');
+      const url = locationId ? `/clinics/my/receptionist-assignments?locationId=${locationId}` : '/clinics/my/receptionist-assignments';
+      const res = await api<AssignmentsResponse>(url);
       setData(res);
       const next: Record<string, Set<string>> = {};
       for (const r of res.receptionists) {
@@ -53,11 +56,11 @@ export function ReceptionistAssignmentsTab({
     } finally {
       setLoading(false);
     }
-  }, [setToast]);
+  }, [setToast, locationId]);
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, locationId]);
 
   function toggle(receptionistId: string, doctorId: string) {
     setDraft((prev) => {
@@ -78,7 +81,8 @@ export function ReceptionistAssignmentsTab({
       for (const r of data.receptionists) {
         assignments[r.id] = [...(draft[r.id] ?? [])];
       }
-      const updated = await api<AssignmentsResponse>('/clinics/my/receptionist-assignments', {
+      const url = locationId ? `/clinics/my/receptionist-assignments?locationId=${locationId}` : '/clinics/my/receptionist-assignments';
+      const updated = await api<AssignmentsResponse>(url, {
         method: 'PUT',
         body: { assignments },
       });
@@ -112,9 +116,9 @@ export function ReceptionistAssignmentsTab({
           <div>
             <h2 className="section-title">Receptionist assignments</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-              Match each receptionist to the {L.providerPlural.toLowerCase()} they manage.
-              One receptionist can handle many {L.providerPlural.toLowerCase()}.
-              If a receptionist has no assignments saved, they see all {L.providerPlural.toLowerCase()} (default for small teams).
+              Match each {L.staff.toLowerCase()} to the {L.providerPlural.toLowerCase()} they manage at this branch.
+              All {L.providerPlural.toLowerCase()} in the business are listed — including those who primarily work at other branches.
+              If a {L.staff.toLowerCase()} has no assignments saved, they see all {L.providerPlural.toLowerCase()} (default for small teams).
             </p>
           </div>
           <button

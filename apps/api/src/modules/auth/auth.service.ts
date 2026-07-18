@@ -58,7 +58,10 @@ export class AuthService {
   }
 
   async registerReceptionist(dto: RegisterDto): Promise<AuthResult> {
-    const code = await this.prisma.inviteCode.findUnique({ where: { code: dto.inviteCode } });
+    const code = await this.prisma.inviteCode.findUnique({
+      where: { code: dto.inviteCode },
+      include: { location: { select: { clinicId: true } } },
+    });
     if (!code) throw new BadRequestException('Invalid invite code');
     if (code.usedById) throw new BadRequestException('Invite code already used');
     if (code.expiresAt < new Date()) throw new BadRequestException('Invite code has expired');
@@ -75,7 +78,13 @@ export class AuthService {
           name: dto.name,
           role: Role.RECEPTIONIST,
           passwordHash,
-          clinicId: code.clinicId,
+          clinicId: code.location.clinicId,
+        },
+      });
+      await tx.userLocation.create({
+        data: {
+          userId: created.id,
+          locationId: code.locationId,
         },
       });
       await tx.inviteCode.update({

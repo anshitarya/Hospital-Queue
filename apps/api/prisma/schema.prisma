@@ -13,6 +13,7 @@ enum Role {
   CLINIC_ADMIN
   DOCTOR
   ADMIN
+  MANAGER
 }
 
 enum DoctorStatus {
@@ -51,8 +52,7 @@ enum SignupRequestStatus {
   REJECTED
 }
 
-// A clinic groups receptionists, doctors, and their queues.
-// Each receptionist belongs to exactly one clinic (V1 constraint).
+// A clinic (business) groups staff, doctors, and queues across one or more locations.
 model Clinic {
   id                    String                 @id @default(cuid())
   name                  String
@@ -60,31 +60,84 @@ model Clinic {
   businessType          BusinessType           @default(CLINIC)
   createdAt             DateTime               @default(now())
 
-  inviteCodes           InviteCode[]
-  users                 User[] // receptionists of this clinic
+  users                 User[] // users belonging to this clinic
   doctors               Doctor[]
   signupRequests        BusinessSignupRequest[]
-  visits                Visit[]
-  businessSetting           BusinessSetting?
-  workflowConfiguration     WorkflowConfiguration?
-  receptionistAssignments   ReceptionistAssignment[]
+  locations             Location[]
+}
+
+// A physical branch of a business (Clinic)
+model Location {
+  id                    String                 @id @default(cuid())
+  clinicId              String
+  clinic                Clinic                 @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  name                  String
+  address               String
+  city                  String
+  state                 String
+  country               String
+  postalCode            String
+  contactNumber         String
+  email                 String?
+  timeZone              String                 @default("Asia/Kolkata")
+  latitude              Float?
+  longitude             Float?
+  status                String                 @default("ACTIVE") // ACTIVE / INACTIVE
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  users                   UserLocation[]
+  doctors                 DoctorLocation[]
+  queueEntries            QueueEntry[]
+  visits                  Visit[]
+  businessSetting         BusinessSetting?
+  workflowConfiguration   WorkflowConfiguration?
+  receptionistAssignments ReceptionistAssignment[]
   professionalRatings     ProfessionalRating[]
+  inviteCodes             InviteCode[]
+  schedules               ProfessionalSchedule[]
+}
+
+model UserLocation {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, locationId])
+  @@index([userId])
+  @@index([locationId])
+}
+
+model DoctorLocation {
+  id         String   @id @default(cuid())
+  doctorId   String
+  doctor     Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([doctorId, locationId])
+  @@index([doctorId])
+  @@index([locationId])
 }
 
 // Maps receptionists to the professionals they manage (1 receptionist : N doctors).
 // No rows for a receptionist means they see all clinic professionals (backward compatible).
 model ReceptionistAssignment {
   id             String   @id @default(cuid())
-  clinicId       String
-  clinic         Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  locationId     String
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   receptionistId String
   receptionist   User     @relation("ReceptionistAssignments", fields: [receptionistId], references: [id], onDelete: Cascade)
   doctorId       String
   doctor         Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
 
-  @@unique([receptionistId, doctorId])
-  @@index([clinicId])
+  @@unique([receptionistId, doctorId, locationId])
+  @@index([locationId])
   @@index([receptionistId])
   @@index([doctorId])
 }
@@ -92,16 +145,16 @@ model ReceptionistAssignment {
 // One-use, time-limited code that lets a receptionist self-register.
 // Admin generates these; sharing them is done out-of-band (WhatsApp, email, etc.).
 model InviteCode {
-  id        String   @id @default(cuid())
-  code      String   @unique
-  clinicId  String
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  usedById  String?  @unique
-  usedBy    User?    @relation("InviteUsedBy", fields: [usedById], references: [id])
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  code       String   @unique
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  usedById   String?  @unique
+  usedBy     User?    @relation("InviteUsedBy", fields: [usedById], references: [id])
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
 
-  @@index([clinicId])
+  @@index([locationId])
 }
 
 model User {
@@ -143,6 +196,7 @@ model User {
   approvedLeaves           StaffLeave[]             @relation("ApprovedLeaves")
   receptionistAssignments  ReceptionistAssignment[] @relation("ReceptionistAssignments")
   professionalRatings      ProfessionalRating[]     @relation("PatientRatings")
+  locations                UserLocation[]
 
   @@index([role])
   @@index([clinicId])
@@ -189,6 +243,7 @@ model Doctor {
   updatedAt               DateTime                 @updatedAt
   receptionistAssignments ReceptionistAssignment[]
   ratings                 ProfessionalRating[]
+  locations               DoctorLocation[]
 
   @@index([departmentId])
   @@index([clinicId])
@@ -199,6 +254,8 @@ model QueueEntry {
   id              String      @id @default(cuid())
   doctorId        String
   doctor          Doctor      @relation(fields: [doctorId], references: [id])
+  locationId      String
+  location        Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
   patientId       String
   patient         User        @relation("PatientEntries", fields: [patientId], references: [id])
   createdById     String?
@@ -232,6 +289,7 @@ model QueueEntry {
   @@index([patientId])
   @@index([doctorId, serviceDay, status])
   @@index([patientId, joinedAt])
+  @@index([locationId])
 }
 
 // Business owner signup requests from the public Get Started page.
@@ -274,8 +332,8 @@ enum VisitStatus {
 
 model Visit {
   id         String      @id @default(cuid())
-  clinicId   String
-  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
   patientId  String
   patient    User        @relation("PatientVisits", fields: [patientId], references: [id], onDelete: Cascade)
   status     VisitStatus @default(ACTIVE)
@@ -286,7 +344,7 @@ model Visit {
   entries    QueueEntry[]
   transfers  TransferLog[]
 
-  @@index([clinicId, serviceDay])
+  @@index([locationId, serviceDay])
   @@index([patientId])
 }
 
@@ -310,8 +368,8 @@ model TransferLog {
 
 model BusinessSetting {
   id                    String   @id @default(cuid())
-  clinicId              String   @unique
-  clinic                Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  locationId            String   @unique
+  location              Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
   
   businessType          String   @default("CLINIC")
   queueMode             String   @default("LIVE_QUEUE")
@@ -356,14 +414,17 @@ model ProfessionalSchedule {
   id          String   @id @default(cuid())
   doctorId    String
   doctor      Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  dayOfWeek   Int      
-  startTime   String   
-  endTime     String   
+  locationId  String
+  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startTime   String
+  endTime     String
   isHoliday   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  @@index([doctorId])
+
+  @@index([doctorId, locationId])
+  @@index([locationId])
 }
 
 model StaffLeave {
@@ -384,29 +445,29 @@ model StaffLeave {
 }
 
 model ProfessionalRating {
-  id        String     @id @default(cuid())
-  clinicId  String
-  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  doctorId  String
-  doctor    Doctor     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
-  patientId String
-  patient   User       @relation("PatientRatings", fields: [patientId], references: [id], onDelete: Cascade)
-  entryId   String     @unique
-  entry     QueueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  rating    Int
-  comment   String?
-  createdAt DateTime   @default(now())
+  id          String     @id @default(cuid())
+  locationId  String
+  location    Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  doctorId    String
+  doctor      Doctor     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     User       @relation("PatientRatings", fields: [patientId], references: [id], onDelete: Cascade)
+  entryId     String     @unique
+  entry       QueueEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  rating      Int
+  comment     String?
+  createdAt   DateTime   @default(now())
 
   @@index([doctorId, createdAt])
-  @@index([clinicId])
+  @@index([locationId])
   @@index([patientId])
 }
 
 model WorkflowConfiguration {
-  id        String   @id @default(cuid())
-  clinicId  String   @unique
-  clinic    Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  steps     Json     
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  locationId String   @unique
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  steps      Json     
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }

@@ -28,7 +28,7 @@ import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput'
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { EmptyState, EmptyIcons } from '@/components/EmptyState';
 import { getLabels } from '@/lib/labels';
-import { serviceDay } from '@/lib/datetime';
+import { serviceDay, fmtWait, formatDateIst } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 import { Spinner } from '@/components/PageLoader';
 
@@ -82,7 +82,7 @@ function fmtShortDate(iso: string | null): string {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function QueueManager() {
+export function QueueManager({ locationId }: { locationId?: string | null }) {
   // ── Clinic + doctor list ─────────────────────────────────────────────────
   const [clinic, setClinic]                   = useState<Clinic | null>(null);
   const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null);
@@ -116,6 +116,7 @@ export function QueueManager() {
   const [selectMode, setSelectMode]       = useState(false);
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearDateTarget, setClearDateTarget] = useState<string | null>(null);
   const [actionInFlight, setActionInFlight] = useState<Set<string>>(new Set());
   const [doctorActionInFlight, setDoctorActionInFlight] = useState<string | null>(null);
 
@@ -125,6 +126,9 @@ export function QueueManager() {
   const queueListRef = useRef<HTMLDivElement>(null);
   const autoScrollRaf = useRef<number | null>(null);
   const lastPointerY = useRef(0);
+  // Throttle dropSlot updates to one RAF tick to avoid excessive re-renders
+  const dropSlotRaf = useRef<number | null>(null);
+  const pendingDropSlot = useRef<number | null>(null);
 
   // ── Modals / toasts ─────────────────────────────────────────────────────
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -134,8 +138,8 @@ export function QueueManager() {
 
   // ── Doctor shifts fetch effect ──
   useEffect(() => {
-    if (selectedDoctorId) {
-      api<any[]>(`/schedules/doctor/${selectedDoctorId}`)
+    if (selectedDoctorId && locationId) {
+      api<any[]>(`/schedules/doctor/${selectedDoctorId}?locationId=${locationId}`)
         .then((data) => {
           const active = (data || []).filter((s) => !s.isHoliday);
           setDoctorShifts(active);
@@ -149,15 +153,55 @@ export function QueueManager() {
       setDoctorShifts([]);
       setSelectedShiftTime('');
     }
-  }, [selectedDoctorId]);
+  }, [selectedDoctorId, locationId]);
 
   const todayDow = useMemo(() => {
     const istDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
     return istDate.getDay();
   }, []);
 
-  const todaysShifts = useMemo(() => {
-    return doctorShifts.filter((s) => s.dayOfWeek === todayDow);
+  // Next 3 upcoming shifts (includes today's remaining shifts + future days)
+  const upcomingShifts = useMemo(() => {
+    const result: { id: string; startTime: string; endTime: string; dateLabel: string; appointmentTime: string }[] = [];
+    const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const nowHHMM = `${String(istNow.getHours()).padStart(2, '0')}:${String(istNow.getMinutes()).padStart(2, '0')}`;
+
+    for (let dayOffset = 0; dayOffset <= 14 && result.length < 3; dayOffset++) {
+      const targetDate = new Date(istNow);
+      targetDate.setDate(istNow.getDate() + dayOffset);
+      const dow = targetDate.getDay();
+      const isToday = dayOffset === 0;
+      const isTomorrow = dayOffset === 1;
+
+      // Build a date label
+      const dateLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : targetDate.toLocaleDateString('en-IN', {
+        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata',
+      });
+
+      // ISO date prefix for appointmentTime
+      const yyyy = targetDate.getFullYear();
+      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
+      const dd = String(targetDate.getDate()).padStart(2, '0');
+      const dateStr = `${yyyy}-${mm}-${dd}`;
+
+      const dayShifts = doctorShifts
+        .filter((s) => s.dayOfWeek === dow && !s.isHoliday)
+        .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
+
+      for (const s of dayShifts) {
+        // Skip shifts that have already started today
+        if (isToday && s.startTime <= nowHHMM) continue;
+        result.push({
+          id: s.id || `${dateStr}-${s.startTime}`,
+          startTime: s.startTime,
+          endTime: s.endTime,
+          dateLabel,
+          appointmentTime: `${dateStr}T${s.startTime}:00`,
+        });
+        if (result.length >= 3) break;
+      }
+    }
+    return result;
   }, [doctorShifts, todayDow]);
 
   // ── Previous-visit lookup ────────────────────────────────────────────────
@@ -182,7 +226,8 @@ export function QueueManager() {
   // ── Load clinic ──────────────────────────────────────────────────────────
   const loadClinic = useCallback(async () => {
     try {
-      const data = await api<Clinic>('/clinics/my');
+      const url = locationId ? `/clinics/my?locationId=${locationId}` : '/clinics/my';
+      const data = await api<Clinic>(url);
       setClinic(data);
       const doctors = data.doctors ?? [];
       const saved =
@@ -193,14 +238,14 @@ export function QueueManager() {
         saved && doctors.some((d) => d.id === saved) ? saved : doctors[0]?.id ?? null;
       setSelectedDoctorId(valid);
     } catch { /* ignore — page-level auth already guards this */ }
-  }, []);
+  }, [locationId]);
 
   const selectDoctor = useCallback((id: string) => {
     setSelectedDoctorId(id);
     if (clinic?.id) localStorage.setItem(doctorStorageKey(clinic.id), id);
   }, [clinic?.id]);
 
-  useEffect(() => { void loadClinic(); }, [loadClinic]);
+  useEffect(() => { void loadClinic(); }, [loadClinic, locationId]);
 
   // ── Real-time queue ──────────────────────────────────────────────────────
   const { snapshot: liveSnapshot, connected } = useDoctorQueue(selectedDoctorId);
@@ -265,6 +310,7 @@ export function QueueManager() {
       slotType: capturedSlotType !== 'NEW' ? capturedSlotType : undefined,
       insertAtPosition: insertAtPosition !== '' ? insertAtPosition : undefined,
       appointmentTime: selectedShiftTime || undefined,
+      locationId: locationId || undefined,
     };
 
     // Reset form immediately
@@ -282,6 +328,7 @@ export function QueueManager() {
         {
           id: pendingId,
           doctorId: selectedDoctorId!,
+          locationId: locationId || '',
           patientId: 'pending',
           serviceDay: serviceDay(),
           tokenNumber: 0,
@@ -336,11 +383,15 @@ export function QueueManager() {
       }),
     );
 
-  const endServiceShift = () => {
+  const endServiceShiftForDate = (date?: string) => {
     if (!selectedDoctorId) return;
-    if (!window.confirm('End this shift and move waiting patients to the next available shift?')) return;
+    const confirmMsg = date 
+      ? `Roll over all waiting patients on ${date} to the next available schedule the professional is available in?`
+      : 'End this schedule and move waiting patients to the next available schedule the professional is available in?';
+    if (!window.confirm(confirmMsg)) return;
+    const url = `/queue/doctor/${selectedDoctorId}/end-service${date ? `?serviceDay=${date}` : ''}`;
     void callAction(
-      () => api<{ rolled: number; message: string }>(`/queue/doctor/${selectedDoctorId}/end-service`, { method: 'POST' }),
+      () => api<{ rolled: number; message: string }>(url, { method: 'POST' }),
       'end-service',
       (s) => ({
         ...s,
@@ -514,14 +565,15 @@ export function QueueManager() {
 
   const clearQueue = useCallback((includeMissed: boolean) => {
     setShowClearConfirm(false);
-    const waitingCount = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING').length;
+    const targetDay = clearDateTarget || serviceDay();
+    const waitingCount = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING' && e.serviceDay === targetDay).length;
     const missedCount  = includeMissed ? (snapshot?.missedEntries ?? []).length : 0;
     callAction(
-      () => api(`/queue/doctor/${selectedDoctorId}/clear-queue`, { method: 'POST', body: { includeMissed } }),
+      () => api(`/queue/doctor/${selectedDoctorId}/clear-queue`, { method: 'POST', body: { includeMissed, serviceDay: targetDay } }),
       'Clear queue',
       (s) => ({
         ...s,
-        entries: s.entries.map((e) => e.status === 'WAITING' ? { ...e, status: 'CANCELLED' as const } : e),
+        entries: s.entries.map((e) => e.status === 'WAITING' && e.serviceDay === targetDay ? { ...e, status: 'CANCELLED' as const } : e),
         missedEntries: includeMissed ? [] : s.missedEntries,
       }),
     );
@@ -529,7 +581,7 @@ export function QueueManager() {
       const n = waitingCount + missedCount;
       setToast({ type: 'ok', msg: `Cleared ${n} ${n === 1 ? L.customer.toLowerCase() : L.customerPlural.toLowerCase()}` });
     }
-  }, [callAction, selectedDoctorId, snapshot, L.customer, L.customerPlural]);
+  }, [callAction, selectedDoctorId, snapshot, L.customer, L.customerPlural, clearDateTarget]);
 
   const cancelSelected = useCallback(() => {
     const ids = Array.from(selectedIds);
@@ -602,6 +654,10 @@ export function QueueManager() {
 
   const resetDrag = useCallback(() => {
     stopAutoScroll();
+    if (dropSlotRaf.current !== null) {
+      cancelAnimationFrame(dropSlotRaf.current);
+      dropSlotRaf.current = null;
+    }
     setDragState(null);
     setDropSlot(null);
   }, [stopAutoScroll]);
@@ -628,8 +684,15 @@ export function QueueManager() {
     ev.dataTransfer.dropEffect = 'move';
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
     const insertIdx = ev.clientY < rect.top + rect.height / 2 ? waitingIndex : waitingIndex + 1;
-    setDropSlot(insertIdx);
     startAutoScroll(ev.clientY);
+    // Throttle slot updates to one RAF tick to prevent excessive re-renders
+    pendingDropSlot.current = insertIdx;
+    if (dropSlotRaf.current === null) {
+      dropSlotRaf.current = requestAnimationFrame(() => {
+        dropSlotRaf.current = null;
+        setDropSlot(pendingDropSlot.current);
+      });
+    }
   }, [dragState?.committed, startAutoScroll]);
 
   const handleListDragOver = useCallback((ev: React.DragEvent) => {
@@ -787,7 +850,7 @@ export function QueueManager() {
               )}
               <textarea className="input resize-none" placeholder="Notes (optional)" rows={2}
                 value={notes} onChange={(e) => setNotes(e.target.value)} />
-              {snapshot?.settings?.queueMode === 'LIVE_QUEUE' && todaysShifts.length > 0 && (
+              {snapshot?.settings?.queueMode === 'LIVE_QUEUE' && upcomingShifts.length > 0 && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Shift:</span>
                   <select
@@ -796,9 +859,9 @@ export function QueueManager() {
                     onChange={(e) => setSelectedShiftTime(e.target.value)}
                   >
                     <option value="">Next Available (Default)</option>
-                    {todaysShifts.map((s, idx) => (
-                      <option key={s.id || idx} value={s.startTime}>
-                        Shift {idx + 1}: {s.startTime} - {s.endTime}
+                    {upcomingShifts.map((s) => (
+                      <option key={s.id} value={s.appointmentTime}>
+                        {s.dateLabel}: {s.startTime}–{s.endTime}
                       </option>
                     ))}
                   </select>
@@ -841,10 +904,6 @@ export function QueueManager() {
                   ) : (
                     <button type="button" onClick={() => controlDoctor('pause')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50">Pause</button>
                   )}
-                  <button type="button" onClick={endServiceShift} title="Move waiting patients to next shift" disabled={!!doctorActionInFlight}
-                    className="btn-secondary !py-2 text-xs text-amber-700 dark:text-amber-400 disabled:opacity-50">
-                    End shift
-                  </button>
                 </div>
               </div>
             )}
@@ -890,7 +949,7 @@ export function QueueManager() {
                 </button>
               )}
               {!selectMode && ((snapshot?.entries ?? []).some((e) => e.status === 'WAITING') || (snapshot?.missedEntries ?? []).length > 0) && (
-                <button type="button" onClick={() => setShowClearConfirm(true)}
+                <button type="button" onClick={() => { setClearDateTarget(serviceDay()); setShowClearConfirm(true); }}
                   className="btn-ghost !py-1 !px-2.5 text-xs text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 shrink-0">
                   Clear
                 </button>
@@ -953,19 +1012,57 @@ export function QueueManager() {
                 onDrop={(ev) => handleDrop(ev, waitingEntries)}
               >
                 {filtered.length > 0 ? (
-                  filtered.map((e) => {
+                  filtered.map((e, idx) => {
                     const waitingIndex = waitingEntries.findIndex((w) => w.id === e.id);
                     const isWaitingDraggable =
                       dragAllowed && e.status === 'WAITING' && !e.id.startsWith('pending-');
                     const showPlaceholderBefore =
                       dragActive && waitingIndex >= 0 && dropSlot === waitingIndex;
+                    
+                    const prevEntry = idx > 0 ? filtered[idx - 1] : null;
+                    const showDaySeparator = !prevEntry || prevEntry.serviceDay !== e.serviceDay;
+
+                    const todayStr = serviceDay(new Date());
+                    const isToday = e.serviceDay === todayStr;
+                    const isTomorrow = e.serviceDay === serviceDay(new Date(Date.now() + 86400000));
+                    
+                    const dayLabel = isToday 
+                      ? "Today's Schedule" 
+                      : isTomorrow 
+                        ? "Tomorrow's Schedule" 
+                        : `${formatDateIst(e.serviceDay, { weekday: 'long', month: 'short', day: 'numeric' })}'s Schedule`;
+
                     return (
                       <Fragment key={e.id}>
+                        {showDaySeparator && (
+                          <div className="bg-slate-50 dark:bg-slate-900/60 px-4 py-2 border-y border-slate-100 dark:border-slate-800/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between gap-2 select-none">
+                            <span className="shrink-0">📅 {dayLabel}</span>
+                            <div className="h-px bg-slate-200/80 dark:bg-slate-700/60 flex-1" />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => endServiceShiftForDate(e.serviceDay)}
+                                className="text-[9px] font-bold text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/85 px-2 py-1 rounded border border-amber-200 dark:border-amber-900/80 transition-colors cursor-pointer"
+                                title={`Roll over all waiting entries on ${e.serviceDay} to next schedule`}
+                              >
+                                ↪ Roll over schedule
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => { setClearDateTarget(e.serviceDay); setShowClearConfirm(true); }}
+                                className="text-[9px] font-bold text-rose-700 hover:text-rose-800 dark:text-rose-400 dark:hover:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/85 px-2 py-1 rounded border border-rose-200 dark:border-rose-900/80 transition-colors cursor-pointer"
+                                title={`Clear all waiting entries on ${e.serviceDay}`}
+                              >
+                                🗑 Clear schedule
+                              </button>
+                            </div>
+                          </div>
+                        )}
                         {showPlaceholderBefore && <DropPlaceholder />}
                         <div
                           className={`queue-list-item flex items-stretch ${
                             dragState?.id === e.id ? 'queue-row-dragging' : ''
-                          }`}
+                          } ${dragActive ? 'no-transition' : ''}`}
                           onDragOver={(ev) => {
                             if (waitingIndex >= 0) handleDragOverRow(ev, waitingIndex);
                           }}
@@ -988,6 +1085,7 @@ export function QueueManager() {
                               orderNumber={orderMap.get(e.id)}
                               isDragging={dragState?.id === e.id}
                               actionInFlight={actionInFlight.has(e.id)}
+                              isHighlightedForClear={showClearConfirm && e.status === 'WAITING' && e.serviceDay === clearDateTarget}
                               onComplete={handleComplete}
                               onCancel={handleCancel}
                               onEmergency={handleEmergency}
@@ -1097,7 +1195,7 @@ export function QueueManager() {
 // ─── QueueRow ─────────────────────────────────────────────────────────────────
 
 const QueueRow = memo(function QueueRow({
-  entry, orderNumber, isDragging, actionInFlight,
+  entry, orderNumber, isDragging, actionInFlight, isHighlightedForClear,
   onComplete, onCancel, onEmergency, onMiss, onMove, onMoveBack, onTransfer, doctors,
   onDragStart, onDrag, onDragEnd,
 }: {
@@ -1105,6 +1203,7 @@ const QueueRow = memo(function QueueRow({
   orderNumber?: number;
   isDragging?: boolean;
   actionInFlight?: boolean;
+  isHighlightedForClear?: boolean;
   onComplete: (id: string) => void;
   onCancel: (id: string) => void;
   onEmergency: (id: string) => void;
@@ -1147,7 +1246,8 @@ const QueueRow = memo(function QueueRow({
 
   return (
     <div className={`px-4 py-3.5 transition-all duration-150 group ${
-      isInConsult ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-l-[3px] border-l-emerald-400'
+      isHighlightedForClear ? 'bg-rose-50/80 dark:bg-rose-950/20 border-l-[3px] border-l-rose-400'
+      : isInConsult ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-l-[3px] border-l-emerald-400'
       : isPending  ? 'bg-amber-50/50 dark:bg-amber-950/20 opacity-70'
       : isDragging ? 'opacity-40'
       : 'hover:bg-slate-50/70 dark:hover:bg-slate-800/30'
@@ -1202,7 +1302,7 @@ const QueueRow = memo(function QueueRow({
               <div className="font-semibold text-slate-700 dark:text-slate-200">
                 {entry.peopleAhead === 0 ? 'next up' : `${entry.peopleAhead} ahead`}
               </div>
-              <div className="text-slate-400 dark:text-slate-500">~{entry.etaMinutes} min</div>
+              <div className="text-slate-400 dark:text-slate-500">{fmtWait(entry.etaMinutes ?? 0)}</div>
             </>
           )}
           {isInConsult && <EntryStatusPill status={entry.status} />}

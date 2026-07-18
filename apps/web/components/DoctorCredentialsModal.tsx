@@ -24,7 +24,7 @@ import { useState } from 'react';
  */
 export interface DoctorCredentials {
   /** "doctor" | "receptionist" | "clinic_admin" — drives header text only. Defaults to doctor. */
-  role?: 'doctor' | 'receptionist' | 'clinic_admin';
+  role?: 'doctor' | 'receptionist' | 'clinic_admin' | 'manager';
   name: string;
   /** Whichever identifier the user will use to sign in — email or phone. */
   email: string | null;
@@ -50,6 +50,7 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
   const roleLabel =
     role === 'receptionist' ? 'Receptionist'
     : role === 'clinic_admin' ? 'Business Admin'
+    : role === 'manager' ? 'Branch Manager'
     : 'Doctor';
   // Prefer email as the "primary" identifier shown first, but show both if present.
   const primaryId = email ?? phone ?? '—';

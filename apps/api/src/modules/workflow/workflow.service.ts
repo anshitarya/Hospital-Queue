@@ -5,12 +5,33 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 export class WorkflowService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getWorkflow(clinicId: string) {
+  async getDefaultLocationForUser(userId: string): Promise<string> {
+    const userLoc = await this.prisma.userLocation.findFirst({
+      where: { userId },
+      select: { locationId: true }
+    });
+    if (userLoc) return userLoc.locationId;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { clinicId: true }
+    });
+    if (user?.clinicId) {
+      const firstLoc = await this.prisma.location.findFirst({
+        where: { clinicId: user.clinicId },
+        select: { id: true }
+      });
+      if (firstLoc) return firstLoc.id;
+    }
+    throw new Error('User is not assigned to any location');
+  }
+
+  async getWorkflow(locationId: string) {
     const config = await this.prisma.workflowConfiguration.findUnique({
-      where: { clinicId },
+      where: { locationId },
     });
     if (!config) {
-      return { clinicId, steps: [] };
+      return { locationId, steps: [] };
     }
     let steps = config.steps;
     while (typeof steps === 'string') {
@@ -23,11 +44,11 @@ export class WorkflowService {
     return { ...config, steps };
   }
 
-  async setWorkflow(clinicId: string, steps: any[]) {
+  async setWorkflow(locationId: string, steps: any[]) {
     return this.prisma.workflowConfiguration.upsert({
-      where: { clinicId },
+      where: { locationId },
       update: { steps },
-      create: { clinicId, steps },
+      create: { locationId, steps },
     });
   }
 }

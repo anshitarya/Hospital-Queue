@@ -88,9 +88,35 @@ const LABELS: Record<BusinessType, Labels> = {
   },
 };
 
+export function normalizeBusinessType(raw?: string | null): BusinessType {
+  const v = (raw ?? 'CLINIC').toUpperCase();
+  const map: Record<string, BusinessType> = {
+    CLINIC: 'CLINIC',
+    HOSPITAL: 'CLINIC',
+    MEDICAL: 'CLINIC',
+    SALON: 'SALON',
+    SPA: 'SALON',
+    BANK: 'BANK',
+    FINANCE: 'BANK',
+    GOVT: 'GOVT',
+    GOVERNMENT: 'GOVT',
+    GENERAL: 'GENERAL',
+    CAFE: 'GENERAL',
+    RESTAURANT: 'GENERAL',
+    SERVICE_CENTER: 'GENERAL',
+  };
+  return map[v] ?? 'GENERAL';
+}
+
 export function getLabels(businessType?: string | null): Labels {
-  const key = (businessType ?? 'CLINIC') as BusinessType;
+  const key = normalizeBusinessType(businessType);
   return LABELS[key] ?? LABELS.CLINIC;
+}
+
+export function departmentPresetsFor(businessType?: string | null): string[] {
+  const key = normalizeBusinessType(businessType);
+  if (key === 'CLINIC') return [];
+  return DEPARTMENT_PRESETS[key] ?? DEPARTMENT_PRESETS.GENERAL;
 }
 
 export const DEPARTMENT_PRESETS: Record<BusinessType, string[]> = {

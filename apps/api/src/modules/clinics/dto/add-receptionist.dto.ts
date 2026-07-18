@@ -31,4 +31,9 @@ export class AddReceptionistDto {
   @IsString()
   @Matches(/^\+91[6-9]\d{9}$/, { message: 'Enter a valid 10-digit Indian mobile number' })
   phone?: string;
+
+  /** Branch where this receptionist works. Defaults to caller's selected branch. */
+  @IsOptional()
+  @IsString()
+  locationId?: string;
 }

@@ -25,18 +25,26 @@ function defaultWorkingDay(day: number): ScheduleRow {
   return { dayOfWeek: day, startTime: '09:00', endTime: '18:00', isHoliday: false };
 }
 
-export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setToast: (t: ToastMessage | null) => void }) {
+export function ScheduleTab({
+  doctors,
+  setToast,
+  locationId,
+}: {
+  doctors: DoctorItem[];
+  setToast: (t: ToastMessage | null) => void;
+  locationId?: string | null;
+}) {
   const [selectedDocId, setSelectedDocId] = useState(doctors[0]?.id || '');
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!selectedDocId) return;
+    if (!selectedDocId || !locationId) return;
     async function load() {
       setLoading(true);
       try {
-        const data = await api<ScheduleRow[]>(`/schedules/doctor/${selectedDocId}`);
+        const data = await api<ScheduleRow[]>(`/schedules/doctor/${selectedDocId}?locationId=${locationId}`);
         if (data.length === 0) {
           setSchedules(
             Array.from({ length: 7 }, (_, i) =>
@@ -53,7 +61,7 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
       }
     }
     void load();
-  }, [selectedDocId, setToast]);
+  }, [selectedDocId, locationId, setToast]);
 
   const byDay = useMemo(() => {
     const map = new Map<number, ScheduleRow[]>();
@@ -115,7 +123,7 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDocId) return;
+    if (!selectedDocId || !locationId) return;
     setSaving(true);
     try {
       const flat = Array.from(byDay.entries()).flatMap(([, rows]) => rows);
@@ -125,7 +133,7 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
         endTime: r.endTime,
         isHoliday: r.isHoliday,
       }));
-      await api(`/schedules/doctor/${selectedDocId}`, {
+      await api(`/schedules/doctor/${selectedDocId}?locationId=${locationId}`, {
         method: 'POST',
         body: { shifts: cleanShifts },
       });
@@ -138,6 +146,10 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     }
   };
 
+  if (!locationId) {
+    return <div className="py-12 text-center text-slate-400 text-sm">Select a branch to edit schedules.</div>;
+  }
+
   if (doctors.length === 0) {
     return <div className="py-12 text-center text-slate-400 text-sm">Please add staff members first.</div>;
   }
@@ -147,7 +159,7 @@ export function ScheduleTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
       <div>
         <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Professional Working Schedules</h2>
         <p className="text-xs text-slate-400 mt-0.5">
-          Multiple shifts per day supported (e.g. 13:00–15:00 and 18:00–20:00 IST). First booking starts at shift start.
+          All business professionals appear here. Hours are saved per branch (IST). Overlapping slots across branches for the same person are blocked.
         </p>
       </div>
 

@@ -7,11 +7,14 @@ import { formatHourLabel, istHour, serviceDay } from '../../common/utils/timezon
 export class AnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getDashboardAnalytics(clinicId: string) {
+  async getDashboardAnalytics(clinicId: string, locationId?: string) {
     const serviceDayKey = serviceDay();
 
     const doctors = await this.prisma.doctor.findMany({
-      where: { clinicId },
+      where: {
+        clinicId,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
       select: { id: true },
     });
     const doctorIds = doctors.map((d) => d.id);
@@ -35,6 +38,7 @@ export class AnalyticsService {
       where: {
         doctorId: { in: doctorIds },
         serviceDay: serviceDayKey,
+        ...(locationId ? { locationId } : {}),
       },
       select: {
         status: true,
@@ -126,14 +130,14 @@ export class AnalyticsService {
         by: ['patientId'],
         where: {
           patientId: { in: patientIds },
-          clinicId,
+          location: { clinicId },
           status: VisitStatus.COMPLETED,
         },
-        _count: { _all: true },
+        _count: { id: true },
       });
 
       const returningSet = new Set(
-        visitCounts.filter((item) => item._count._all > 1).map((item) => item.patientId),
+        visitCounts.filter((item) => (item._count?.id ?? 0) > 1).map((item) => item.patientId),
       );
 
       for (const pId of patientIds) {

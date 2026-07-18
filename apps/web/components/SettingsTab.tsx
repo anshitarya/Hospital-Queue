@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
+import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
 import { type ToastMessage } from './Toast';
 import { QRCodePanel } from './QRCodePanel';
 import { Spinner } from './PageLoader';
@@ -74,7 +75,15 @@ function settingsPayload(settings: SettingsData): Record<string, unknown> {
   return Object.fromEntries(EDITABLE_FIELDS.map((key) => [key, settings[key]]));
 }
 
-export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) => void }) {
+export function SettingsTab({
+  setToast,
+  locationId,
+  onSettingsSaved,
+}: {
+  setToast: (t: ToastMessage | null) => void;
+  locationId?: string | null;
+  onSettingsSaved?: () => void;
+}) {
   const [settings, setSettings] = useState<SettingsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -85,9 +94,11 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
   useEffect(() => {
     async function load() {
       try {
+        const qs = locationId ? `?locationId=${locationId}` : '';
+        const docQs = locationId ? `?locationId=${locationId}` : '';
         const [data, docs] = await Promise.all([
-          api<Record<string, unknown>>('/business-settings/my'),
-          api<Array<{ id: string; user: { name: string }; specialization: string | null; clinic: { name: string } | null }>>('/clinics/my/doctors').catch(() => []),
+          api<Record<string, unknown>>(`/business-settings/my${qs}`),
+          api<Array<{ id: string; user: { name: string }; specialization: string | null; clinic: { name: string } | null }>>(`/clinics/my/doctors${docQs}`).catch(() => []),
         ]);
         setSettings(parseSettings(data));
         setDoctors(docs);
@@ -102,18 +113,20 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
       }
     }
     void load();
-  }, [setToast]);
+  }, [setToast, locationId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settings) return;
     setSaving(true);
     try {
-      await api('/business-settings/my', {
+      const qs = locationId ? `?locationId=${locationId}` : '';
+      await api(`/business-settings/my${qs}`, {
         method: 'PATCH',
         body: settingsPayload(settings),
       });
       setToast({ type: 'ok', msg: 'Settings updated successfully' });
+      onSettingsSaved?.();
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update settings' });
     } finally {
@@ -152,8 +165,8 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
               <label className="label text-xs font-semibold text-slate-500 uppercase">Business Type</label>
               <select className="input mt-1 w-full" value={settings.businessType}
                 onChange={(e) => setSettings({ ...settings, businessType: e.target.value })}>
-                {['CLINIC', 'HOSPITAL', 'SALON', 'SPA', 'CAFE', 'RESTAURANT', 'BANK', 'GOVERNMENT', 'SERVICE_CENTER'].map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                {BUSINESS_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
             </div>
@@ -255,31 +268,6 @@ export function SettingsTab({ setToast }: { setToast: (t: ToastMessage | null) =
                   onChange={(e) => setSettings({ ...settings, followupJoinRuleParam: parseInt(e.target.value) || 0 })} />
               </div>
             )}
-          </div>
-        </div>
-
-        {/* Timing parameters */}
-        <div className="card p-5 space-y-4">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Timeout & Buffer Parameters</h3>
-          <p className="text-xs text-slate-400">
-            Buffer adds padding between appointments in time-slot mode. Grace period controls how far back a missed patient rejoins in the queue. No-show timeout is reserved for automatic missed marking (coming soon).
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Buffer Time (Minutes)</label>
-              <input className="input mt-1 w-full" type="number" min={0} max={60} value={settings.bufferTime}
-                onChange={(e) => setSettings({ ...settings, bufferTime: parseInt(e.target.value) || 0 })} />
-            </div>
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Rejoin Grace Period (Minutes)</label>
-              <input className="input mt-1 w-full" type="number" min={1} max={60} value={settings.gracePeriod}
-                onChange={(e) => setSettings({ ...settings, gracePeriod: parseInt(e.target.value) || 4 })} />
-            </div>
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">No-show Auto-timeout (Minutes)</label>
-              <input className="input mt-1 w-full" type="number" min={1} max={180} value={settings.noShowTimeout}
-                onChange={(e) => setSettings({ ...settings, noShowTimeout: parseInt(e.target.value) || 15 })} />
-            </div>
           </div>
         </div>
 

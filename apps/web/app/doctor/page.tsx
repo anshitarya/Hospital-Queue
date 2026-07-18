@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, Fragment } from 'react';
 import { api, ApiError, type Clinic, type Doctor, type Snapshot } from '@/lib/api';
 import { tokenDisplay } from '@/lib/tokenCode';
 import { useDoctorQueue } from '@/lib/socket';
@@ -18,7 +18,7 @@ import {
   DoctorCredentialsModal,
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
-import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst } from '@/lib/datetime';
+import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst, fmtWait } from '@/lib/datetime';
 import { getLabels } from '@/lib/labels';
 
 interface ReceptionistRow {
@@ -52,6 +52,8 @@ export default function DoctorPage() {
   const [transferWalkin, setTransferWalkin] = useState(false);
   const [transferSlotType, setTransferSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
   const [doctorsList, setDoctorsList] = useState<Doctor[]>([]);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
 
   const [recList, setRecList] = useState<ReceptionistRow[]>([]);
   const [recName, setRecName] = useState('');
@@ -82,10 +84,11 @@ export default function DoctorPage() {
     if (ready && user?.clinicId) loadReceptionists();
   }, [ready, user?.clinicId, loadReceptionists]);
 
-  const loadRecords = useCallback(async (from: string, to: string, dId: string) => {
+  const loadRecords = useCallback(async (from: string, to: string, dId: string, locId?: string | null) => {
     setRecordsLoading(true);
     try {
-      const data = await api<RecordsResponse>(`/clinics/my/history?doctorId=${dId}&from=${from}&to=${to}&limit=500`);
+      const qs = locId ? `&locationId=${locId}` : '';
+      const data = await api<RecordsResponse>(`/clinics/my/history?doctorId=${dId}&from=${from}&to=${to}&limit=500${qs}`);
       setRecordsData(data);
     } catch {
       /* ignore */
@@ -130,8 +133,18 @@ export default function DoctorPage() {
   }
 
   useEffect(() => {
-    if (tab === 'history' && doctorId) void loadRecords(recordsFrom, recordsTo, doctorId);
-  }, [tab, doctorId, recordsFrom, recordsTo]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (tab === 'history' && doctorId) void loadRecords(recordsFrom, recordsTo, doctorId, selectedLocationId);
+  }, [tab, doctorId, recordsFrom, recordsTo, selectedLocationId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!ready || !user?.clinicId) return;
+    api<{ id: string; name: string }[]>('/clinics/my/locations')
+      .then((locs) => {
+        setLocations(locs ?? []);
+        if (locs?.length && !selectedLocationId) setSelectedLocationId(locs[0].id);
+      })
+      .catch(() => setLocations([]));
+  }, [ready, user?.clinicId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!ready || !user) return;
@@ -181,21 +194,32 @@ export default function DoctorPage() {
   }, [applyOptimistic, revertOptimistic]);
 
   // Derived state — must be before any early returns so hooks (useMemo) count stays constant.
-  const current = snapshot?.entries.find((e) => e.status === 'IN_CONSULTATION');
-  const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
+  // Filter queue to selected branch when doctor works at multiple locations.
+  const branchSnapshot = useMemo(() => {
+    if (!snapshot || !selectedLocationId) return snapshot;
+    const atBranch = (e: { locationId?: string }) => !e.locationId || e.locationId === selectedLocationId;
+    return {
+      ...snapshot,
+      entries: snapshot.entries.filter(atBranch),
+      missedEntries: snapshot.missedEntries?.filter(atBranch),
+    };
+  }, [snapshot, selectedLocationId]);
+
+  const current = branchSnapshot?.entries.find((e) => e.status === 'IN_CONSULTATION');
+  const waiting = (branchSnapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
   const nextUp = waiting[0];
-  const isPaused = snapshot?.doctor?.status === 'PAUSED';
+  const isPaused = branchSnapshot?.doctor?.status === 'PAUSED';
   const orderMap = useMemo(
     () => new Map(waiting.map((e, i) => [e.id, i + 1])),
     [waiting],
   );
-  const breakUntil = snapshot?.doctor?.breakUntil ? new Date(snapshot.doctor.breakUntil) : null;
+  const breakUntil = branchSnapshot?.doctor?.breakUntil ? new Date(branchSnapshot.doctor.breakUntil) : null;
   const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
-  const L = getLabels(snapshot?.doctor?.clinic?.businessType);
+  const L = getLabels(branchSnapshot?.doctor?.clinic?.businessType);
 
   if (!ready) return <PageLoader label="Loading your panel…" />;
 
-  const callNext = () =>
+  const callNext = () => {
     callAction(
       () => api(`/queue/doctor/${doctorId}/call-next`, { method: 'POST' }),
       'Call next',
@@ -211,8 +235,9 @@ export default function DoctorPage() {
         };
       },
     );
+  };
 
-  const completeEntry = (id: string) =>
+  const completeEntry = (id: string) => {
     callAction(
       () => api(`/queue/entry/${id}/complete`, { method: 'POST' }),
       'Complete',
@@ -222,20 +247,23 @@ export default function DoctorPage() {
         entries: s.entries.filter((e) => e.id !== id),
       }),
     );
+  };
 
-  const cancelEntry = (id: string) =>
+  const cancelEntry = (id: string) => {
     callAction(
       () => api(`/queue/entry/${id}/cancel`, { method: 'POST' }),
       'Cancel',
       (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'CANCELLED' as const } : e) }),
     );
+  };
 
-  const missEntry = (id: string) =>
+  const missEntry = (id: string) => {
     callAction(
       () => api(`/queue/entry/${id}/miss`, { method: 'POST' }),
       'Mark missed',
       (s) => ({ ...s, entries: s.entries.map(e => e.id === id ? { ...e, status: 'MISSED' as const } : e) }),
     );
+  };
 
   const transferEntry = () => {
     if (!destDoctorId || !current) return;
@@ -262,7 +290,7 @@ export default function DoctorPage() {
     setTransferSlotType('NEW');
   };
 
-  const doctorAction = (action: 'pause' | 'resume') =>
+  const doctorAction = (action: 'pause' | 'resume') => {
     callAction(
       () => api(`/queue/doctor/${doctorId}/${action}`, { method: 'POST' }),
       action,
@@ -273,6 +301,7 @@ export default function DoctorPage() {
           : s.doctor,
       }),
     );
+  };
 
   const startBreak = () => {
     const mins = Math.max(1, parseInt(breakMinutes, 10) || 1);
@@ -291,13 +320,14 @@ export default function DoctorPage() {
 
   const clearQueue = (includeMissed: boolean) => {
     setShowClearConfirm(false);
+    const targetDay = serviceDay();
     callAction(
-      () => api(`/queue/doctor/${doctorId}/clear-queue`, { method: 'POST', body: { includeMissed } }),
+      () => api(`/queue/doctor/${doctorId}/clear-queue`, { method: 'POST', body: { includeMissed, serviceDay: targetDay } }),
       'Clear queue',
       (s) => ({
         ...s,
         entries: s.entries.map(e =>
-          e.status === 'WAITING' ? { ...e, status: 'CANCELLED' as const } : e
+          e.status === 'WAITING' && e.serviceDay === targetDay ? { ...e, status: 'CANCELLED' as const } : e
         ),
         missedEntries: includeMissed ? [] : s.missedEntries,
       }),
@@ -322,8 +352,27 @@ export default function DoctorPage() {
   return (
     <>
       <Header
-        title={snapshot?.doctor?.clinic?.name ?? 'Doctor'}
-        subtitle={snapshot?.doctor?.department?.name}
+        title={branchSnapshot?.doctor?.clinic?.name ?? 'Doctor'}
+        subtitle={branchSnapshot?.doctor?.department?.name}
+        actions={
+          locations.length > 0 ? (
+            locations.length > 1 ? (
+              <select
+                value={selectedLocationId || ''}
+                onChange={(e) => setSelectedLocationId(e.target.value)}
+                className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer"
+              >
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750">
+                {locations[0].name}
+              </span>
+            )
+          ) : undefined
+        }
       />
       <main className="mx-auto max-w-4xl px-4 py-5 space-y-4 animate-fade-in">
         {linkError && (
@@ -390,8 +439,8 @@ export default function DoctorPage() {
                     Resume
                   </button>
                 </div>
-                {snapshot?.doctor?.breakNote && (
-                  <div className="text-xs text-amber-700 pl-6">{snapshot.doctor.breakNote}</div>
+                {branchSnapshot?.doctor?.breakNote && (
+                  <div className="text-xs text-amber-700 pl-6">{branchSnapshot.doctor.breakNote}</div>
                 )}
               </div>
             )}
@@ -402,8 +451,8 @@ export default function DoctorPage() {
               <div className={`px-5 py-3.5 border-b border-slate-100 flex items-center justify-between ${current ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30' : 'bg-slate-50'}`}>
                 <div>
                   <h2 className="section-title">{current ? L.inService : L.service}</h2>
-                  {snapshot?.doctor && !isPaused && (
-                    <p className="section-sub">Avg {snapshot.doctor.avgConsultMinutes} min/patient</p>
+                  {branchSnapshot?.doctor && !isPaused && (
+                    <p className="section-sub">Avg {branchSnapshot.doctor.avgConsultMinutes} {L.perCustomer}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
@@ -642,9 +691,9 @@ export default function DoctorPage() {
                     <span className="ml-2 text-sm font-normal text-slate-400">({waiting.length})</span>
                   </h2>
                   <div className="flex items-center gap-2">
-                    {snapshot?.movingAvgMinutes != null && (
+                    {branchSnapshot?.movingAvgMinutes != null && (
                       <span className="text-[10px] text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
-                        ~{Math.round(snapshot.movingAvgMinutes)} min/patient
+                        ~{Math.round(branchSnapshot.movingAvgMinutes)} {L.perCustomer}
                       </span>
                     )}
                     {waiting.length > 0 && (
@@ -661,7 +710,7 @@ export default function DoctorPage() {
                         Cancel {selectedIds.size}
                       </button>
                     )}
-                    {!selectMode && (waiting.length > 0 || (snapshot?.missedEntries ?? []).length > 0) && (
+                    {!selectMode && (waiting.length > 0 || (branchSnapshot?.missedEntries ?? []).length > 0) && (
                       <button type="button" onClick={() => setShowClearConfirm(true)} className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50">
                         Clear all
                       </button>
@@ -676,7 +725,7 @@ export default function DoctorPage() {
                       <button type="button" onClick={() => clearQueue(false)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
                         Clear waiting only
                       </button>
-                      {(snapshot?.missedEntries ?? []).length > 0 && (
+                      {(branchSnapshot?.missedEntries ?? []).length > 0 && (
                         <button type="button" onClick={() => clearQueue(true)} className="btn-ghost !py-1 !px-3 text-xs text-rose-700 border border-rose-300 hover:bg-rose-100">
                           Clear waiting + missed
                         </button>
@@ -696,23 +745,50 @@ export default function DoctorPage() {
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
-                  {waiting.map((e, idx) => (
-                    <div key={e.id} className={`flex items-center transition-colors ${idx === 0 ? 'bg-brand-50/40' : 'hover:bg-slate-50'}`}>
-                      {selectMode && (
-                        <label className="flex items-center pl-4 pr-1 self-stretch cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                            checked={selectedIds.has(e.id)}
-                            onChange={() => setSelectedIds(prev => {
-                              const next = new Set(prev);
-                              next.has(e.id) ? next.delete(e.id) : next.add(e.id);
-                              return next;
-                            })}
-                          />
-                        </label>
-                      )}
-                    <div className="flex flex-1 items-center gap-3 px-5 py-3 min-w-0">
+                  {waiting.map((e, idx) => {
+                    const prevEntry = idx > 0 ? waiting[idx - 1] : null;
+                    const showDaySeparator = !prevEntry || prevEntry.serviceDay !== e.serviceDay;
+
+                    const todayStr = serviceDay(new Date());
+                    const isToday = e.serviceDay === todayStr;
+                    const isTomorrow = e.serviceDay === serviceDay(new Date(Date.now() + 86400000));
+                    
+                    const dayLabel = isToday 
+                      ? "Today's Schedule" 
+                      : isTomorrow 
+                        ? "Tomorrow's Schedule" 
+                        : `${formatDateIst(e.serviceDay, { weekday: 'long', month: 'short', day: 'numeric' })}'s Schedule`;
+
+                    return (
+                      <Fragment key={e.id}>
+                        {showDaySeparator && (
+                          <div className="bg-slate-50 dark:bg-slate-900/60 px-5 py-2.5 border-y border-slate-100 dark:border-slate-800/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 select-none">
+                            <span>📅 {dayLabel}</span>
+                            <div className="h-px bg-slate-200/80 dark:bg-slate-700/60 flex-1" />
+                          </div>
+                        )}
+                        <div className={`flex items-center transition-colors ${
+                          showClearConfirm && e.status === 'WAITING' && e.serviceDay === serviceDay()
+                            ? 'bg-rose-50/80 dark:bg-rose-950/20 border-l-[3px] border-l-rose-400'
+                            : idx === 0
+                              ? 'bg-brand-50/40'
+                              : 'hover:bg-slate-50'
+                        }`}>
+                          {selectMode && (
+                            <label className="flex items-center pl-4 pr-1 self-stretch cursor-pointer">
+                              <input
+                                type="checkbox"
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                                checked={selectedIds.has(e.id)}
+                                onChange={() => setSelectedIds(prev => {
+                                  const next = new Set(prev);
+                                  next.has(e.id) ? next.delete(e.id) : next.add(e.id);
+                                  return next;
+                                })}
+                              />
+                            </label>
+                          )}
+                          <div className="flex flex-1 items-center gap-3 px-5 py-3 min-w-0">
                       {/* Position badge */}
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${idx === 0 ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
                         {idx + 1}
@@ -744,7 +820,7 @@ export default function DoctorPage() {
                       </div>
                       {/* ETA — absolute time (Feature 5) */}
                       <div className="text-right text-xs text-slate-500 shrink-0">
-                        <div className="font-medium text-slate-700">~{e.etaMinutes} min</div>
+                        <div className="font-medium text-slate-700">{fmtWait(e.etaMinutes ?? 0)}</div>
                         {e.etaAbsolute && (
                           <div className="text-slate-400">
                             {formatTimeIst(e.etaAbsolute)}
@@ -754,9 +830,11 @@ export default function DoctorPage() {
                       <div className="shrink-0">
                         <EntryStatusPill status={e.status} />
                       </div>
-                    </div>
-                    </div>
-                  ))}
+                        </div>
+                      </div>
+                    </Fragment>
+                  );
+                })}
                 </div>
               )}
             </section>

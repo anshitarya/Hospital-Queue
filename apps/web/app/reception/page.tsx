@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { ProfileMenu } from '@/components/ProfileMenu';
 import { DarkModeToggle } from '@/components/DarkModeToggle';
-import { getLabels, DEPARTMENT_PRESETS, type BusinessType } from '@/lib/labels';
+import { getLabels, departmentPresetsFor, normalizeBusinessType, type BusinessType } from '@/lib/labels';
 import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { PageLoader } from '@/components/PageLoader';
@@ -17,6 +17,7 @@ import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/Doc
 import { TurnosIcon } from '@/components/Icons';
 import { ReviewFormButton } from '@/components/ReviewFormButton';
 import { SettingsTab } from '@/components/SettingsTab';
+import { LocationsTab } from '@/components/LocationsTab';
 import { ScheduleTab } from '@/components/ScheduleTab';
 import { LeavesTab } from '@/components/LeavesTab';
 import { WorkflowTab } from '@/components/WorkflowTab';
@@ -26,10 +27,21 @@ import { formatDateIst, formatTimeIst, formatDurationHms, serviceDay, serviceDay
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'queue' | 'history' | 'staff' | 'settings' | 'schedule' | 'leaves' | 'workflows' | 'analytics';
+type Tab = 'dashboard' | 'queue' | 'history' | 'staff' | 'settings' | 'schedule' | 'leaves' | 'workflows' | 'analytics' | 'locations';
+
+const LOCATION_STORAGE_KEY = 'turnos_reception_location';
+
+interface StaffRow {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  createdAt?: string;
+  locations?: { locationId: string; location: { id: string; name: string } }[];
+}
 
 interface DashboardDoctor {
-  id: string; userId?: string; name: string; department: string;
+  id: string; userId: string; name: string; department: string;
   status: 'AVAILABLE' | 'PAUSED' | 'OFFLINE';
   waiting: number; inConsultation: number;
   completed: number; missed: number; skipped: number; cancelled: number;
@@ -142,14 +154,17 @@ interface ClinicDashboard {
   clinic: { id: string; name: string; address?: string; businessType?: string | null };
   today: { waiting: number; inConsultation: number; completed: number; skipped: number; cancelled: number };
   doctors: DashboardDoctor[];
+  allDoctors?: Array<{ id: string; userId: string; name: string; department: string }>;
   weeklyTraffic: TrafficPoint[];
+  activeLocationId?: string | null;
+  locations?: Array<{ id: string; name: string }>;
 }
 interface ClinicAnalytics { period: string; points: AnalyticsPoint[] }
 interface DoctorAnalytics { from: string; to: string; doctors: DoctorAnalyticsRow[] }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff', 'settings', 'schedule', 'leaves', 'workflows', 'analytics'];
+const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff', 'settings', 'schedule', 'leaves', 'workflows', 'analytics', 'locations'];
 const TODAY = serviceDay();
 const daysAgo = (n: number) => serviceDaysAgo(n);
 const SEVEN_AGO = daysAgo(6);
@@ -169,8 +184,7 @@ type BookingPeriod = '7d' | '30d' | '3m' | '12m' | 'hourly' | 'custom';
 type DocPeriod     = '7d' | '30d' | '3m' | '12m' | 'today'  | 'custom';
 
 export default function ReceptionPage() {
-  const { ready } = useRequireRole(['RECEPTIONIST', 'CLINIC_ADMIN', 'ADMIN']);
-  const { user } = useAuth();
+  const { ready, user } = useRequireRole(['RECEPTIONIST', 'CLINIC_ADMIN', 'MANAGER', 'ADMIN']);
 
   // ── Tab — persisted in localStorage so refresh keeps the user here ──
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -201,6 +215,12 @@ export default function ReceptionPage() {
   const [histPeriod, setHistPeriod] = useState<DocPeriod>('today');
   const [histFrom, setHistFrom]     = useState(TODAY);
   const [histTo, setHistTo]         = useState(TODAY);
+
+  // Active selected location state (receptionists/admins can switch locations)
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [locationReady, setLocationReady] = useState(false);
+  const [managers, setManagers] = useState<StaffRow[]>([]);
+  const [receptionists, setReceptionists] = useState<StaffRow[]>([]);
 
   // Compute from/to when a preset is picked
   useEffect(() => {
@@ -234,14 +254,75 @@ export default function ReceptionPage() {
   const [creds, setCreds]                   = useState<DoctorCredentials | null>(null);
   const [toast, setToast]                   = useState<ToastMessage | null>(null);
 
+  // Add-receptionist form (business admin / clinic admin in staff tab)
+  const [recName, setRecName]               = useState('');
+  const [recEmail, setRecEmail]             = useState('');
+  const [recPhone, setRecPhone]             = useState('');
+  const [recPhoneResult, setRecPhoneResult] = useState<PhoneValidationResult>({ ok: false });
+  const [recBusy, setRecBusy]               = useState(false);
+
+  // Add branch manager form (business admin only)
+  const [mgrName, setMgrName]               = useState('');
+  const [mgrEmail, setMgrEmail]             = useState('');
+  const [mgrPhone, setMgrPhone]             = useState('');
+  const [mgrPhoneResult, setMgrPhoneResult] = useState<PhoneValidationResult>({ ok: false });
+  const [mgrBusy, setMgrBusy]               = useState(false);
+
+  const [editEmailUserId, setEditEmailUserId] = useState<string | null>(null);
+  const [editEmailValue, setEditEmailValue] = useState('');
+  const [editEmailBusy, setEditEmailBusy] = useState(false);
+
+  const canManageStaff = user?.role === 'CLINIC_ADMIN' || user?.role === 'MANAGER' || user?.role === 'ADMIN';
+
   // ── Data loaders ──────────────────────────────────────────────────────────
 
-  const loadDashboard = useCallback(async (silent = false) => {
+  const loadDashboard = useCallback(async (silent = false, locId?: string) => {
     if (!silent) setLoading(true); else setRefreshing(true);
-    try { setData(await api<ClinicDashboard>('/clinics/my/dashboard')); }
+    const targetLoc = locId ?? selectedLocationId;
+    const qs = targetLoc ? `?locationId=${targetLoc}` : '';
+    try {
+      const res = await api<any>(`/clinics/my/dashboard${qs}`);
+      setData(res);
+      const locIds = (res?.locations ?? []).map((l: { id: string }) => l.id);
+      if (locIds.length && targetLoc && !locIds.includes(targetLoc)) {
+        const fallback = res.activeLocationId ?? locIds[0];
+        setSelectedLocationId(fallback);
+        if (user?.clinicId && fallback) {
+          localStorage.setItem(`${LOCATION_STORAGE_KEY}:${user.clinicId}`, fallback);
+        }
+      } else if (res?.activeLocationId && !targetLoc) {
+        setSelectedLocationId(res.activeLocationId);
+        if (user?.clinicId) {
+          localStorage.setItem(`${LOCATION_STORAGE_KEY}:${user.clinicId}`, res.activeLocationId);
+        }
+      }
+    }
     catch { /* ignore */ }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [selectedLocationId, user?.clinicId]);
+
+  const loadStaffLists = useCallback(async () => {
+    const qs = selectedLocationId ? `?locationId=${selectedLocationId}` : '';
+    try {
+      const [mgrs, recs] = await Promise.all([
+        api<StaffRow[]>(`/clinics/my/managers${qs}`),
+        api<StaffRow[]>(`/clinics/my/receptionists${qs}`),
+      ]);
+      setManagers(mgrs);
+      setReceptionists(recs);
+    } catch {
+      setManagers([]);
+      setReceptionists([]);
+    }
+  }, [selectedLocationId]);
+
+  const selectLocation = useCallback((locId: string) => {
+    setSelectedLocationId(locId);
+    if (user?.clinicId) {
+      localStorage.setItem(`${LOCATION_STORAGE_KEY}:${user.clinicId}`, locId);
+    }
+    void loadDashboard(false, locId);
+  }, [user?.clinicId, loadDashboard]);
 
   const loadAnalytics = useCallback(async (period: BookingPeriod, from?: string, to?: string, hourlyDate?: string) => {
     try {
@@ -254,49 +335,62 @@ export default function ReceptionPage() {
         const map: Record<string, string> = { '7d': 'period=daily&count=7', '30d': 'period=daily&count=30', '3m': 'period=daily&count=90', '12m': 'period=monthly&count=12' };
         qs = map[period] ?? 'period=daily&count=30';
       }
+      if (selectedLocationId) {
+        qs += `&locationId=${selectedLocationId}`;
+      }
       setAnalytics(await api<ClinicAnalytics>(`/clinics/my/analytics?${qs}`));
     } catch { /* ignore */ }
-  }, []);
+  }, [selectedLocationId]);
 
   const loadDoctorAnalytics = useCallback(async (from: string, to: string) => {
-    try { setDoctorAnalytics(await api<DoctorAnalytics>(`/clinics/my/doctor-analytics?from=${from}&to=${to}`)); }
+    let url = `/clinics/my/doctor-analytics?from=${from}&to=${to}`;
+    if (selectedLocationId) url += `&locationId=${selectedLocationId}`;
+    try { setDoctorAnalytics(await api<DoctorAnalytics>(url)); }
     catch { /* ignore */ }
-  }, []);
+  }, [selectedLocationId]);
 
   const loadHistory = useCallback(async (from: string, to: string, page: number) => {
-    try { setHistory(await api<HistoryResponse>(`/clinics/my/history?from=${from}&to=${to}&page=${page}&limit=100`)); }
+    let url = `/clinics/my/history?from=${from}&to=${to}&page=${page}&limit=100`;
+    if (selectedLocationId) url += `&locationId=${selectedLocationId}`;
+    try { setHistory(await api<HistoryResponse>(url)); }
     catch { /* ignore */ }
-  }, []);
+  }, [selectedLocationId]);
 
   const loadHistoryAnalytics = useCallback(async (from: string, to: string) => {
-    try { setHistoryAnalytics(await api<ClinicAnalytics>(`/clinics/my/analytics?period=daily&from=${from}&to=${to}`)); }
+    let url = `/clinics/my/analytics?period=daily&from=${from}&to=${to}`;
+    if (selectedLocationId) url += `&locationId=${selectedLocationId}`;
+    try { setHistoryAnalytics(await api<ClinicAnalytics>(url)); }
     catch { /* ignore */ }
-  }, []);
+  }, [selectedLocationId]);
 
   const loadDepartments = useCallback(async () => {
-    if (departments.length > 0) return;
     try {
-      const btype = (data?.clinic?.businessType ?? 'CLINIC') as BusinessType;
-      const presets = DEPARTMENT_PRESETS[btype] ?? [];
+      const btype = normalizeBusinessType(data?.clinic?.businessType);
+      const presets = departmentPresetsFor(data?.clinic?.businessType);
       if (btype !== 'CLINIC' && presets.length > 0) {
-        // Non-clinic: show only business-specific presets, not medical DB ones
         setDepartments(presets.map((p) => ({ id: `__new__${p}`, name: p })));
       } else {
-        // CLINIC: fetch from DB (seeded medical departments)
         const fromDb = await api<DepartmentOption[]>('/clinics/my/departments');
         setDepartments(fromDb.length > 0 ? fromDb : HOSPITAL_DEPARTMENTS.map((n) => ({ id: `__new__${n}`, name: n })));
       }
     } catch { /* ignore */ }
-  }, [departments.length, data?.clinic?.businessType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data?.clinic?.businessType]);
 
   // ── Effects ───────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!ready) return;
-    void loadDashboard();
+    if (!user?.clinicId) return;
+    const saved = localStorage.getItem(`${LOCATION_STORAGE_KEY}:${user.clinicId}`);
+    if (saved) setSelectedLocationId(saved);
+    setLocationReady(true);
+  }, [user?.clinicId]);
+
+  useEffect(() => {
+    if (!ready || !locationReady) return;
+    void loadDashboard(false, selectedLocationId || undefined);
     void loadAnalytics(bookingPeriod, bookingFrom, bookingTo, bookingHourlyDate);
     void loadDoctorAnalytics(histFrom, histTo);
-  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, locationReady, selectedLocationId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!ready) return;
@@ -317,7 +411,91 @@ export default function ReceptionPage() {
   useEffect(() => {
     if (!ready || activeTab !== 'staff') return;
     void loadDepartments();
-  }, [activeTab, ready]); // eslint-disable-line react-hooks/exhaustive-deps
+    void loadStaffLists();
+  }, [activeTab, ready, selectedLocationId, data?.clinic?.businessType]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function resetStaffPassword(opts: {
+    userId: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    role: DoctorCredentials['role'];
+  }) {
+    const ok = window.confirm(
+      `Reset password for ${opts.name}?\n\nTheir current password will stop working immediately.`,
+    );
+    if (!ok) return;
+    try {
+      const result = await api<{ user: { id: string }; tempPassword: string }>(
+        `/clinics/my/staff/${opts.userId}/reset-password`,
+        { method: 'POST' },
+      );
+      setCreds({
+        role: opts.role,
+        name: opts.name,
+        email: opts.email,
+        phone: opts.phone,
+        tempPassword: result.tempPassword,
+      });
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to reset password' });
+    }
+  }
+
+  async function removeProfessional(doctorId: string, name: string) {
+    if (!window.confirm(`Remove ${name}? Waiting queue entries for today will be cleared.`)) return;
+    try {
+      await api(`/clinics/my/doctors/${doctorId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `${name} removed.` });
+      await loadDashboard(true);
+      void loadStaffLists();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove professional' });
+    }
+  }
+
+  async function removeWorker(userId: string, name: string) {
+    if (!window.confirm(`Remove ${name}? They will lose access to this business.`)) return;
+    try {
+      await api(`/clinics/my/receptionists/${userId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `${name} removed.` });
+      void loadStaffLists();
+      await loadDashboard(true);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove staff' });
+    }
+  }
+
+  async function removeBranchManager(userId: string, name: string) {
+    if (!window.confirm(`Remove branch manager ${name}?`)) return;
+    try {
+      await api(`/clinics/my/managers/${userId}`, { method: 'DELETE' });
+      setToast({ type: 'ok', msg: `${name} removed.` });
+      void loadStaffLists();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove manager' });
+    }
+  }
+
+  async function saveStaffEmail(userId: string) {
+    if (!editEmailValue.trim()) return;
+    setEditEmailBusy(true);
+    try {
+      await api(`/clinics/my/staff/${userId}/email`, {
+        method: 'PATCH',
+        body: { email: editEmailValue.trim() },
+      });
+      setEditEmailUserId(null);
+      setEditEmailValue('');
+      setToast({ type: 'ok', msg: 'Email updated.' });
+      void loadStaffLists();
+      await loadDashboard(true);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update email' });
+    } finally {
+      setEditEmailBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!ready || (activeTab !== 'dashboard' && activeTab !== 'queue')) return;
@@ -330,6 +508,10 @@ export default function ReceptionPage() {
 
   async function addDoctor(e: React.FormEvent) {
     e.preventDefault();
+    if ((data?.locations?.length ?? 0) > 1 && !selectedLocationId) {
+      setToast({ type: 'err', msg: 'Select a branch before adding staff.' });
+      return;
+    }
     if (!docEmail && !docPhoneResult.ok) {
       setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the doctor.' });
       return;
@@ -346,10 +528,13 @@ export default function ReceptionPage() {
         deptId = created.id;
         setDepartments((prev) => prev.map((d) => d.id === docDeptId ? { ...d, id: created.id } : d));
       }
+      const docUrl = selectedLocationId
+        ? `/clinics/my/doctors?locationId=${selectedLocationId}`
+        : '/clinics/my/doctors';
       const result = await api<{
         doctor: { id: string; user: { name: string; email: string | null; phone: string | null } };
         tempPassword: string;
-      }>('/clinics/my/doctors', {
+      }>(docUrl, {
         method: 'POST',
         body: {
           name: docName,
@@ -358,6 +543,7 @@ export default function ReceptionPage() {
           departmentId: deptId,
           avgConsultMinutes: docAvg,
           useDefaultSchedule: docUseDefaultSchedule,
+          locationIds: selectedLocationId ? [selectedLocationId] : undefined,
         },
       });
       setDocName(''); setDocEmail(''); setDocPhone('');
@@ -371,10 +557,101 @@ export default function ReceptionPage() {
         tempPassword: result.tempPassword,
       });
       await loadDashboard(true);
+      void loadStaffLists();
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add doctor' });
     } finally {
       setDocBusy(false);
+    }
+  }
+
+  async function addReceptionist(e: React.FormEvent) {
+    e.preventDefault();
+    if ((data?.locations?.length ?? 0) > 1 && !selectedLocationId) {
+      setToast({ type: 'err', msg: 'Select a branch before adding staff.' });
+      return;
+    }
+    if (!recEmail && !recPhoneResult.ok) {
+      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the receptionist.' });
+      return;
+    }
+    setRecBusy(true);
+    try {
+      const recUrl = selectedLocationId
+        ? `/clinics/my/receptionists?locationId=${selectedLocationId}`
+        : '/clinics/my/receptionists';
+      const result = await api<{
+        user: { id: string; name: string; email: string | null; phone: string | null };
+        tempPassword: string;
+      }>(recUrl, {
+        method: 'POST',
+        body: {
+          name: recName,
+          email: recEmail || undefined,
+          phone: recPhoneResult.e164 || undefined,
+          locationId: selectedLocationId || undefined,
+        },
+      });
+      setRecName(''); setRecEmail(''); setRecPhone('');
+      setRecPhoneResult({ ok: false });
+      setCreds({
+        role: 'receptionist',
+        name: result.user.name,
+        email: result.user.email,
+        phone: result.user.phone,
+        tempPassword: result.tempPassword,
+      });
+      await loadDashboard(true);
+      void loadStaffLists();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add receptionist' });
+    } finally {
+      setRecBusy(false);
+    }
+  }
+
+  async function addManager(e: React.FormEvent) {
+    e.preventDefault();
+    if ((data?.locations?.length ?? 0) > 1 && !selectedLocationId) {
+      setToast({ type: 'err', msg: 'Select a branch before adding a manager.' });
+      return;
+    }
+    if (!mgrEmail && !mgrPhoneResult.ok) {
+      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the branch manager.' });
+      return;
+    }
+    setMgrBusy(true);
+    try {
+      const mgrUrl = selectedLocationId
+        ? `/clinics/my/managers?locationId=${selectedLocationId}`
+        : '/clinics/my/managers';
+      const result = await api<{
+        user: { id: string; name: string; email: string | null; phone: string | null };
+        tempPassword: string;
+      }>(mgrUrl, {
+        method: 'POST',
+        body: {
+          name: mgrName,
+          email: mgrEmail || undefined,
+          phone: mgrPhoneResult.e164 || undefined,
+          locationId: selectedLocationId || undefined,
+        },
+      });
+      setMgrName(''); setMgrEmail(''); setMgrPhone('');
+      setMgrPhoneResult({ ok: false });
+      setCreds({
+        role: 'manager',
+        name: result.user.name,
+        email: result.user.email,
+        phone: result.user.phone,
+        tempPassword: result.tempPassword,
+      });
+      await loadDashboard(true);
+      void loadStaffLists();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add branch manager' });
+    } finally {
+      setMgrBusy(false);
     }
   }
 
@@ -384,6 +661,7 @@ export default function ReceptionPage() {
 
   const today   = data?.today ?? { waiting: 0, inConsultation: 0, completed: 0, skipped: 0, cancelled: 0 };
   const doctors = data?.doctors ?? [];
+  const scheduleDoctors = data?.allDoctors ?? doctors;
   const histDoctors = doctorAnalytics?.doctors ?? doctors;
 
   const todayDate = formatDateIst(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -401,6 +679,7 @@ export default function ReceptionPage() {
     history: 'History',
     staff: 'Staff',
     settings: 'Business Settings',
+    locations: 'Branches & Locations',
     schedule: 'Staff Schedules',
     leaves: 'Leaves & Breaks',
     workflows: 'Workflows',
@@ -419,7 +698,9 @@ export default function ReceptionPage() {
           <TurnosIcon className="w-8 h-8 shrink-0" />
           <div className="hidden sm:block min-w-0">
             <div className="font-semibold text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">Reception</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">
+                {user?.role === 'CLINIC_ADMIN' ? 'Business Admin' : user?.role === 'MANAGER' ? 'Branch Manager' : user?.role === 'ADMIN' ? 'Admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Reception'}
+              </div>
           </div>
         </div>
 
@@ -442,6 +723,7 @@ export default function ReceptionPage() {
             <div className="px-3 py-1 text-[9px] font-semibold text-slate-500 uppercase tracking-wider hidden sm:block">Configuration</div>
             {[
               { label: 'Settings', tab: 'settings', icon: GearIcon },
+              ...(user?.role !== 'MANAGER' ? [{ label: 'Locations', tab: 'locations', icon: MapPinIcon }] : []),
               { label: 'Schedules', tab: 'schedule', icon: CalendarIcon },
               { label: 'Leaves & Breaks', tab: 'leaves', icon: ClockIcon },
               { label: 'Workflows', tab: 'workflows', icon: RouteIcon },
@@ -483,6 +765,25 @@ export default function ReceptionPage() {
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{todayDate}</p>
           </div>
           <div className="flex items-center gap-1.5">
+            {data?.locations && data.locations.length > 0 && (
+              data.locations.length > 1 ? (
+              <select
+                value={selectedLocationId || ''}
+                onChange={(e) => selectLocation(e.target.value)}
+                className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer"
+              >
+                {data.locations.map((loc: any) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
+                ))}
+              </select>
+              ) : (
+              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750">
+                {data.locations[0].name}
+              </span>
+              )
+            )}
             <button type="button" onClick={refresh} disabled={refreshing}
               className={`btn-icon ${refreshing ? 'opacity-50' : ''}`} title="Refresh">
               <RefreshIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -598,7 +899,7 @@ export default function ReceptionPage() {
         {/* ── Queue ── */}
         {activeTab === 'queue' && (
           <div className="p-4 sm:p-5 mx-auto max-w-7xl">
-            <QueueManager />
+            <QueueManager locationId={selectedLocationId} />
           </div>
         )}
 
@@ -618,11 +919,168 @@ export default function ReceptionPage() {
         {activeTab === 'staff' && (
           <div className="p-5 sm:p-6 space-y-5">
 
-            {(user?.role === 'CLINIC_ADMIN' || user?.role === 'ADMIN') && (
+            {(user?.role === 'CLINIC_ADMIN' || user?.role === 'MANAGER' || user?.role === 'ADMIN') && (
               <ReceptionistAssignmentsTab
                 businessType={data?.clinic?.businessType}
                 setToast={setToast}
+                locationId={selectedLocationId}
               />
+            )}
+
+            {/* Add receptionist form — business admin / admin only */}
+            {(user?.role === 'CLINIC_ADMIN' || user?.role === 'MANAGER' || user?.role === 'ADMIN') && (
+              <div className="card p-5">
+                <h2 className="section-title mb-4 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 text-sm font-bold">+</span>
+                  Add {L.staff.toLowerCase()}
+                </h2>
+                <form onSubmit={addReceptionist} className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+                  <input className="input sm:col-span-2" placeholder="Full name" value={recName} onChange={(e) => setRecName(e.target.value)} required />
+                  <input className="input" type="email" placeholder="Email (for login)" value={recEmail} onChange={(e) => setRecEmail(e.target.value)} />
+                  <PhoneInput label={null} value={recPhone} onChange={(raw, result) => { setRecPhone(raw); setRecPhoneResult(result); }} autoComplete="off" />
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 sm:col-span-2 -mt-1">At least one of email / mobile is required.</p>
+                  <button type="submit" className="btn-primary sm:col-span-2" disabled={recBusy || (!recEmail && !recPhoneResult.ok)}>
+                    {recBusy ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Adding…
+                      </span>
+                    ) : `Add ${L.staff.toLowerCase()}`}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {user?.role === 'CLINIC_ADMIN' && (
+              <div className="card p-5">
+                <h2 className="section-title mb-4 flex items-center gap-2">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-sm font-bold">+</span>
+                  Add branch manager
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 max-w-xl">
+                  Branch managers run day-to-day operations at the selected location — queue, staff, schedules, and settings. They cannot create new branches.
+                </p>
+                <form onSubmit={addManager} className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
+                  <input className="input sm:col-span-2" placeholder="Full name" value={mgrName} onChange={(e) => setMgrName(e.target.value)} required />
+                  <input className="input" type="email" placeholder="Email (for login)" value={mgrEmail} onChange={(e) => setMgrEmail(e.target.value)} />
+                  <PhoneInput label={null} value={mgrPhone} onChange={(raw, result) => { setMgrPhone(raw); setMgrPhoneResult(result); }} autoComplete="off" />
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 sm:col-span-2 -mt-1">
+                    Assigned to {data?.locations?.find((l: { id: string }) => l.id === selectedLocationId)?.name ?? 'the selected branch'}.
+                  </p>
+                  <button type="submit" className="btn-primary sm:col-span-2" disabled={mgrBusy || (!mgrEmail && !mgrPhoneResult.ok)}>
+                    {mgrBusy ? 'Adding…' : 'Add branch manager'}
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {(user?.role === 'CLINIC_ADMIN' || user?.role === 'ADMIN') && (
+              <div className="card p-5">
+                <h2 className="section-title mb-4">
+                  Branch managers
+                  <span className="ml-2 text-slate-400 dark:text-slate-500 font-normal text-sm">({managers.length})</span>
+                </h2>
+                {managers.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No branch managers at this location yet.</p>
+                ) : (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+                    {managers.map((m) => (
+                      <div key={m.id} className="px-4 py-3 bg-white dark:bg-slate-900/40 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate">{m.name}</p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {[m.email, m.phone].filter(Boolean).join(' · ') || '—'}
+                            </p>
+                          </div>
+                          {m.locations?.[0]?.location?.name && (
+                            <span className="text-xs text-slate-400 shrink-0">{m.locations[0].location.name}</span>
+                          )}
+                        </div>
+                        {user?.role === 'CLINIC_ADMIN' && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {editEmailUserId === m.id ? (
+                              <>
+                                <input className="input !py-1 text-xs flex-1 min-w-[140px]" value={editEmailValue}
+                                  onChange={(e) => setEditEmailValue(e.target.value)} placeholder="New email" />
+                                <button type="button" className="btn-primary !px-2 !py-1 text-xs" disabled={editEmailBusy}
+                                  onClick={() => void saveStaffEmail(m.id)}>Save</button>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
+                                  onClick={() => { setEditEmailUserId(null); setEditEmailValue(''); }}>Cancel</button>
+                              </>
+                            ) : (
+                              <>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
+                                  onClick={() => { setEditEmailUserId(m.id); setEditEmailValue(m.email ?? ''); }}>Edit email</button>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
+                                  onClick={() => void resetStaffPassword({ userId: m.id, name: m.name, email: m.email, phone: m.phone, role: 'manager' })}>Reset pwd</button>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs text-rose-600 border-rose-200"
+                                  onClick={() => void removeBranchManager(m.id, m.name)}>Remove</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(user?.role === 'CLINIC_ADMIN' || user?.role === 'MANAGER' || user?.role === 'ADMIN') && (
+              <div className="card p-5">
+                <h2 className="section-title mb-4">
+                  {L.staff}
+                  <span className="ml-2 text-slate-400 dark:text-slate-500 font-normal text-sm">({receptionists.length})</span>
+                </h2>
+                {receptionists.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No {L.staff.toLowerCase()} at this location yet.</p>
+                ) : (
+                  <div className="divide-y divide-slate-100 dark:divide-slate-800 rounded-xl ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+                    {receptionists.map((r) => (
+                      <div key={r.id} className="px-4 py-3 bg-white dark:bg-slate-900/40 space-y-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-800 dark:text-slate-100 text-sm truncate">{r.name}</p>
+                            <p className="text-xs text-slate-400 truncate">
+                              {[r.email, r.phone].filter(Boolean).join(' · ') || '—'}
+                            </p>
+                          </div>
+                          {r.locations?.[0]?.location?.name && (
+                            <span className="text-xs text-slate-400 shrink-0">{r.locations[0].location.name}</span>
+                          )}
+                        </div>
+                        {canManageStaff && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {editEmailUserId === r.id ? (
+                              <>
+                                <input className="input !py-1 text-xs flex-1 min-w-[140px]" value={editEmailValue}
+                                  onChange={(e) => setEditEmailValue(e.target.value)} placeholder="New email" />
+                                <button type="button" className="btn-primary !px-2 !py-1 text-xs" disabled={editEmailBusy}
+                                  onClick={() => void saveStaffEmail(r.id)}>Save</button>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
+                                  onClick={() => { setEditEmailUserId(null); setEditEmailValue(''); }}>Cancel</button>
+                              </>
+                            ) : (
+                              <>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
+                                  onClick={() => { setEditEmailUserId(r.id); setEditEmailValue(r.email ?? ''); }}>Edit email</button>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
+                                  onClick={() => void resetStaffPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, role: 'receptionist' })}>Reset pwd</button>
+                                <button type="button" className="btn-secondary !px-2 !py-1 text-xs text-rose-600 border-rose-200"
+                                  onClick={() => void removeWorker(r.id, r.name)}>Remove</button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* Add doctor form */}
@@ -642,6 +1100,7 @@ export default function ReceptionPage() {
                     value={docDeptId}
                     onChange={setDocDeptId}
                     required
+                    allowCustom
                     placeholder={`Search ${L.department.toLowerCase()}…`}
                     label={`Select ${L.department.toLowerCase()}`}
                   />
@@ -730,6 +1189,14 @@ export default function ReceptionPage() {
                           <p className="text-slate-400 dark:text-slate-500">In {L.service.toLowerCase()}</p>
                         </div>
                       </div>
+                      {canManageStaff && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1"
+                            onClick={() => void resetStaffPassword({ userId: doc.userId, name: doc.name, email: null, phone: null, role: 'doctor' })}>Reset pwd</button>
+                          <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1 text-rose-600 border-rose-200"
+                            onClick={() => void removeProfessional(doc.id, doc.name)}>Remove</button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -740,12 +1207,21 @@ export default function ReceptionPage() {
 
         {/* ── Settings ── */}
         {activeTab === 'settings' && (
-          <SettingsTab setToast={setToast} />
+          <SettingsTab
+            setToast={setToast}
+            locationId={selectedLocationId}
+            onSettingsSaved={() => { void loadDashboard(true); setDepartments([]); void loadDepartments(); }}
+          />
+        )}
+
+        {/* ── Locations ── */}
+        {activeTab === 'locations' && (
+          <LocationsTab setToast={setToast} />
         )}
 
         {/* ── Schedule ── */}
         {activeTab === 'schedule' && (
-          <ScheduleTab doctors={doctors as any[]} setToast={setToast} />
+          <ScheduleTab doctors={scheduleDoctors as any[]} setToast={setToast} locationId={selectedLocationId} />
         )}
 
         {/* ── Leaves ── */}
@@ -755,12 +1231,12 @@ export default function ReceptionPage() {
 
         {/* ── Workflows ── */}
         {activeTab === 'workflows' && (
-          <WorkflowTab doctors={doctors as any[]} setToast={setToast} />
+          <WorkflowTab doctors={doctors as any[]} setToast={setToast} locationId={selectedLocationId} />
         )}
 
         {/* ── Analytics ── */}
         {activeTab === 'analytics' && (
-          <AnalyticsTab setToast={setToast} />
+          <AnalyticsTab setToast={setToast} locationId={selectedLocationId} />
         )}
       </main>
     </div>
@@ -2083,4 +2559,7 @@ function RouteIcon({ className }: { className?: string }) {
 }
 function ChartIcon({ className }: { className?: string }) {
   return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" /></svg>;
+}
+function MapPinIcon({ className }: { className?: string }) {
+  return <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><circle cx="12" cy="11" r="3" /></svg>;
 }

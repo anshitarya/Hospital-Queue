@@ -16,7 +16,7 @@ export class LeaveManagementService {
   ) {
     let targetUserId = callerId;
     if (dto.userId && dto.userId !== callerId) {
-      if (callerRole !== Role.CLINIC_ADMIN && callerRole !== Role.ADMIN) {
+      if (callerRole !== Role.CLINIC_ADMIN && callerRole !== Role.MANAGER && callerRole !== Role.ADMIN) {
         throw new ForbiddenException('Cannot request leave for another staff member');
       }
       targetUserId = dto.userId;
@@ -205,7 +205,7 @@ export class LeaveManagementService {
   }
 
   private assertBusinessAdmin(role: Role) {
-    if (role !== Role.CLINIC_ADMIN && role !== Role.ADMIN) {
+    if (role !== Role.CLINIC_ADMIN && role !== Role.MANAGER && role !== Role.ADMIN) {
       throw new ForbiddenException('Only a business admin can approve or reject leave requests');
     }
   }
@@ -233,8 +233,14 @@ export class LeaveManagementService {
       },
     });
 
+    const docLoc = await this.prisma.doctorLocation.findFirst({
+      where: { doctorId: doctor.id },
+      select: { locationId: true },
+    });
+    const locationId = docLoc?.locationId || '';
+
     const settings = await this.prisma.businessSetting.findUnique({
-      where: { clinicId: doctor.clinicId || '' },
+      where: { locationId },
     });
 
     if (settings?.autoQueueAssignment) {

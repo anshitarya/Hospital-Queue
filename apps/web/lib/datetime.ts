@@ -79,3 +79,23 @@ export function formatDurationHms(ms: number): string {
   const s = totalSec % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
+
+/**
+ * Format a wait-time in minutes to a human-friendly string.
+ *
+ * Examples:
+ *   fmtWait(5)    → "~5 min"
+ *   fmtWait(90)   → "~1h 30m"
+ *   fmtWait(1440) → "~1 day"
+ *   fmtWait(2880) → "~2 days"
+ */
+export function fmtWait(mins: number, prefix = '~'): string {
+  if (mins < 1) return `${prefix}<1 min`;
+  if (mins < 60) return `${prefix}${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h < 24) return m > 0 ? `${prefix}${h}h ${m}m` : `${prefix}${h}h`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return rh > 0 ? `${prefix}${d}d ${rh}h` : `${prefix}${d} day${d !== 1 ? 's' : ''}`;
+}

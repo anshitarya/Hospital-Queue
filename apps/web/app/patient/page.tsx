@@ -10,6 +10,7 @@ import { PageLoader, Spinner } from '@/components/PageLoader';
 import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
+import { fmtWait } from '@/lib/datetime';
 import { getLabels } from '@/lib/labels';
 import { formatTimeIst, serviceDay, serviceDaysAgo, entryServiceDay, formatDateIst, formatRelativeTimeIst } from '@/lib/datetime';
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
@@ -1087,7 +1088,7 @@ function ActiveAppointmentCard({
           <div className="text-right">
             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Est. Wait</span>
             <span className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-0.5 block">
-              ~{eta} min
+              {fmtWait(eta)}
             </span>
           </div>
         </div>

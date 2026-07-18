@@ -42,7 +42,12 @@ function etaLabel(doctor: PublicDoctor): string {
   const total = doctor.queueLength;
   if (total === 0) return 'No wait';
   const mins = Math.max(1, total * doctor.avgConsultMinutes);
-  return `~${mins} min wait`;
+  if (mins < 60) return `~${mins} min wait`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h < 24) return m > 0 ? `~${h}h ${m}m wait` : `~${h}h wait`;
+  const d = Math.floor(h / 24);
+  return `~${d} day${d !== 1 ? 's' : ''} wait`;
 }
 
 function statusColor(status: string) {

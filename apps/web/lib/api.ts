@@ -22,20 +22,32 @@ export async function api<T>(
   // so the Bearer header is the reliable channel. See lib/auth.ts (`hq_token`).
   const token =
     typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
-  const res = await fetch(`${BASE_URL}/api${path}`, {
-    ...init,
-    headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    },
-    credentials: 'include',
-    body: init.body && !isFormData ? JSON.stringify(init.body) : (init.body as BodyInit),
-    cache: 'no-store',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/api${path}`, {
+      ...init,
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers as Record<string, string> | undefined),
+      },
+      credentials: 'include',
+      body: init.body && !isFormData ? JSON.stringify(init.body) : (init.body as BodyInit),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiError(0, `Cannot reach the API at ${BASE_URL}. Start the API server and check NEXT_PUBLIC_API_URL.`);
+  }
 
   const text = await res.text();
-  const payload = text ? JSON.parse(text) : null;
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new ApiError(res.status, text.slice(0, 200) || `Request failed (${res.status})`);
+    }
+  }
 
   if (!res.ok) {
     if (res.status === 401 && typeof window !== 'undefined') {
@@ -80,7 +92,7 @@ export interface InviteCode {
   createdAt: string;
 }
 
-export type Role = 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'DOCTOR' | 'ADMIN';
+export type Role = 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'MANAGER' | 'DOCTOR' | 'ADMIN';
 export type EntryStatus =
   | 'WAITING'
   | 'IN_CONSULTATION'
@@ -122,6 +134,7 @@ export interface QueueEntry {
   id: string;
   doctorId: string;
   patientId: string;
+  locationId?: string;
   patient?: { id: string; name: string; phone?: string | null; customerPin?: string | null };
   serviceDay: string;
   tokenNumber: number;

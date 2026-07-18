@@ -14,7 +14,7 @@ interface WorkflowStep {
   doctorId?: string;
 }
 
-export function WorkflowTab({ doctors, setToast }: { doctors: DoctorItem[]; setToast: (t: ToastMessage | null) => void }) {
+export function WorkflowTab({ doctors, setToast, locationId }: { doctors: DoctorItem[]; setToast: (t: ToastMessage | null) => void; locationId?: string | null }) {
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,7 +22,8 @@ export function WorkflowTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
   useEffect(() => {
     async function load() {
       try {
-        const data = await api<{ steps: WorkflowStep[] }>('/workflow/my');
+        const url = locationId ? `/workflow/my?locationId=${locationId}` : '/workflow/my';
+        const data = await api<{ steps: WorkflowStep[] }>(url);
         setSteps(data?.steps || []);
       } catch {
         setToast({ type: 'err', msg: 'Failed to load workflow configuration' });
@@ -31,7 +32,7 @@ export function WorkflowTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
       }
     }
     void load();
-  }, [setToast]);
+  }, [setToast, locationId]);
 
   const addStep = () => {
     setSteps([...steps, { name: `Step ${steps.length + 1}`, doctorId: doctors[0]?.id || '' }]);
@@ -51,7 +52,8 @@ export function WorkflowTab({ doctors, setToast }: { doctors: DoctorItem[]; setT
     e.preventDefault();
     setSaving(true);
     try {
-      await api('/workflow/my', {
+      const url = locationId ? `/workflow/my?locationId=${locationId}` : '/workflow/my';
+      await api(url, {
         method: 'POST',
         body: { steps },
       });

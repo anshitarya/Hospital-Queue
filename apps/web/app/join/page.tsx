@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError } from '../../lib/api';
 import { useAuth, registerCustomer } from '../../lib/auth';
 import { PageLoader, Spinner } from '../../components/PageLoader';
+import { fmtWait } from '../../lib/datetime';
 
 interface JoinInfo {
   allowOnlineBooking: boolean;
@@ -160,7 +161,7 @@ function JoinPageContent() {
                 <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
                 <div className="text-center">
                   <div className="text-xl font-extrabold text-brand-600 dark:text-brand-400 tabular-nums">
-                    {info.etaMinutes < 1 ? '<1' : info.etaMinutes} min
+                    {fmtWait(info.etaMinutes < 1 ? 1 : info.etaMinutes, '~')}
                   </div>
                   <div className="text-[10px] text-slate-400 font-medium">est. wait</div>
                 </div>
@@ -175,7 +176,7 @@ function JoinPageContent() {
             <div className="text-4xl">🎉</div>
             <h2 className="text-base font-bold text-emerald-800 dark:text-emerald-300">You&apos;re in the queue!</h2>
             <p className="text-xs text-emerald-700 dark:text-emerald-400">
-              Your spot has been confirmed. Estimated wait: <strong>{info.etaMinutes + 1} min</strong>
+              Your spot has been confirmed. Estimated wait: <strong>{fmtWait(info.etaMinutes + 1)}</strong>
             </p>
 
             {generatedPin && (

@@ -85,22 +85,26 @@ export class QueueService {
 
   // ---------- read paths ----------
 
-  async snapshot(doctorId: string): Promise<Awaited<ReturnType<QueueService['buildSnapshot']>>> {
-    const inflight = this.snapshotInflight.get(doctorId);
+  async snapshot(doctorId: string, locationId?: string): Promise<Awaited<ReturnType<QueueService['buildSnapshot']>>> {
+    const cacheKey = locationId ? `${doctorId}:${locationId}` : doctorId;
+    const inflight = this.snapshotInflight.get(cacheKey);
     if (inflight) return inflight;
 
-    const promise = this.buildSnapshot(doctorId).finally(() => {
-      this.snapshotInflight.delete(doctorId);
+    const promise = this.buildSnapshot(doctorId, locationId).finally(() => {
+      this.snapshotInflight.delete(cacheKey);
     });
-    this.snapshotInflight.set(doctorId, promise);
+    this.snapshotInflight.set(cacheKey, promise);
     return promise;
   }
 
-  private sortActiveEntries<T extends { appointmentTime?: Date | null; sortOrder: number | null; tokenNumber: number }>(
+  private sortActiveEntries<T extends { serviceDay: string; appointmentTime?: Date | null; sortOrder: number | null; tokenNumber: number }>(
     rawEntries: T[],
     settings: { queueMode?: string | null },
   ): T[] {
     return [...rawEntries].sort((a, b) => {
+      if (a.serviceDay !== b.serviceDay) {
+        return a.serviceDay.localeCompare(b.serviceDay);
+      }
       const timeA = a.appointmentTime ? new Date(a.appointmentTime).getTime() : Infinity;
       const timeB = b.appointmentTime ? new Date(b.appointmentTime).getTime() : Infinity;
       if (timeA !== timeB) return timeA - timeB;
@@ -108,7 +112,7 @@ export class QueueService {
     });
   }
 
-  private async buildSnapshot(doctorId: string): Promise<{
+  private async buildSnapshot(doctorId: string, filterLocationId?: string): Promise<{
     doctor: Awaited<ReturnType<PrismaService['doctor']['findUnique']>>;
     entries: EnrichedEntry[];
     currentToken: number | null;
@@ -121,33 +125,55 @@ export class QueueService {
 
     const doctor = await this.prisma.doctor.findUnique({
       where: { id: doctorId },
-      include: { user: true, department: true, clinic: true },
+      include: { user: true, department: true, clinic: true, locations: { select: { locationId: true } } },
     });
     if (!doctor) throw new NotFoundException(`Doctor ${doctorId} not found`);
+
+    const locationId = filterLocationId || doctor.locations[0]?.locationId;
+
+    const entryWhere = {
+      doctorId,
+      serviceDay: { gte: serviceDay },
+      status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+      ...(filterLocationId ? { locationId: filterLocationId } : {}),
+    };
+    const missedWhere = {
+      doctorId,
+      serviceDay,
+      status: EntryStatus.MISSED,
+      ...(filterLocationId ? { locationId: filterLocationId } : {}),
+    };
 
     // Run remaining reads in parallel (settings is read-only — no INSERT on hot path).
     const [rawEntries, missedRaw, movingAvgMinutes, calledToday, settingsRow, shifts] = await Promise.all([
       this.prisma.queueEntry.findMany({
-        where: {
-          doctorId,
-          serviceDay,
-          status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-        },
+        where: entryWhere,
         include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         orderBy: { tokenNumber: 'asc' },
       }),
       this.prisma.queueEntry.findMany({
-        where: { doctorId, serviceDay, status: EntryStatus.MISSED },
+        where: missedWhere,
         include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         orderBy: { completedAt: 'desc' },
       }),
       this.eta.getMovingAvg(doctorId, { serviceDay }),
-      this.prisma.queueEntry.count({ where: { doctorId, serviceDay, calledAt: { not: null } } }),
-      doctor.clinicId
-        ? this.prisma.businessSetting.findUnique({ where: { clinicId: doctor.clinicId } })
+      this.prisma.queueEntry.count({
+        where: {
+          doctorId,
+          serviceDay,
+          calledAt: { not: null },
+          ...(filterLocationId ? { locationId: filterLocationId } : {}),
+        },
+      }),
+      locationId
+        ? this.prisma.businessSetting.findUnique({ where: { locationId } })
         : Promise.resolve(null),
       this.prisma.professionalSchedule.findMany({
-        where: { doctorId, isHoliday: false },
+        where: {
+          doctorId,
+          isHoliday: false,
+          ...(locationId ? { locationId } : {}),
+        },
         orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
       }),
     ]);
@@ -223,11 +249,15 @@ export class QueueService {
         orderBy: { tokenNumber: 'asc' },
       }),
       this.eta.getMovingAvg(entry.doctorId, { serviceDay }),
-      entry.doctor.clinicId
-        ? this.prisma.businessSetting.findUnique({ where: { clinicId: entry.doctor.clinicId } })
+      entry.locationId
+        ? this.prisma.businessSetting.findUnique({ where: { locationId: entry.locationId } })
         : Promise.resolve(null),
       this.prisma.professionalSchedule.findMany({
-        where: { doctorId: entry.doctorId, isHoliday: false },
+        where: {
+          doctorId: entry.doctorId,
+          locationId: entry.locationId,
+          isHoliday: false,
+        },
         orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
       }),
     ]);
@@ -263,7 +293,7 @@ export class QueueService {
   }
 
   /** Public join-info for the QR landing page — no auth required. */
-  async getPublicJoinInfo(doctorId: string) {
+  async getPublicJoinInfo(doctorId: string, locationId?: string) {
     const serviceDay = todayKey();
     const doctor = await this.prisma.doctor.findUnique({
       where: { id: doctorId },
@@ -271,16 +301,19 @@ export class QueueService {
         user: { select: { name: true } },
         department: { select: { name: true } },
         clinic: { select: { id: true, name: true, address: true, businessType: true } },
+        locations: { select: { locationId: true } },
       },
     });
     if (!doctor) throw new NotFoundException('Doctor not found');
+
+    const targetLocationId = locationId || doctor.locations[0]?.locationId;
 
     const [queueLength, settings] = await Promise.all([
       this.prisma.queueEntry.count({
         where: { doctorId, serviceDay, status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] } },
       }),
-      doctor.clinicId
-        ? this.prisma.businessSetting.findUnique({ where: { clinicId: doctor.clinicId } })
+      targetLocationId
+        ? this.prisma.businessSetting.findUnique({ where: { locationId: targetLocationId } })
         : Promise.resolve(null),
     ]);
 
@@ -353,6 +386,7 @@ export class QueueService {
       slotType: dto.slotType === 'FOLLOWUP' ? SlotType.FOLLOWUP : SlotType.NEW,
       insertAtPosition: dto.insertAtPosition,
       appointmentTime: dto.appointmentTime,
+      locationId: dto.locationId,
     });
 
     if (dto.idempotencyKey) {
@@ -414,26 +448,43 @@ export class QueueService {
     serviceDay?: string;
     /** Skip time-slot allocation — used for automatic workflow routing. */
     fromWorkflow?: boolean;
+    locationId?: string;
   }) {
-    const serviceDay = input.serviceDay ?? todayKey();
+    let serviceDay = input.serviceDay;
+    if (!serviceDay) {
+      if (input.appointmentTime && input.appointmentTime.includes('T')) {
+        serviceDay = input.appointmentTime.split('T')[0];
+      } else {
+        serviceDay = todayKey();
+      }
+    }
     return this.prisma.$transaction(
       async (tx) => {
         const doctor = await tx.doctor.findUnique({
           where: { id: input.doctorId },
-          select: { clinicId: true, userId: true },
+          select: { clinicId: true, userId: true, locations: { select: { locationId: true } } },
         });
         if (!doctor) throw new NotFoundException('Doctor profile not found');
         const clinicId = doctor.clinicId;
         if (!clinicId) throw new BadRequestException('Doctor is not assigned to a clinic');
 
+        const locationId = input.locationId || doctor.locations[0]?.locationId;
+        if (!locationId) throw new BadRequestException('Professional has no assigned locations');
+        if (input.locationId) {
+          const atBranch = doctor.locations.some((l) => l.locationId === input.locationId);
+          if (!atBranch) {
+            throw new BadRequestException('Professional is not assigned to the selected branch');
+          }
+        }
+
         // Fetch settings or default
         let settings = await tx.businessSetting.findUnique({
-          where: { clinicId },
+          where: { locationId },
         });
         if (!settings) {
           settings = await tx.businessSetting.create({
             data: {
-              clinicId,
+              locationId,
               businessType: 'CLINIC',
               queueMode: 'LIVE_QUEUE',
               appointmentMode: 'HYBRID',
@@ -474,7 +525,9 @@ export class QueueService {
               : input.appointmentTime;
           } else {
             if (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT') {
-              const allocated = await this.findNextAvailableSlot(tx, input.doctorId, settings, serviceDay, now);
+              const allocated = await this.findNextAvailableSlot(
+                tx, input.doctorId, locationId, settings, serviceDay, now,
+              );
               if (allocated) {
                 finalAppointmentTime = allocated.time;
                 appointmentSlotStr = allocated.slotStr;
@@ -482,7 +535,9 @@ export class QueueService {
                 throw new BadRequestException('No available appointment slots left for today');
               }
             } else if (settings.queueMode === 'LIVE_QUEUE') {
-              const nextShiftStart = await this.getNextAvailableShift(tx, input.doctorId, serviceDay, now);
+              const nextShiftStart = await this.getNextAvailableShift(
+                tx, input.doctorId, locationId, serviceDay, now,
+              );
               if (nextShiftStart) {
                 finalAppointmentTime = nextShiftStart;
                 const hrs = String(nextShiftStart.getHours()).padStart(2, '0');
@@ -497,7 +552,7 @@ export class QueueService {
         if (!visitId) {
           let visit = await tx.visit.findFirst({
             where: {
-              clinicId,
+              locationId,
               patientId: input.patientId,
               serviceDay,
               status: VisitStatus.ACTIVE,
@@ -506,7 +561,7 @@ export class QueueService {
           if (!visit) {
             visit = await tx.visit.create({
               data: {
-                clinicId,
+                locationId,
                 patientId: input.patientId,
                 serviceDay,
                 status: VisitStatus.ACTIVE,
@@ -537,6 +592,7 @@ export class QueueService {
         return tx.queueEntry.create({
           data: {
             doctorId: input.doctorId,
+            locationId,
             patientId: input.patientId,
             createdById: input.createdById,
             serviceDay,
@@ -690,16 +746,14 @@ export class QueueService {
     }
 
     const serviceDay = todayKey();
-    const clinicId = missed.doctor.clinicId;
-    if (!clinicId) throw new BadRequestException('Doctor is not assigned to a clinic');
-
+    const locationId = missed.locationId;
     let settings = await this.prisma.businessSetting.findUnique({
-      where: { clinicId },
+      where: { locationId },
     });
     if (!settings) {
       settings = await this.prisma.businessSetting.create({
         data: {
-          clinicId,
+          locationId,
           businessType: 'CLINIC',
           queueMode: 'LIVE_QUEUE',
           appointmentMode: 'HYBRID',
@@ -808,12 +862,14 @@ export class QueueService {
         throw new BadRequestException('Cannot transfer patient to the same doctor');
       }
 
+      const locationId = currentEntry.locationId;
+
       // 3. Find or create the active Visit for this patient today
       let visitId = currentEntry.visitId;
       if (!visitId) {
         let visit = await tx.visit.findFirst({
           where: {
-            clinicId,
+            locationId,
             patientId: currentEntry.patientId,
             serviceDay,
             status: VisitStatus.ACTIVE,
@@ -822,7 +878,7 @@ export class QueueService {
         if (!visit) {
           visit = await tx.visit.create({
             data: {
-              clinicId,
+              locationId,
               patientId: currentEntry.patientId,
               serviceDay,
               status: VisitStatus.ACTIVE,
@@ -866,12 +922,12 @@ export class QueueService {
       };
 
       let settings = await tx.businessSetting.findUnique({
-        where: { clinicId },
+        where: { locationId },
       });
       if (!settings) {
         settings = await tx.businessSetting.create({
           data: {
-            clinicId,
+            locationId,
             businessType: 'CLINIC',
             queueMode: 'LIVE_QUEUE',
             appointmentMode: 'HYBRID',
@@ -891,6 +947,7 @@ export class QueueService {
       const newEntry = await tx.queueEntry.create({
         data: {
           doctorId: dto.destinationDoctorId,
+          locationId,
           patientId: currentEntry.patientId,
           createdById: caller.id,
           serviceDay,
@@ -1177,7 +1234,13 @@ export class QueueService {
 
   // ---------- history ----------
 
-  async getHistory(role: Role, userId: string, date?: string, filterDoctorId?: string) {
+  async getHistory(
+    role: Role,
+    userId: string,
+    date?: string,
+    filterDoctorId?: string,
+    locationId?: string,
+  ) {
     const serviceDay = date ?? todayKey();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDay)) {
       throw new BadRequestException('date must be YYYY-MM-DD');
@@ -1196,9 +1259,14 @@ export class QueueService {
       const doctor = await this.prisma.doctor.findUnique({ where: { userId } });
       if (!doctor) throw new NotFoundException('Doctor profile not found');
       doctorIds = [doctor.id];
-    } else if (role === Role.RECEPTIONIST || role === Role.CLINIC_ADMIN) {
+    } else if (role === Role.RECEPTIONIST || role === Role.CLINIC_ADMIN || role === Role.MANAGER) {
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (!user?.clinicId) throw new ForbiddenException('Receptionist has no clinic assigned');
+
+      let targetLocationId = locationId;
+      if (!targetLocationId) {
+        targetLocationId = await this.clinics.getDefaultLocationForUser(userId).catch(() => undefined);
+      }
 
       if (filterDoctorId) {
         await this.clinics.assertCallerCanAccessDoctor(
@@ -1208,12 +1276,15 @@ export class QueueService {
         doctorIds = [filterDoctorId];
       } else {
         const docs = await this.prisma.doctor.findMany({
-          where: { clinicId: user.clinicId },
+          where: {
+            clinicId: user.clinicId,
+            ...(targetLocationId ? { locations: { some: { locationId: targetLocationId } } } : {}),
+          },
           select: { id: true },
         });
         doctorIds = docs.map((d) => d.id);
-        if (role === Role.RECEPTIONIST) {
-          const scope = await this.clinics.getAssignedDoctorIds(userId, user.clinicId);
+        if (role === Role.RECEPTIONIST && targetLocationId) {
+          const scope = await this.clinics.getAssignedDoctorIds(userId, targetLocationId);
           if (scope !== null) {
             doctorIds = doctorIds.filter((id) => scope.includes(id));
           }
@@ -1229,6 +1300,7 @@ export class QueueService {
         doctorId: { in: doctorIds },
         serviceDay,
         status: { in: TERMINAL },
+        ...(locationId ? { locationId } : {}),
       },
       include: {
         patient: { select: CUSTOMER_PUBLIC_SELECT },
@@ -1279,14 +1351,14 @@ export class QueueService {
 
   // ---------- bulk operations ----------
 
-  async clearQueue(doctorId: string, options: { includeMissed?: boolean }, caller: AuthUser) {
+  async clearQueue(doctorId: string, options: { includeMissed?: boolean; serviceDay?: string }, caller: AuthUser) {
     await this.clinics.assertCallerCanAccessDoctor(caller, doctorId);
-    const serviceDay = todayKey();
+    const targetDay = options.serviceDay ?? todayKey();
     const statuses: EntryStatus[] = [EntryStatus.WAITING];
     if (options.includeMissed) statuses.push(EntryStatus.MISSED);
 
     const entries = await this.prisma.queueEntry.findMany({
-      where: { doctorId, serviceDay, status: { in: statuses } },
+      where: { doctorId, serviceDay: targetDay, status: { in: statuses } },
       select: { id: true, patientId: true, tokenNumber: true, patient: { select: { phone: true } } },
     });
 
@@ -1448,6 +1520,7 @@ export class QueueService {
     completed: {
       id: string;
       doctorId: string;
+      locationId: string;
       patientId: string;
       visitId: string | null;
       serviceDay: string;
@@ -1461,7 +1534,7 @@ export class QueueService {
     if (!doctor?.clinicId) return;
 
     const config = await this.prisma.workflowConfiguration.findUnique({
-      where: { clinicId: doctor.clinicId },
+      where: { locationId: completed.locationId },
     });
     if (!config) {
       if (completed.visitId) {
@@ -1518,7 +1591,7 @@ export class QueueService {
     if (!visitId) {
       const visit = await this.prisma.visit.findFirst({
         where: {
-          clinicId: doctor.clinicId,
+          locationId: completed.locationId,
           patientId: completed.patientId,
           serviceDay: completed.serviceDay,
           status: VisitStatus.ACTIVE,
@@ -1604,11 +1677,12 @@ export class QueueService {
   private async getNextAvailableShift(
     tx: any,
     doctorId: string,
+    locationId: string,
     serviceDay: string,
     now: Date,
   ): Promise<Date | null> {
     const shifts: ScheduleShift[] = await tx.professionalSchedule.findMany({
-      where: { doctorId, isHoliday: false },
+      where: { doctorId, locationId, isHoliday: false },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
     if (shifts.length === 0) return null;
@@ -1641,12 +1715,13 @@ export class QueueService {
   private async findNextAvailableSlot(
     tx: any,
     doctorId: string,
+    locationId: string,
     settings: any,
     serviceDay: string,
     now: Date,
   ): Promise<{ time: Date; slotStr: string } | null> {
     const shifts: ScheduleShift[] = await tx.professionalSchedule.findMany({
-      where: { doctorId, isHoliday: false },
+      where: { doctorId, locationId, isHoliday: false },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
 
@@ -1657,6 +1732,7 @@ export class QueueService {
     const existingBookings = await tx.queueEntry.findMany({
       where: {
         doctorId,
+        locationId,
         serviceDay,
         status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
         appointmentTime: { not: null },
@@ -1687,35 +1763,32 @@ export class QueueService {
    * When a professional ends service for the current shift, move waiting bookings
    * to the next shift (same day) or the next working day's first available slots.
    */
-  async endServiceShift(doctorId: string, caller: AuthUser) {
+  async endServiceShift(doctorId: string, caller: AuthUser, customServiceDay?: string) {
     await this.clinics.assertCallerCanAccessDoctor(caller, doctorId);
 
-    const serviceDayKey = todayKey();
+    const serviceDayKey = customServiceDay ?? todayKey();
     const now = new Date();
 
-    const [shifts, settingsRow, waiting] = await Promise.all([
-      this.prisma.professionalSchedule.findMany({
-        where: { doctorId },
-        orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
-      }),
-      this.prisma.doctor.findUnique({
-        where: { id: doctorId },
-        select: { clinicId: true },
-      }),
-      this.prisma.queueEntry.findMany({
-        where: {
-          doctorId,
-          serviceDay: serviceDayKey,
-          status: EntryStatus.WAITING,
-        },
-        orderBy: [{ appointmentTime: 'asc' }, { tokenNumber: 'asc' }],
-      }),
-    ]);
+    const waiting = await this.prisma.queueEntry.findMany({
+      where: {
+        doctorId,
+        serviceDay: serviceDayKey,
+        status: EntryStatus.WAITING,
+      },
+      orderBy: [{ appointmentTime: 'asc' }, { tokenNumber: 'asc' }],
+    });
 
     if (!waiting.length) return { rolled: 0, message: 'No waiting patients to roll over' };
 
-    let settings = settingsRow?.clinicId
-      ? await this.prisma.businessSetting.findUnique({ where: { clinicId: settingsRow.clinicId } })
+    const branchLocationId = waiting[0].locationId;
+
+    const shifts = await this.prisma.professionalSchedule.findMany({
+      where: { doctorId, locationId: branchLocationId },
+      orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+    });
+
+    let settings = branchLocationId
+      ? await this.prisma.businessSetting.findUnique({ where: { locationId: branchLocationId } })
       : null;
 
     const interval = settings?.appointmentInterval || 15;
@@ -1741,15 +1814,120 @@ export class QueueService {
       }
     }
 
-    let cursor = now;
+    let scanDateKey = serviceDayKey === todayKey() ? todayKey() : addServiceDays(serviceDayKey, 1);
+    
+    const initCursorForDate = async (dayKey: string) => {
+      const latestExisting = await this.prisma.queueEntry.findFirst({
+        where: {
+          doctorId,
+          serviceDay: dayKey,
+          status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION, EntryStatus.COMPLETED] },
+        },
+        orderBy: { appointmentTime: 'desc' },
+        select: { appointmentTime: true },
+      });
+
+      if (latestExisting?.appointmentTime) {
+        return new Date(latestExisting.appointmentTime);
+      }
+
+      if (dayKey === todayKey()) {
+        const currentDow = istDayOfWeek(now);
+        const currentMin = istMinutesOfDay(now);
+        const currentShift = shifts.find(
+          (s) =>
+            s.dayOfWeek === currentDow &&
+            !s.isHoliday &&
+            parseHmToMinutes(s.startTime) <= currentMin &&
+            parseHmToMinutes(s.endTime) > currentMin,
+        );
+        if (currentShift) {
+          return istAppointmentDate(dayKey, currentShift.endTime);
+        }
+        return now;
+      }
+
+      return new Date(`${dayKey}T00:00:00+05:30`);
+    };
+
+    let cursor = await initCursorForDate(scanDateKey);
+    const nextTokenForDay = new Map<string, number>();
+
+    const getNextTokenForDay = async (dayKey: string) => {
+      if (nextTokenForDay.has(dayKey)) {
+        const next = nextTokenForDay.get(dayKey)!;
+        nextTokenForDay.set(dayKey, next + 1);
+        return next;
+      }
+      const lastToken = await this.prisma.queueEntry.findFirst({
+        where: { doctorId, serviceDay: dayKey },
+        orderBy: { tokenNumber: 'desc' },
+        select: { tokenNumber: true },
+      });
+      const next = (lastToken?.tokenNumber ?? 0) + 1;
+      nextTokenForDay.set(dayKey, next + 1);
+      return next;
+    };
+
     let rolled = 0;
 
     for (const entry of waiting) {
-      const slot = findNextSlot(shifts, serviceDayKey, cursor, interval, maxCap, bookingCounts, 14);
+      let slot = findNextSlot(shifts, scanDateKey, cursor, interval, maxCap, bookingCounts, 14);
       if (!slot) break;
+
+      if (slot.serviceDay !== scanDateKey) {
+        scanDateKey = slot.serviceDay;
+        const newCursor = await initCursorForDate(scanDateKey);
+        const rechecked = findNextSlot(shifts, scanDateKey, newCursor, interval, maxCap, bookingCounts, 14);
+        if (!rechecked) break;
+        slot = rechecked;
+      }
 
       const key = `${slot.serviceDay}:${slot.slotStr}`;
       bookingCounts.set(key, (bookingCounts.get(key) || 0) + 1);
+
+      let updatedNotes = entry.notes || '';
+      if (!updatedNotes) {
+        updatedNotes = '[shift-rollover]';
+      } else {
+        const match = updatedNotes.match(/\[shift-rollover(?:\s+x(\d+))?\]/);
+        if (match) {
+          const count = parseInt(match[1] || '1', 10) + 1;
+          updatedNotes = updatedNotes.replace(/\[shift-rollover(?:\s+x\d+)?\]/, `[shift-rollover x${count}]`);
+        } else {
+          updatedNotes = updatedNotes.includes('\n')
+            ? `${updatedNotes}\n[shift-rollover]`
+            : `${updatedNotes} [shift-rollover]`;
+        }
+      }
+
+      const nextTokenNumber = await getNextTokenForDay(slot.serviceDay);
+
+      let targetVisitId = entry.visitId;
+      if (entry.visitId && entry.serviceDay !== slot.serviceDay) {
+        const oldVisit = await this.prisma.visit.findUnique({ where: { id: entry.visitId } });
+        if (oldVisit) {
+          let newVisit = await this.prisma.visit.findFirst({
+            where: {
+              locationId: oldVisit.locationId,
+              patientId: oldVisit.patientId,
+              serviceDay: slot.serviceDay,
+              status: 'ACTIVE' as any,
+            },
+          });
+          if (!newVisit) {
+            newVisit = await this.prisma.visit.create({
+              data: {
+                locationId: oldVisit.locationId,
+                patientId: oldVisit.patientId,
+                serviceDay: slot.serviceDay,
+                status: 'ACTIVE' as any,
+              },
+            });
+          }
+          targetVisitId = newVisit.id;
+        }
+      }
 
       await this.prisma.queueEntry.update({
         where: { id: entry.id },
@@ -1757,13 +1935,15 @@ export class QueueService {
           serviceDay: slot.serviceDay,
           appointmentTime: slot.time,
           appointmentSlot: slot.slotStr,
-          notes: entry.notes
-            ? `${entry.notes}\n[shift-rollover]`
-            : '[shift-rollover]',
+          tokenNumber: nextTokenNumber,
+          sortOrder: null,
+          notes: updatedNotes,
+          visitId: targetVisitId,
         },
       });
 
-      cursor = new Date(slot.time.getTime() + interval * 60_000);
+      scanDateKey = slot.serviceDay;
+      cursor = slot.time;
       rolled += 1;
     }
 
@@ -1785,7 +1965,7 @@ export class QueueService {
   }
 
   private async verifyCallerCanAccessEntry(caller: AuthUser, entryId: string): Promise<void> {
-    if (caller.role !== Role.RECEPTIONIST) return;
+    if (caller.role !== Role.RECEPTIONIST && caller.role !== Role.MANAGER) return;
     const entry = await this.prisma.queueEntry.findUnique({
       where: { id: entryId },
       select: { doctorId: true },

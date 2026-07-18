@@ -30,13 +30,10 @@ export class RatingsService {
     if (entry.rating) {
       throw new BadRequestException('You have already rated this visit');
     }
-    if (!entry.doctor.clinicId) {
-      throw new BadRequestException('Professional is not linked to a clinic');
-    }
 
     return this.prisma.professionalRating.create({
       data: {
-        clinicId: entry.doctor.clinicId,
+        locationId: entry.locationId,
         doctorId: entry.doctor.id,
         patientId,
         entryId: entry.id,
@@ -58,10 +55,10 @@ export class RatingsService {
     return this.prisma.professionalRating.findUnique({ where: { entryId } });
   }
 
-  async getClinicRatingsReport(clinicId: string, from: string, to: string, search?: string) {
+  async getClinicRatingsReport(clinicId: string, from: string, to: string, search?: string, locationId?: string) {
     const ratings = await this.prisma.professionalRating.findMany({
       where: {
-        clinicId,
+        ...(locationId ? { locationId } : { location: { clinicId } }),
         createdAt: {
           gte: new Date(`${from}T00:00:00+05:30`),
           lte: new Date(`${to}T23:59:59+05:30`),

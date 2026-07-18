@@ -45,6 +45,7 @@ export function ProfileMenu() {
   const roleLabel =
     user.role === 'PATIENT' ? '—' :
     user.role === 'CLINIC_ADMIN' ? 'Business Admin' :
+    user.role === 'MANAGER' ? 'Branch Manager' :
     user.role === 'RECEPTIONIST' ? 'Receptionist' :
     user.role === 'DOCTOR' ? 'Doctor' :
     user.role === 'ADMIN' ? 'Admin' :
@@ -52,7 +53,7 @@ export function ProfileMenu() {
   const roleColor =
     user.role === 'ADMIN' ? 'from-purple-500 to-purple-700' :
     user.role === 'DOCTOR' ? 'from-sky-500 to-sky-700' :
-    user.role === 'RECEPTIONIST' || user.role === 'CLINIC_ADMIN' ? 'from-emerald-500 to-emerald-700' :
+    user.role === 'RECEPTIONIST' || user.role === 'CLINIC_ADMIN' || user.role === 'MANAGER' ? 'from-emerald-500 to-emerald-700' :
     'from-slate-500 to-slate-700';
 
   const homePath =

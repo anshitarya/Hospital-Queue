@@ -48,6 +48,11 @@ export class JoinQueueDto {
   @IsOptional()
   @IsString()
   appointmentTime?: string;
+
+  /** Branch where the patient is being queued. */
+  @IsOptional()
+  @IsString()
+  locationId?: string;
 }
 
 export class PatientJoinQueueDto {
@@ -81,6 +86,10 @@ export class ClearQueueDto {
   @IsOptional()
   @IsBoolean()
   includeMissed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  serviceDay?: string;
 }
 
 export class CancelManyDto {

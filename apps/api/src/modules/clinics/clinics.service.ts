@@ -25,6 +25,7 @@ import {
   serviceDaysAgo,
 } from '../../common/utils/timezone';
 import { CLINIC_PORTAL_ROLES, isClinicPortalRole } from '../../common/constants/clinic-portal-roles';
+import { normalizeBusinessType } from '../../common/utils/business-type';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
@@ -40,13 +41,15 @@ export class ClinicsService {
     const clinics = await this.prisma.clinic.findMany({
       orderBy: { name: 'asc' },
       include: {
-        inviteCodes: { where: { usedById: null, expiresAt: { gt: new Date() } } },
-        doctors: { select: { id: true } },
+        locations: {
+          include: {
+            inviteCodes: { where: { usedById: null, expiresAt: { gt: new Date() } } },
+            doctors: { select: { doctorId: true } },
+          }
+        },
       },
     });
 
-    // Filtered counts — count receptionists separately so doctors (who also have
-    // clinicId) aren't lumped into the receptionist tally.
     const ids = clinics.map((c) => c.id);
     const receptionistCounts = ids.length
       ? await this.prisma.user.groupBy({
@@ -57,42 +60,48 @@ export class ClinicsService {
       : [];
     const byClinic = new Map(receptionistCounts.map((r) => [r.clinicId, r._count._all]));
 
-    return clinics.map((c) => ({
-      ...c,
-      _count: {
-        users: byClinic.get(c.id) ?? 0,
-        doctors: c.doctors.length,
-      },
-      doctors: undefined,
-    }));
+    return clinics.map((c) => {
+      const allInviteCodes = c.locations.flatMap(l => l.inviteCodes);
+      const doctorsCount = new Set(c.locations.flatMap(l => l.doctors.map(d => d.doctorId))).size;
+      return {
+        ...c,
+        inviteCodes: allInviteCodes,
+        _count: {
+          users: byClinic.get(c.id) ?? 0,
+          doctors: doctorsCount,
+        },
+        locations: c.locations,
+      };
+    });
   }
 
   /**
-   * Public endpoint — returns businesses where self-booking is allowed.
-   * Results can be filtered by a free-text `search` (matches clinic name or doctor name).
+   * Public endpoint — returns locations where self-booking is allowed.
+   * Results can be filtered by a free-text `search` (matches clinic/location name or doctor name).
    * Each result includes doctor list with queue depth for today.
    */
   async listPublicBusinesses(search?: string) {
     const today = serviceDay();
 
-    // All clinics with online booking enabled
     const settings = await this.prisma.businessSetting.findMany({
       where: { allowOnlineBooking: true },
-      select: { clinicId: true },
+      select: { locationId: true },
     });
-    const clinicIds = settings.map((s) => s.clinicId);
-    if (clinicIds.length === 0) return [];
+    const locationIds = settings.map((s) => s.locationId);
+    if (locationIds.length === 0) return [];
 
-    const clinics = await this.prisma.clinic.findMany({
+    const locations = await this.prisma.location.findMany({
       where: {
-        id: { in: clinicIds },
+        id: { in: locationIds },
+        status: 'ACTIVE',
         ...(search
           ? {
               OR: [
-                { name: { contains: search, mode: 'insensitive' } },
+                { name: { contains: search, mode: 'insensitive' as const } },
+                { clinic: { name: { contains: search, mode: 'insensitive' as const } } },
                 {
                   doctors: {
-                    some: { user: { name: { contains: search, mode: 'insensitive' } } },
+                    some: { doctor: { user: { name: { contains: search, mode: 'insensitive' as const } } } },
                   },
                 },
               ],
@@ -100,20 +109,23 @@ export class ClinicsService {
           : {}),
       },
       include: {
+        clinic: true,
         doctors: {
-          where: { status: { not: 'AWAY' } },
           include: {
-            user: { select: { id: true, name: true } },
-            department: { select: { id: true, name: true } },
-            entries: {
-              where: {
-                serviceDay: today,
-                status: { in: ['WAITING', 'IN_CONSULTATION'] },
-              },
-              select: { id: true, status: true, appointmentTime: true },
-            },
-          },
-          orderBy: { user: { name: 'asc' } },
+            doctor: {
+              include: {
+                user: { select: { id: true, name: true } },
+                department: { select: { id: true, name: true } },
+                entries: {
+                  where: {
+                    serviceDay: today,
+                    status: { in: ['WAITING', 'IN_CONSULTATION'] },
+                  },
+                  select: { id: true, status: true, appointmentTime: true, locationId: true },
+                },
+              }
+            }
+          }
         },
         businessSetting: {
           select: { queueMode: true, allowOnlineBooking: true, queueStarts: true, queueEnds: true },
@@ -122,22 +134,26 @@ export class ClinicsService {
       orderBy: { name: 'asc' },
     });
 
-    return clinics.map((clinic) => ({
-      id: clinic.id,
-      name: clinic.name,
-      address: clinic.address,
-      businessType: clinic.businessType,
-      settings: clinic.businessSetting,
-      doctors: clinic.doctors.map((d) => ({
-        id: d.id,
-        name: d.user.name,
-        specialization: d.specialization,
-        department: d.department?.name,
-        status: d.status,
-        avgConsultMinutes: d.avgConsultMinutes,
-        queueLength: d.entries.filter((e) => e.status === 'WAITING').length,
-        inConsultation: d.entries.some((e) => e.status === 'IN_CONSULTATION'),
-      })),
+    return locations.map((loc) => ({
+      id: loc.id,
+      name: `${loc.clinic.name} - ${loc.name}`,
+      address: `${loc.address}, ${loc.city}, ${loc.state}`,
+      businessType: loc.clinic.businessType,
+      settings: loc.businessSetting,
+      doctors: loc.doctors.map((dl) => {
+        const d = dl.doctor;
+        const locEntries = d.entries.filter(e => e.locationId === loc.id);
+        return {
+          id: d.id,
+          name: d.user.name,
+          specialization: d.specialization,
+          department: d.department?.name,
+          status: d.status,
+          avgConsultMinutes: d.avgConsultMinutes,
+          queueLength: locEntries.filter((e) => e.status === 'WAITING').length,
+          inConsultation: locEntries.some((e) => e.status === 'IN_CONSULTATION'),
+        };
+      }),
     }));
   }
 
@@ -192,20 +208,20 @@ export class ClinicsService {
     };
   }
 
-  async generateInviteCode(clinicId: string) {
-    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
-    if (!clinic) throw new NotFoundException('Clinic not found');
+  async generateInviteCode(locationId: string) {
+    const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!location) throw new NotFoundException('Location not found');
 
     const raw = randomBytes(4).toString('hex').toUpperCase();
     const code = `${raw.slice(0, 4)}-${raw.slice(4)}`;
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-    return this.prisma.inviteCode.create({ data: { code, clinicId, expiresAt } });
+    return this.prisma.inviteCode.create({ data: { code, locationId, expiresAt } });
   }
 
-  async listInviteCodes(clinicId: string) {
+  async listInviteCodes(locationId: string) {
     return this.prisma.inviteCode.findMany({
-      where: { clinicId },
+      where: { locationId },
       include: { usedBy: { select: { id: true, name: true, phone: true } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -216,24 +232,153 @@ export class ClinicsService {
    * doctor records (no other clinic metadata) so the admin UI can show them
    * inline under each clinic without an extra round-trip.
    */
-  async listDoctorsInClinic(clinicId: string, caller?: AuthUser) {
+  async listDoctorsInClinic(clinicId: string, caller?: AuthUser, locationId?: string) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
     if (!clinic) throw new NotFoundException('Clinic not found');
+    await this.backfillStaffLocationLinks(clinicId);
+
     const doctors = await this.prisma.doctor.findMany({
-      where: { clinicId },
+      where: {
+        clinicId,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
       include: { user: { select: { id: true, name: true, email: true, phone: true } }, department: true },
       orderBy: { user: { name: 'asc' } },
     });
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
-    return scope === null ? doctors : doctors.filter((d) => scope.includes(d.id));
+    if (caller && caller.role === Role.RECEPTIONIST && locationId) {
+      const scope = await this.getAssignedDoctorIds(caller.id, locationId);
+      if (scope !== null) return doctors.filter((d) => scope.includes(d.id));
+    } else if (caller && caller.role === Role.RECEPTIONIST) {
+      const userLocs = await this.prisma.userLocation.findMany({
+        where: { userId: caller.id },
+        select: { locationId: true },
+      });
+      const locIds = userLocs.map((l) => l.locationId);
+      if (locIds.length > 0) {
+        const assignments = await this.prisma.receptionistAssignment.findMany({
+          where: { receptionistId: caller.id, locationId: { in: locIds } },
+          select: { doctorId: true },
+        });
+        if (assignments.length > 0) {
+          const docIds = assignments.map((a) => a.doctorId);
+          return doctors.filter((d) => docIds.includes(d.id));
+        }
+      }
+    }
+    return doctors;
+  }
+  async getDefaultLocationForUser(userId: string): Promise<string> {
+    const userLoc = await this.prisma.userLocation.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'asc' },
+      select: { locationId: true },
+    });
+    if (userLoc) return userLoc.locationId;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { clinicId: true },
+    });
+    if (user?.clinicId) {
+      const firstLoc = await this.prisma.location.findFirst({
+        where: { clinicId: user.clinicId, status: 'ACTIVE' },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (firstLoc) return firstLoc.id;
+    }
+    throw new BadRequestException('User has no assigned locations');
   }
 
-  /**
-   * Assigned doctor ids for a receptionist, or null when unrestricted (no rows).
-   */
-  async getAssignedDoctorIds(receptionistId: string, clinicId: string): Promise<string[] | null> {
+  /** Ensures legacy staff created before multi-location have branch links. */
+  async backfillStaffLocationLinks(clinicId: string): Promise<void> {
+    const locations = await this.prisma.location.findMany({
+      where: { clinicId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (locations.length === 0) return;
+    const primaryLocId = locations[0].id;
+
+    const [staff, doctors] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { clinicId, role: { in: [Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER] } },
+        select: { id: true, locations: { select: { locationId: true } } },
+      }),
+      this.prisma.doctor.findMany({
+        where: { clinicId },
+        select: { id: true, locations: { select: { locationId: true } } },
+      }),
+    ]);
+
+    const userLinks = staff
+      .filter((u) => !(u.locations?.length))
+      .map((u) => ({ userId: u.id, locationId: primaryLocId }));
+    if (userLinks.length > 0) {
+      await this.prisma.userLocation.createMany({ data: userLinks, skipDuplicates: true });
+    }
+
+    const doctorLinks = doctors
+      .filter((d) => !(d.locations?.length))
+      .map((d) => ({ doctorId: d.id, locationId: primaryLocId }));
+    if (doctorLinks.length > 0) {
+      await this.prisma.doctorLocation.createMany({ data: doctorLinks, skipDuplicates: true });
+    }
+  }
+
+  private async resolveStaffLocationIds(
+    clinicId: string,
+    locationId?: string,
+    locationIds?: string[],
+  ): Promise<string[]> {
+    if (locationIds && locationIds.length > 0) {
+      const valid = await this.prisma.location.findMany({
+        where: { clinicId, status: 'ACTIVE', id: { in: locationIds } },
+        select: { id: true },
+      });
+      if (valid.length !== locationIds.length) {
+        throw new BadRequestException('One or more locations are invalid for this clinic');
+      }
+      return valid.map((l) => l.id);
+    }
+    if (locationId) {
+      const loc = await this.prisma.location.findFirst({
+        where: { id: locationId, clinicId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!loc) throw new BadRequestException('Invalid or inactive location for this clinic');
+      return [loc.id];
+    }
+    const first = await this.prisma.location.findFirst({
+      where: { clinicId, status: 'ACTIVE' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    if (!first) throw new BadRequestException('Clinic has no active locations. Add a branch first.');
+    return [first.id];
+  }
+
+  /** Branch managers and receptionists must belong to the location; business admins see all branches. */
+  async assertCallerManagesLocation(caller: AuthUser, locationId: string): Promise<void> {
+    if (caller.role === Role.ADMIN) return;
+    const location = await this.prisma.location.findFirst({
+      where: { id: locationId, clinicId: caller.clinicId ?? undefined },
+    });
+    if (!location) throw new ForbiddenException('Branch not found in your business');
+    if (caller.role === Role.CLINIC_ADMIN) return;
+    if (caller.role === Role.MANAGER || caller.role === Role.RECEPTIONIST) {
+      const assigned = await this.prisma.userLocation.findFirst({
+        where: { userId: caller.id, locationId },
+      });
+      if (!assigned) throw new ForbiddenException('You are not assigned to this branch');
+      return;
+    }
+    throw new ForbiddenException('Not authorized for this branch');
+  }
+
+  async getAssignedDoctorIds(receptionistId: string, locationId: string): Promise<string[] | null> {
     const rows = await this.prisma.receptionistAssignment.findMany({
-      where: { receptionistId, clinicId },
+      where: { receptionistId, locationId },
       select: { doctorId: true },
     });
     if (rows.length === 0) return null;
@@ -241,9 +386,9 @@ export class ClinicsService {
   }
 
   /** Restricts receptionists to assigned doctors; clinic admins and platform admins see all. */
-  private async resolveScopedDoctorIds(caller: AuthUser | undefined, clinicId: string): Promise<string[] | null> {
-    if (!caller || caller.role !== Role.RECEPTIONIST || caller.clinicId !== clinicId) return null;
-    return this.getAssignedDoctorIds(caller.id, clinicId);
+  private async resolveScopedDoctorIds(caller: AuthUser | undefined, locationId: string): Promise<string[] | null> {
+    if (!caller || caller.role !== Role.RECEPTIONIST) return null;
+    return this.getAssignedDoctorIds(caller.id, locationId);
   }
 
   private filterIdsByScope(ids: string[], scope: string[] | null): string[] {
@@ -255,30 +400,58 @@ export class ClinicsService {
     if (!caller.clinicId) return;
     const doctor = await this.prisma.doctor.findUnique({
       where: { id: doctorId },
-      select: { clinicId: true },
+      select: { clinicId: true, locations: { select: { locationId: true } } },
     });
     if (!doctor || doctor.clinicId !== caller.clinicId) {
       throw new ForbiddenException('Not authorized: doctor belongs to a different clinic');
     }
     if (caller.role !== Role.RECEPTIONIST) return;
-    const assigned = await this.getAssignedDoctorIds(caller.id, caller.clinicId);
-    if (assigned !== null && !assigned.includes(doctorId)) {
-      throw new ForbiddenException('You are not assigned to manage this professional');
+    const userLocs = await this.prisma.userLocation.findMany({
+      where: { userId: caller.id },
+      select: { locationId: true },
+    });
+    const locIds = userLocs.map(l => l.locationId);
+    if (locIds.length === 0) return;
+
+    const assigned = await this.prisma.receptionistAssignment.findFirst({
+      where: {
+        receptionistId: caller.id,
+        doctorId,
+        locationId: { in: locIds }
+      }
+    });
+
+    const hasAnyAssignment = await this.prisma.receptionistAssignment.count({
+      where: { receptionistId: caller.id, locationId: { in: locIds } }
+    });
+
+    if (hasAnyAssignment > 0 && !assigned) {
+      throw new ForbiddenException('You are not assigned to manage this professional at any of your locations');
     }
   }
 
-  async getReceptionistAssignments(clinicId: string) {
-    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
-    if (!clinic) throw new NotFoundException('Clinic not found');
+  async getReceptionistAssignments(locationId: string) {
+    const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!location) throw new NotFoundException('Location not found');
+
+    await this.backfillStaffLocationLinks(location.clinicId);
 
     const [receptionists, doctors, assignments] = await Promise.all([
-      this.listReceptionistsInClinic(clinicId),
+      this.prisma.user.findMany({
+        where: {
+          clinicId: location.clinicId,
+          role: Role.RECEPTIONIST,
+          locations: { some: { locationId } },
+        },
+        select: { id: true, name: true, email: true, phone: true, createdAt: true },
+        orderBy: { name: 'asc' },
+      }),
       this.prisma.doctor.findMany({
-        where: { clinicId },
+        where: { clinicId: location.clinicId },
         include: { user: { select: { name: true } }, department: { select: { name: true } } },
         orderBy: { user: { name: 'asc' } },
       }),
-      this.prisma.receptionistAssignment.findMany({ where: { clinicId } }),
+      this.prisma.receptionistAssignment.findMany({ where: { locationId } }),
     ]);
 
     const byRecep = new Map<string, string[]>();
@@ -301,19 +474,29 @@ export class ClinicsService {
     };
   }
 
-  async setReceptionistAssignments(clinicId: string, dto: SetReceptionistAssignmentsDto) {
-    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
-    if (!clinic) throw new NotFoundException('Clinic not found');
+  async setReceptionistAssignments(locationId: string, dto: SetReceptionistAssignmentsDto, caller?: AuthUser) {
+    if (caller) await this.assertCallerManagesLocation(caller, locationId);
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+      select: { clinicId: true }
+    });
+    if (!location) throw new NotFoundException('Location not found');
+    const clinicId = location.clinicId;
 
     const receptionistIds = Object.keys(dto.assignments);
     const allDoctorIds = [...new Set(Object.values(dto.assignments).flat())];
 
     if (receptionistIds.length > 0) {
       const validReceps = await this.prisma.user.count({
-        where: { id: { in: receptionistIds }, clinicId, role: Role.RECEPTIONIST },
+        where: {
+          id: { in: receptionistIds },
+          clinicId,
+          role: Role.RECEPTIONIST,
+          locations: { some: { locationId } },
+        },
       });
       if (validReceps !== receptionistIds.length) {
-        throw new BadRequestException('One or more receptionists are invalid for this clinic');
+        throw new BadRequestException('One or more receptionists are not assigned to this branch');
       }
     }
 
@@ -322,17 +505,17 @@ export class ClinicsService {
         where: { id: { in: allDoctorIds }, clinicId },
       });
       if (validDocs !== allDoctorIds.length) {
-        throw new BadRequestException('One or more professionals are invalid for this clinic');
+        throw new BadRequestException('One or more professionals are not in this business');
       }
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.receptionistAssignment.deleteMany({ where: { clinicId } });
-      const rows: { clinicId: string; receptionistId: string; doctorId: string }[] = [];
+      await tx.receptionistAssignment.deleteMany({ where: { locationId } });
+      const rows: { locationId: string; receptionistId: string; doctorId: string }[] = [];
       for (const [receptionistId, doctorIds] of Object.entries(dto.assignments)) {
         const unique = [...new Set(doctorIds)];
         for (const doctorId of unique) {
-          rows.push({ clinicId, receptionistId, doctorId });
+          rows.push({ locationId, receptionistId, doctorId });
         }
       }
       if (rows.length > 0) {
@@ -340,25 +523,44 @@ export class ClinicsService {
       }
     });
 
-    return this.getReceptionistAssignments(clinicId);
+    return this.getReceptionistAssignments(locationId);
   }
 
   // ── Receptionist / Doctor ──────────────────────────────────────────────────
 
-  async getMyClinic(clinicId: string, caller?: AuthUser) {
+  async getMyClinic(clinicId: string, caller?: AuthUser, locationId?: string) {
+    await this.backfillStaffLocationLinks(clinicId);
+
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: clinicId },
       include: {
         doctors: {
+          where: locationId ? { locations: { some: { locationId } } } : undefined,
           include: { user: true, department: true },
           orderBy: { user: { name: 'asc' } },
         },
       },
     });
     if (!clinic) throw new NotFoundException('Clinic not found');
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
-    if (scope !== null) {
-      clinic.doctors = clinic.doctors.filter((d) => scope.includes(d.id));
+    if (caller && caller.role === Role.RECEPTIONIST && locationId) {
+      const scope = await this.getAssignedDoctorIds(caller.id, locationId);
+      if (scope !== null) clinic.doctors = clinic.doctors.filter((d) => scope.includes(d.id));
+    } else if (caller && caller.role === Role.RECEPTIONIST) {
+      const userLocs = await this.prisma.userLocation.findMany({
+        where: { userId: caller.id },
+        select: { locationId: true },
+      });
+      const locIds = userLocs.map((l) => l.locationId);
+      if (locIds.length > 0) {
+        const assignments = await this.prisma.receptionistAssignment.findMany({
+          where: { receptionistId: caller.id, locationId: { in: locIds } },
+          select: { doctorId: true },
+        });
+        if (assignments.length > 0) {
+          const docIds = assignments.map((a) => a.doctorId);
+          clinic.doctors = clinic.doctors.filter((d) => docIds.includes(d.id));
+        }
+      }
     }
     return clinic;
   }
@@ -379,18 +581,16 @@ export class ClinicsService {
    * surface it to the user immediately and they have to write it down or
    * copy it. We never log it.
    */
-  async addDoctor(clinicId: string, dto: AddDoctorDto) {
-    // Shared pre-flight: identifier required, clinic exists, identifiers unique,
-    // temp password generated. Centralising means addDoctor and addReceptionist
-    // can't drift apart.
+  async addDoctor(clinicId: string, dto: AddDoctorDto, defaultLocationId?: string) {
     const { passwordHash, tempPassword } = await this.prepareStaffCreation(
       clinicId,
       { email: dto.email, phone: dto.phone, role: 'doctor' },
     );
 
-    // Department check is doctor-specific.
     const dept = await this.prisma.department.findUnique({ where: { id: dto.departmentId } });
     if (!dept) throw new NotFoundException('Department not found');
+
+    const branchIds = await this.resolveStaffLocationIds(clinicId, defaultLocationId, dto.locationIds);
 
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -414,6 +614,11 @@ export class ClinicsService {
         include: { user: true, department: true },
       });
 
+      await tx.doctorLocation.createMany({
+        data: branchIds.map((locationId) => ({ doctorId: doctor.id, locationId })),
+        skipDuplicates: true,
+      });
+
       const shiftRows =
         dto.shifts && dto.shifts.length > 0
           ? normalizeShiftInput(dto.shifts)
@@ -422,15 +627,17 @@ export class ClinicsService {
             : [];
 
       if (shiftRows.length > 0) {
-        await tx.professionalSchedule.createMany({
-          data: shiftRows.map((s) => ({
+        const scheduleData = branchIds.flatMap((locId) =>
+          shiftRows.map((s) => ({
             doctorId: doctor.id,
+            locationId: locId,
             dayOfWeek: s.dayOfWeek,
             startTime: s.startTime,
             endTime: s.endTime,
             isHoliday: s.isHoliday ?? false,
           })),
-        });
+        );
+        await tx.professionalSchedule.createMany({ data: scheduleData });
       }
 
       return { doctor, tempPassword };
@@ -444,10 +651,15 @@ export class ClinicsService {
    * the new user PLUS the plaintext temp password — the only chance the caller
    * has to capture it, since we immediately hash it with argon2.
    */
-  async addReceptionist(clinicId: string, dto: AddReceptionistDto) {
+  async addReceptionist(clinicId: string, dto: AddReceptionistDto, defaultLocationId?: string) {
     const { passwordHash, tempPassword } = await this.prepareStaffCreation(
       clinicId,
       { email: dto.email, phone: dto.phone, role: 'receptionist' },
+    );
+
+    const branchIds = await this.resolveStaffLocationIds(
+      clinicId,
+      dto.locationId ?? defaultLocationId,
     );
 
     const user = await this.prisma.user.create({
@@ -458,22 +670,28 @@ export class ClinicsService {
         role: Role.RECEPTIONIST,
         passwordHash,
         clinicId,
+        locations: {
+          create: branchIds.map((locationId) => ({ locationId })),
+        },
       },
       select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
     });
 
-    // The shape of the return value matches `addDoctor` deliberately — the
-    // frontend's DoctorCredentialsModal accepts both via the same prop type.
     return { user, tempPassword };
   }
 
   /**
    * Business admin for a clinic — full reception-portal access for the owner.
    */
-  async addClinicAdmin(clinicId: string, dto: AddReceptionistDto) {
+  async addClinicAdmin(clinicId: string, dto: AddReceptionistDto, defaultLocationId?: string) {
     const { passwordHash, tempPassword } = await this.prepareStaffCreation(
       clinicId,
       { email: dto.email, phone: dto.phone, role: 'business admin' },
+    );
+
+    const branchIds = await this.resolveStaffLocationIds(
+      clinicId,
+      dto.locationId ?? defaultLocationId,
     );
 
     const user = await this.prisma.user.create({
@@ -485,6 +703,9 @@ export class ClinicsService {
         passwordHash,
         clinicId,
         emailVerified: dto.email ? true : undefined,
+        locations: {
+          create: branchIds.map((locationId) => ({ locationId })),
+        },
       },
       select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
     });
@@ -543,7 +764,7 @@ export class ClinicsService {
       // caller has to send the matching clinicId on purpose.
       throw new ForbiddenException('User does not belong to this clinic');
     }
-    if (!isClinicPortalRole(user.role) && user.role !== Role.DOCTOR) {
+    if (!isClinicPortalRole(user.role) && user.role !== Role.DOCTOR && user.role !== Role.MANAGER) {
       throw new BadRequestException('Only clinic staff passwords can be reset here');
     }
 
@@ -557,15 +778,75 @@ export class ClinicsService {
     return { user, tempPassword };
   }
 
+  /** Branch manager — reception-portal access scoped to assigned location(s). */
+  async addManager(clinicId: string, dto: AddReceptionistDto, defaultLocationId?: string) {
+    const { passwordHash, tempPassword } = await this.prepareStaffCreation(
+      clinicId,
+      { email: dto.email, phone: dto.phone, role: 'manager' },
+    );
+
+    const branchIds = await this.resolveStaffLocationIds(
+      clinicId,
+      dto.locationId ?? defaultLocationId,
+    );
+
+    const user = await this.prisma.user.create({
+      data: {
+        name: dto.name,
+        email: dto.email ?? null,
+        phone: dto.phone ?? null,
+        role: Role.MANAGER,
+        passwordHash,
+        clinicId,
+        emailVerified: dto.email ? true : undefined,
+        locations: {
+          create: branchIds.map((locationId) => ({ locationId })),
+        },
+      },
+      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
+    });
+
+    return { user, tempPassword };
+  }
+
+  async listManagersInClinic(clinicId: string, locationId?: string) {
+    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
+    if (!clinic) throw new NotFoundException('Clinic not found');
+    await this.backfillStaffLocationLinks(clinicId);
+
+    return this.prisma.user.findMany({
+      where: {
+        clinicId,
+        role: Role.MANAGER,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        createdAt: true,
+        locations: { select: { locationId: true, location: { select: { id: true, name: true } } } },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   /**
    * Returns the receptionists assigned to a clinic. Used by the admin UI to
    * show who's already onboarded vs needing an invite code.
    */
-  async listReceptionistsInClinic(clinicId: string) {
+  async listReceptionistsInClinic(clinicId: string, locationId?: string) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
     if (!clinic) throw new NotFoundException('Clinic not found');
+    await this.backfillStaffLocationLinks(clinicId);
+
     return this.prisma.user.findMany({
-      where: { clinicId, role: Role.RECEPTIONIST },
+      where: {
+        clinicId,
+        role: Role.RECEPTIONIST,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -575,6 +856,21 @@ export class ClinicsService {
       },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async setDoctorLocations(clinicId: string, doctorId: string, locationIds: string[]) {
+    const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
+    if (!doctor || doctor.clinicId !== clinicId) {
+      throw new NotFoundException('Professional not found in this clinic');
+    }
+    const validIds = await this.resolveStaffLocationIds(clinicId, undefined, locationIds);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.doctorLocation.deleteMany({ where: { doctorId } });
+      await tx.doctorLocation.createMany({
+        data: validIds.map((locationId) => ({ doctorId, locationId })),
+      });
+    });
+    return { doctorId, locationIds: validIds };
   }
 
   /**
@@ -591,7 +887,7 @@ export class ClinicsService {
    */
   private async prepareStaffCreation(
     clinicId: string,
-    opts: { email?: string; phone?: string; role: 'doctor' | 'receptionist' | 'business admin' },
+    opts: { email?: string; phone?: string; role: 'doctor' | 'receptionist' | 'business admin' | 'manager' },
   ) {
     if (!opts.email && !opts.phone) {
       throw new BadRequestException(
@@ -616,11 +912,60 @@ export class ClinicsService {
     return { passwordHash, tempPassword };
   }
 
-  async removeDoctor(clinicId: string, doctorId: string) {
-    const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
+  async removeDoctor(clinicId: string, doctorId: string, caller?: AuthUser) {
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: { locations: { select: { locationId: true } } },
+    });
     if (!doctor) throw new NotFoundException('Doctor not found');
     if (doctor.clinicId !== clinicId) throw new ForbiddenException('Doctor not in your clinic');
+    if (caller?.role === Role.MANAGER) {
+      const managed = await this.prisma.userLocation.findMany({
+        where: { userId: caller.id },
+        select: { locationId: true },
+      });
+      const managedIds = new Set(managed.map((m) => m.locationId));
+      const atBranch = doctor.locations.some((l) => managedIds.has(l.locationId));
+      if (!atBranch) throw new ForbiddenException('Professional is not at your branch');
+    }
+    const serviceDayKey = serviceDay();
+    await this.prisma.queueEvent.deleteMany({ where: { doctorId } });
+    await this.prisma.queueEntry.deleteMany({
+      where: { doctorId, serviceDay: serviceDayKey, status: EntryStatus.WAITING },
+    });
     await this.prisma.doctor.delete({ where: { id: doctorId } });
+    return { deleted: true };
+  }
+
+  async removeReceptionist(clinicId: string, userId: string, caller?: AuthUser) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { locations: { select: { locationId: true } } },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.clinicId !== clinicId) throw new ForbiddenException('User not in your clinic');
+    if (user.role !== Role.RECEPTIONIST) {
+      throw new BadRequestException('User is not front-desk staff');
+    }
+    if (caller?.role === Role.MANAGER) {
+      const managed = await this.prisma.userLocation.findMany({
+        where: { userId: caller.id },
+        select: { locationId: true },
+      });
+      const managedIds = new Set(managed.map((m) => m.locationId));
+      const atBranch = user.locations.some((l) => managedIds.has(l.locationId));
+      if (!atBranch) throw new ForbiddenException('Staff member is not at your branch');
+    }
+    await this.prisma.user.update({ where: { id: userId }, data: { clinicId: null } });
+    return { deleted: true };
+  }
+
+  async removeManager(clinicId: string, userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.clinicId !== clinicId) throw new ForbiddenException('User not in this clinic');
+    if (user.role !== Role.MANAGER) throw new BadRequestException('User is not a branch manager');
+    await this.prisma.user.update({ where: { id: userId }, data: { clinicId: null } });
     return { deleted: true };
   }
 
@@ -688,25 +1033,90 @@ export class ClinicsService {
    * Clinic-level dashboard stats: today's totals, per-doctor queue state,
    * and 7-day traffic. Used by the clinic admin portal.
    */
-  async getClinicDashboard(clinicId: string, caller?: AuthUser) {
+  async getClinicDashboard(clinicId: string, caller?: AuthUser, locationId?: string) {
     const serviceDayKey = serviceDay();
 
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    let targetLocationId = locationId;
+    if (!targetLocationId && caller) {
+      targetLocationId = await this.getDefaultLocationForUser(caller.id).catch(() => undefined);
+    }
+    if (!targetLocationId) {
+      const firstLoc = await this.prisma.location.findFirst({
+        where: { clinicId, status: 'ACTIVE' },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      targetLocationId = firstLoc?.id;
+    }
 
-    const [clinic, doctors] = await Promise.all([
+    if (targetLocationId) await this.backfillStaffLocationLinks(clinicId);
+    if (caller?.role === Role.MANAGER && targetLocationId) {
+      await this.assertCallerManagesLocation(caller, targetLocationId);
+    }
+
+    const locations =
+      caller?.role === Role.RECEPTIONIST || caller?.role === Role.MANAGER
+        ? await this.prisma.location.findMany({
+            where: { clinicId, status: 'ACTIVE', users: { some: { userId: caller.id } } },
+            select: { id: true, name: true },
+          })
+        : caller?.role === Role.DOCTOR
+          ? await this.prisma.location.findMany({
+              where: {
+                clinicId,
+                status: 'ACTIVE',
+                doctors: { some: { doctor: { userId: caller.id } } },
+              },
+              select: { id: true, name: true },
+            })
+          : await this.prisma.location.findMany({
+              where: { clinicId, status: 'ACTIVE' },
+              select: { id: true, name: true },
+            });
+
+    const [clinic, doctors, allDoctorsRaw, branchSettings] = await Promise.all([
       this.prisma.clinic.findUnique({
         where: { id: clinicId },
         select: { id: true, name: true, address: true, businessType: true },
+      }),
+      this.prisma.doctor.findMany({
+        where: {
+          clinicId,
+          ...(targetLocationId ? { locations: { some: { locationId: targetLocationId } } } : {}),
+        },
+        include: { user: { select: { id: true, name: true } }, department: { select: { name: true } } },
+        orderBy: { user: { name: 'asc' } },
       }),
       this.prisma.doctor.findMany({
         where: { clinicId },
         include: { user: { select: { id: true, name: true } }, department: { select: { name: true } } },
         orderBy: { user: { name: 'asc' } },
       }),
+      targetLocationId
+        ? this.prisma.businessSetting.findUnique({
+            where: { locationId: targetLocationId },
+            select: { businessType: true },
+          })
+        : Promise.resolve(null),
     ]);
 
     if (!clinic) throw new NotFoundException('Clinic not found');
 
+    const effectiveBusinessType = normalizeBusinessType(
+      branchSettings?.businessType ?? clinic.businessType,
+    );
+    const clinicWithType = { ...clinic, businessType: effectiveBusinessType };
+
+    const allDoctors = allDoctorsRaw.map((d) => ({
+      id: d.id,
+      userId: d.user.id,
+      name: d.user.name,
+      department: d.department?.name ?? '—',
+    }));
+
+    const scope = targetLocationId
+      ? await this.resolveScopedDoctorIds(caller, targetLocationId)
+      : null;
     const visibleDoctors = scope === null ? doctors : doctors.filter((d) => scope.includes(d.id));
     const doctorIds = visibleDoctors.map((d) => d.id);
 
@@ -714,12 +1124,20 @@ export class ClinicsService {
       ? await Promise.all([
           this.prisma.queueEntry.groupBy({
             by: ['status'],
-            where: { doctorId: { in: doctorIds }, serviceDay: serviceDayKey },
+            where: {
+              doctorId: { in: doctorIds },
+              serviceDay: serviceDayKey,
+              ...(targetLocationId ? { locationId: targetLocationId } : {}),
+            },
             _count: { _all: true },
           }),
           this.prisma.queueEntry.groupBy({
             by: ['doctorId', 'status'],
-            where: { doctorId: { in: doctorIds }, serviceDay: serviceDayKey },
+            where: {
+              doctorId: { in: doctorIds },
+              serviceDay: serviceDayKey,
+              ...(targetLocationId ? { locationId: targetLocationId } : {}),
+            },
             _count: { _all: true },
           }),
           this.prisma.queueEntry.groupBy({
@@ -728,6 +1146,7 @@ export class ClinicsService {
               doctorId: { in: doctorIds },
               serviceDay: { gte: serviceDaysAgo(6) },
               status: { in: [EntryStatus.COMPLETED, EntryStatus.SKIPPED, EntryStatus.CANCELLED] },
+              ...(targetLocationId ? { locationId: targetLocationId } : {}),
             },
             _count: { _all: true },
           }),
@@ -779,7 +1198,104 @@ export class ClinicsService {
       count: weekMap.get(date) ?? 0,
     }));
 
-    return { clinic, today, doctors: doctorList, weeklyTraffic };
+    return {
+      clinic: clinicWithType,
+      today,
+      doctors: doctorList,
+      allDoctors,
+      weeklyTraffic,
+      activeLocationId: targetLocationId ?? null,
+      locations,
+    };
+  }
+
+  // ── Locations Management ───────────────────────────────────────────────────
+
+  async listLocations(clinicId: string, caller?: AuthUser) {
+    const where: {
+      clinicId: string;
+      status: string;
+      users?: { some: { userId: string } };
+      doctors?: { some: { doctor: { userId: string } } };
+    } = {
+      clinicId,
+      status: 'ACTIVE',
+    };
+    if (caller?.role === Role.RECEPTIONIST) {
+      where.users = { some: { userId: caller.id } };
+    } else if (caller?.role === Role.MANAGER) {
+      where.users = { some: { userId: caller.id } };
+    } else if (caller?.role === Role.DOCTOR) {
+      where.doctors = { some: { doctor: { userId: caller.id } } };
+    }
+    return this.prisma.location.findMany({
+      where,
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createLocation(clinicId: string, dto: any) {
+    const loc = await this.prisma.location.create({
+      data: {
+        clinicId,
+        name: dto.name,
+        address: dto.address,
+        city: dto.city,
+        state: dto.state,
+        country: dto.country,
+        postalCode: dto.postalCode,
+        contactNumber: dto.contactNumber,
+        email: dto.email ?? null,
+        timeZone: dto.timeZone ?? 'Asia/Kolkata',
+        latitude: dto.latitude ?? null,
+        longitude: dto.longitude ?? null,
+        status: dto.status ?? 'ACTIVE',
+      },
+    });
+    // Initialize default business settings for this location branch
+    await this.prisma.businessSetting.create({
+      data: {
+        locationId: loc.id,
+        businessType: 'CLINIC',
+        queueMode: 'LIVE_QUEUE',
+        appointmentMode: 'HYBRID',
+      },
+    });
+    return loc;
+  }
+
+  async updateLocation(locationId: string, dto: any) {
+    const loc = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!loc) throw new NotFoundException('Location not found');
+    return this.prisma.location.update({
+      where: { id: locationId },
+      data: {
+        name: dto.name,
+        address: dto.address,
+        city: dto.city,
+        state: dto.state,
+        country: dto.country,
+        postalCode: dto.postalCode,
+        contactNumber: dto.contactNumber,
+        email: dto.email ?? null,
+        timeZone: dto.timeZone,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
+        status: dto.status,
+      },
+    });
+  }
+
+  async deleteLocation(locationId: string) {
+    const loc = await this.prisma.location.findUnique({ where: { id: locationId } });
+    if (!loc) throw new NotFoundException('Location not found');
+    const count = await this.prisma.location.count({
+      where: { clinicId: loc.clinicId, status: 'ACTIVE' },
+    });
+    if (count <= 1 && loc.status === 'ACTIVE') {
+      throw new BadRequestException('Cannot delete the last active location of the clinic');
+    }
+    return this.prisma.location.delete({ where: { id: locationId } });
   }
 
   // ── Admin clinic management ────────────────────────────────────────────────
@@ -817,6 +1333,10 @@ export class ClinicsService {
     // InviteCodes cascade via schema FK.
     await this.prisma.clinic.delete({ where: { id: clinicId } });
     return { deleted: true };
+  }
+
+  async adminDeleteManager(clinicId: string, userId: string) {
+    return this.removeManager(clinicId, userId);
   }
 
   async adminDeleteDoctor(clinicId: string, doctorId: string) {
@@ -870,15 +1390,19 @@ export class ClinicsService {
     from?: string,
     to?: string,
     caller?: AuthUser,
+    locationId?: string,
   ) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
     const doctors = await this.prisma.doctor.findMany({
-      where: { clinicId },
+      where: {
+        clinicId,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
       select: { id: true },
     });
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    const scope = locationId ? await this.resolveScopedDoctorIds(caller, locationId) : null;
     const doctorIds = this.filterIdsByScope(
       doctors.map((d) => d.id),
       scope,
@@ -899,7 +1423,12 @@ export class ClinicsService {
     if (period === 'hourly') {
       const targetDay = dateParam ?? serviceDay();
       const entries = await this.prisma.queueEntry.findMany({
-        where: { doctorId: { in: doctorIds }, serviceDay: targetDay, status: { in: [...trackedStatuses] } },
+        where: {
+          doctorId: { in: doctorIds },
+          serviceDay: targetDay,
+          status: { in: [...trackedStatuses] },
+          ...(locationId ? { locationId } : {}),
+        },
         select: { status: true, completedAt: true, joinedAt: true },
       });
       const hourMap = new Map<number, Record<string, number>>();
@@ -943,7 +1472,12 @@ export class ClinicsService {
 
       const rows = await this.prisma.queueEntry.groupBy({
         by: ['serviceDay', 'status'],
-        where: { doctorId: { in: doctorIds }, serviceDay: { gte: rangeStart, lte: rangeEnd }, status: { in: [...trackedStatuses] } },
+        where: {
+          doctorId: { in: doctorIds },
+          serviceDay: { gte: rangeStart, lte: rangeEnd },
+          status: { in: [...trackedStatuses] },
+          ...(locationId ? { locationId } : {}),
+        },
         _count: { _all: true },
       });
 
@@ -975,7 +1509,12 @@ export class ClinicsService {
 
     const rows = await this.prisma.queueEntry.groupBy({
       by: ['serviceDay', 'status'],
-      where: { doctorId: { in: doctorIds }, serviceDay: { gte: start }, status: { in: [...trackedStatuses] } },
+      where: {
+        doctorId: { in: doctorIds },
+        serviceDay: { gte: start },
+        status: { in: [...trackedStatuses] },
+        ...(locationId ? { locationId } : {}),
+      },
       _count: { _all: true },
     });
 
@@ -1012,16 +1551,19 @@ export class ClinicsService {
    * Per-doctor breakdown for a date range — used by the histogram "past data" feature.
    * Returns each doctor's completed/missed/cancelled/skipped totals between `from` and `to`.
    */
-  async getDoctorAnalytics(clinicId: string, from: string, to: string, caller?: AuthUser) {
+  async getDoctorAnalytics(clinicId: string, from: string, to: string, caller?: AuthUser, locationId?: string) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
     const doctors = await this.prisma.doctor.findMany({
-      where: { clinicId },
+      where: {
+        clinicId,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
       include: { user: { select: { name: true } }, department: { select: { name: true } } },
       orderBy: { user: { name: 'asc' } },
     });
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    const scope = locationId ? await this.resolveScopedDoctorIds(caller, locationId) : null;
     const visibleDoctors = scope === null ? doctors : doctors.filter((d) => scope.includes(d.id));
     const doctorIds = visibleDoctors.map((d) => d.id);
     if (!doctorIds.length) return { from, to, doctors: [] };
@@ -1029,7 +1571,12 @@ export class ClinicsService {
     const trackedStatuses = [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED];
     const rows = await this.prisma.queueEntry.groupBy({
       by: ['doctorId', 'status'],
-      where: { doctorId: { in: doctorIds }, serviceDay: { gte: from, lte: to }, status: { in: trackedStatuses } },
+      where: {
+        doctorId: { in: doctorIds },
+        serviceDay: { gte: from, lte: to },
+        status: { in: trackedStatuses },
+        ...(locationId ? { locationId } : {}),
+      },
       _count: { _all: true },
     });
 
@@ -1069,12 +1616,19 @@ export class ClinicsService {
     limit = 50,
     scopedDoctorId?: string,
     caller?: AuthUser,
+    locationId?: string,
   ) {
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId }, select: { id: true } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
-    const doctors = await this.prisma.doctor.findMany({ where: { clinicId }, select: { id: true } });
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+    const doctors = await this.prisma.doctor.findMany({
+      where: {
+        clinicId,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
+      select: { id: true }
+    });
+    const scope = locationId ? await this.resolveScopedDoctorIds(caller, locationId) : null;
     let doctorIds = this.filterIdsByScope(
       doctors.map((d) => d.id),
       scope,
@@ -1096,6 +1650,7 @@ export class ClinicsService {
       doctorId: filteredDoctorId ? filteredDoctorId : { in: doctorIds },
       serviceDay: { gte: from, lte: to },
       status: { in: trackedStatuses },
+      ...(locationId ? { locationId } : {}),
     };
 
     const [entries, total, summaryRows] = await Promise.all([
@@ -1149,9 +1704,15 @@ export class ClinicsService {
     };
   }
 
-  async deleteClinicHistory(clinicId: string, from: string, to: string, caller?: AuthUser) {
-    const doctors = await this.prisma.doctor.findMany({ where: { clinicId }, select: { id: true } });
-    const scope = await this.resolveScopedDoctorIds(caller, clinicId);
+  async deleteClinicHistory(clinicId: string, from: string, to: string, caller?: AuthUser, locationId?: string) {
+    const doctors = await this.prisma.doctor.findMany({
+      where: {
+        clinicId,
+        ...(locationId ? { locations: { some: { locationId } } } : {}),
+      },
+      select: { id: true },
+    });
+    const scope = locationId ? await this.resolveScopedDoctorIds(caller, locationId) : null;
     const doctorIds = this.filterIdsByScope(
       doctors.map((d) => d.id),
       scope,
@@ -1162,6 +1723,7 @@ export class ClinicsService {
         doctorId: { in: doctorIds },
         serviceDay: { gte: from, lte: to },
         status: { in: [EntryStatus.COMPLETED, EntryStatus.MISSED, EntryStatus.CANCELLED, EntryStatus.SKIPPED] },
+        ...(locationId ? { locationId } : {}),
       },
     });
     return { deleted: result.count };
@@ -1173,6 +1735,7 @@ export class ClinicsService {
     to: string,
     search?: string,
     caller?: AuthUser,
+    locationId?: string,
   ) {
     const doctors = await this.listDoctorsInClinic(clinicId, caller);
     const visible = search
@@ -1188,6 +1751,7 @@ export class ClinicsService {
       where: {
         doctorId: { in: doctorIds },
         serviceDay: { gte: from, lte: to },
+        ...(locationId ? { locationId } : {}),
       },
       select: {
         id: true,
@@ -1260,8 +1824,9 @@ export class ClinicsService {
     to: string,
     search?: string,
     caller?: AuthUser,
+    locationId?: string,
   ) {
-    const report = await this.getStaffPerformanceReport(clinicId, from, to, search, caller);
+    const report = await this.getStaffPerformanceReport(clinicId, from, to, search, caller, locationId);
     const header = [
       'staffName',
       'department',
@@ -1404,9 +1969,17 @@ export class ClinicsService {
         });
         const tokenNumber = tokenRaw ? parseInt(tokenRaw, 10) : (last?.tokenNumber ?? 0) + 1;
 
+        const docLoc = await this.prisma.doctorLocation.findFirst({
+          where: { doctorId },
+          select: { locationId: true },
+        });
+        const locationId = docLoc?.locationId;
+        if (!locationId) throw new Error(`Doctor is not assigned to any location`);
+
         await this.prisma.queueEntry.create({
           data: {
             doctorId,
+            locationId,
             patientId: patient.id,
             serviceDay: serviceDayCol,
             tokenNumber: Number.isFinite(tokenNumber) ? tokenNumber : 1,

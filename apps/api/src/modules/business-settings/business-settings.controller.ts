@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, Param, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Param, Query, ForbiddenException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { BusinessSettingsService } from './business-settings.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -9,18 +9,22 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class BusinessSettingsController {
   constructor(private readonly service: BusinessSettingsService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN)
   @Get('my')
-  async getMySettings(@CurrentUser() user: AuthUser) {
+  async getMySettings(@CurrentUser() user: AuthUser, @Query('locationId') locationId?: string) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
-    return this.service.getSettings(user.clinicId);
+    return this.service.getSettings(user.clinicId, locationId);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Patch('my')
-  async updateMySettings(@CurrentUser() user: AuthUser, @Body() dto: UpdateSettingsDto) {
+  async updateMySettings(
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UpdateSettingsDto,
+    @Query('locationId') locationId?: string,
+  ) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
-    return this.service.updateSettings(user.clinicId, dto);
+    return this.service.updateSettings(user.clinicId, dto, locationId);
   }
 
   @Roles(Role.ADMIN)

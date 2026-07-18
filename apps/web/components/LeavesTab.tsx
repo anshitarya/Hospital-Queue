@@ -58,6 +58,7 @@ const LEAVE_STATUS_COLORS: Record<string, string> = {
 
 function roleLabel(role?: string) {
   if (role === 'CLINIC_ADMIN') return 'Business Admin';
+  if (role === 'MANAGER') return 'Branch Manager';
   if (role === 'RECEPTIONIST') return 'Reception';
   if (role === 'DOCTOR') return 'Professional';
   return role ?? '';
@@ -71,7 +72,7 @@ export function LeavesTab({
   setToast: (t: ToastMessage | null) => void;
 }) {
   const { user } = useAuth();
-  const isBusinessAdmin = user?.role === 'CLINIC_ADMIN';
+  const isBusinessAdmin = user?.role === 'CLINIC_ADMIN' || user?.role === 'MANAGER';
   const isStaff = user?.role === 'RECEPTIONIST' || user?.role === 'DOCTOR';
 
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
@@ -337,13 +338,14 @@ export function LeavesTab({
                               <button type="button" onClick={() => handleAction(l.id, 'reject')} className="text-xs text-rose-600 hover:text-rose-700 font-semibold">Reject</button>
                             </>
                           )}
-                          {l.status === 'PENDING' && (!isBusinessAdmin || l.user.id === user?.id) && (
-                            <>
-                              <span className="text-xs text-amber-600 dark:text-amber-400">Awaiting business admin</span>
-                              {l.user.id === user?.id && (
-                                <button type="button" onClick={() => handleAction(l.id, 'cancel')} className="text-xs text-slate-600 hover:text-slate-700 font-semibold ml-2">Cancel</button>
-                              )}
-                            </>
+                          {l.status === 'PENDING' && !isBusinessAdmin && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">Awaiting business admin</span>
+                          )}
+                          {l.status === 'PENDING' && isBusinessAdmin && l.user.id === user?.id && (
+                            <span className="text-xs text-amber-600 dark:text-amber-400">Awaiting another admin</span>
+                          )}
+                          {l.status === 'PENDING' && l.user.id === user?.id && (
+                            <button type="button" onClick={() => handleAction(l.id, 'cancel')} className="text-xs text-slate-600 hover:text-slate-700 font-semibold ml-2">Cancel</button>
                           )}
                           {l.status === 'APPROVED' && l.user.id === user?.id && (
                             <button type="button" onClick={() => handleAction(l.id, 'cancel')} className="text-xs text-slate-600 hover:text-slate-700 font-semibold">Cancel</button>

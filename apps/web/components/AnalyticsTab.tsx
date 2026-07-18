@@ -15,14 +15,15 @@ interface AnalyticsData {
   noShowPercentage: number;
 }
 
-export function AnalyticsTab({ setToast }: { setToast: (t: ToastMessage | null) => void }) {
+export function AnalyticsTab({ setToast, locationId }: { setToast: (t: ToastMessage | null) => void; locationId?: string | null }) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await api<AnalyticsData>('/analytics/dashboard');
+        const url = locationId ? `/analytics/dashboard?locationId=${locationId}` : '/analytics/dashboard';
+        const res = await api<AnalyticsData>(url);
         setData(res);
       } catch {
         setToast({ type: 'err', msg: 'Failed to load analytics dashboard' });
@@ -31,7 +32,7 @@ export function AnalyticsTab({ setToast }: { setToast: (t: ToastMessage | null) 
       }
     }
     void load();
-  }, [setToast]);
+  }, [setToast, locationId]);
 
   if (loading) {
     return <div className="py-12 text-center text-slate-400 text-sm">Loading analytics console…</div>;

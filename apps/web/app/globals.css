@@ -265,7 +265,7 @@
 
 /* ── Queue drag-and-drop ─────────────────────────────────────────────────── */
 .queue-scroll {
-  scroll-behavior: smooth;
+  /* intentionally no scroll-behavior: smooth — it interferes with RAF-based auto-scroll during drag */
 }
 .queue-drop-placeholder {
   @apply mx-3 my-1.5 rounded-xl border-2 border-dashed border-brand-400 bg-brand-50/60 dark:bg-brand-950/40;
@@ -286,7 +286,15 @@ html.dark .queue-drop-placeholder {
   transition: opacity 150ms ease, transform 150ms ease;
 }
 .queue-list-item {
-  transition: transform 200ms ease, opacity 200ms ease;
+  /* keep transition for non-drag state changes; suppressed during active drag via .no-transition */
+  transition: background-color 150ms ease;
+}
+/* Applied to each queue-list-item while a drag is active — kills layout transitions
+   that cause visible jank as the placeholder shifts rows around */
+.no-transition,
+.no-transition * {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════

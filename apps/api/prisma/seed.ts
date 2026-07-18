@@ -39,12 +39,41 @@ async function main() {
       create: { id: cfg.id, name: cfg.name, address: cfg.address },
     });
 
-    // Create/update business settings.
+    // Create default location for this clinic
+    const location = await prisma.location.upsert({
+      where: { id: `${clinic.id}-main` },
+      update: {
+        name: `${clinic.name} Main Branch`,
+        address: cfg.address || '123 Main St',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        country: 'India',
+        postalCode: '560001',
+        contactNumber: '+919999999999',
+        email: 'main@clinic.local',
+        status: 'ACTIVE',
+      },
+      create: {
+        id: `${clinic.id}-main`,
+        clinicId: clinic.id,
+        name: `${clinic.name} Main Branch`,
+        address: cfg.address || '123 Main St',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        country: 'India',
+        postalCode: '560001',
+        contactNumber: '+919999999999',
+        email: 'main@clinic.local',
+        status: 'ACTIVE',
+      },
+    });
+
+    // Create/update business settings linked to location.
     await prisma.businessSetting.upsert({
-      where: { clinicId: clinic.id },
+      where: { locationId: location.id },
       update: {},
       create: {
-        clinicId: clinic.id,
+        locationId: location.id,
         businessType: 'CLINIC',
         queueMode: 'LIVE_QUEUE',
         appointmentMode: 'HYBRID',
@@ -52,7 +81,7 @@ async function main() {
     });
 
     // Business admin — full reception portal access for the clinic owner.
-    await prisma.user.upsert({
+    const clinicAdminUser = await prisma.user.upsert({
       where: { email: cfg.clinicAdmin.email },
       update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd, role: Role.CLINIC_ADMIN },
       create: {
@@ -65,8 +94,15 @@ async function main() {
       },
     });
 
+    // Assign Clinic Admin to default location
+    await prisma.userLocation.upsert({
+      where: { userId_locationId: { userId: clinicAdminUser.id, locationId: location.id } },
+      update: {},
+      create: { userId: clinicAdminUser.id, locationId: location.id },
+    });
+
     // Receptionist for this clinic.
-    await prisma.user.upsert({
+    const receptionistUser = await prisma.user.upsert({
       where: { email: cfg.receptionist.email },
       update: { clinicId: clinic.id, emailVerified: true, passwordHash: pwd },
       create: {
@@ -77,6 +113,13 @@ async function main() {
         clinicId: clinic.id,
         emailVerified: true,
       },
+    });
+
+    // Assign Receptionist to default location
+    await prisma.userLocation.upsert({
+      where: { userId_locationId: { userId: receptionistUser.id, locationId: location.id } },
+      update: {},
+      create: { userId: receptionistUser.id, locationId: location.id },
     });
 
     // Doctors for this clinic.
@@ -119,17 +162,24 @@ async function main() {
         },
       });
 
+      // Assign Doctor to default location
+      await prisma.doctorLocation.upsert({
+        where: { doctorId_locationId: { doctorId: doctor.id, locationId: location.id } },
+        update: {},
+        create: { doctorId: doctor.id, locationId: location.id },
+      });
+
       // Default schedules for the doctor.
-      await prisma.professionalSchedule.deleteMany({ where: { doctorId: doctor.id } });
+      await prisma.professionalSchedule.deleteMany({ where: { doctorId: doctor.id, locationId: location.id } });
       await prisma.professionalSchedule.createMany({
         data: [
-          { doctorId: doctor.id, dayOfWeek: 1, startTime: '09:00', endTime: '13:00' },
-          { doctorId: doctor.id, dayOfWeek: 1, startTime: '14:00', endTime: '18:00' },
-          { doctorId: doctor.id, dayOfWeek: 2, startTime: '09:00', endTime: '18:00' },
-          { doctorId: doctor.id, dayOfWeek: 3, startTime: '09:00', endTime: '18:00' },
-          { doctorId: doctor.id, dayOfWeek: 4, startTime: '09:00', endTime: '18:00' },
-          { doctorId: doctor.id, dayOfWeek: 5, startTime: '09:00', endTime: '18:00' },
-          { doctorId: doctor.id, dayOfWeek: 6, startTime: '09:00', endTime: '14:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 1, startTime: '09:00', endTime: '13:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 1, startTime: '14:00', endTime: '18:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 2, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 3, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 4, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 5, startTime: '09:00', endTime: '18:00' },
+          { doctorId: doctor.id, locationId: location.id, dayOfWeek: 6, startTime: '09:00', endTime: '14:00' },
         ],
       });
     }
