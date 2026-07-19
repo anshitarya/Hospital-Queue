@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { formatTimeIst, serviceDay, serviceDaysAgo, addServiceDays } from '@/lib/datetime';
+import { DatePicker } from '@/components/DatePicker';
 import { api, ApiError, type HistoryEntry } from '@/lib/api';
 import { tokenDisplay, matchesTokenSearch } from '@/lib/tokenCode';
 
@@ -232,12 +233,11 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
           </button>
 
           {/* Date picker */}
-          <input
-            type="date"
+          <DatePicker
             value={date}
             max={todayISO()}
-            onChange={(e) => setDate(e.target.value)}
-            className="input !py-1.5 !w-auto text-sm"
+            onChange={setDate}
+            size="sm"
           />
 
           {/* Jump to tomorrow (capped at today) */}

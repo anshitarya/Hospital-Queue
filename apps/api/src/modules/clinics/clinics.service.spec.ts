@@ -574,3 +574,37 @@ describe('ClinicsService.listDoctorsInClinic', () => {
     await expect(svc.listDoctorsInClinic('nope')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+describe('ClinicsService staff location rules', () => {
+  it('creates a business admin without any active branch', async () => {
+    const { svc, prisma } = makeService();
+    prisma.location.findFirst = jest.fn(async () => null) as any;
+    prisma.location.findMany = jest.fn(async () => []) as any;
+
+    const out = await svc.addClinicAdmin('c-1', {
+      name: 'Owner',
+      email: 'owner@x.com',
+    } as any);
+
+    expect(out.user.role).toBe('CLINIC_ADMIN');
+    expect(out.tempPassword).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('requires an active branch before adding a receptionist', async () => {
+    const { svc, prisma } = makeService();
+    prisma.location.findFirst = jest.fn(async () => null) as any;
+
+    await expect(
+      svc.addReceptionist('c-1', { name: 'Rep', email: 'rep@x.com' } as any),
+    ).rejects.toThrow(/no active locations/i);
+  });
+
+  it('requires an active branch before adding a branch manager', async () => {
+    const { svc, prisma } = makeService();
+    prisma.location.findFirst = jest.fn(async () => null) as any;
+
+    await expect(
+      svc.addManager('c-1', { name: 'Mgr', email: 'mgr@x.com' } as any),
+    ).rejects.toThrow(/no active locations/i);
+  });
+});

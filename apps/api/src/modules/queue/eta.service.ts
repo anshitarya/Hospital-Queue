@@ -267,35 +267,36 @@ export class EtaService {
       return Math.max(0, avgMin - elapsedMin);
     })();
 
-    const now = new Date();
+    const nowMs = Date.now();
+    const now = new Date(nowMs);
     const currentDow = istDayOfWeek(now);
     const currentMin = istMinutesOfDay(now);
+    const allShifts = options.shifts ?? [];
 
-    const baselineTime = (() => {
-      if (!options.shifts || options.shifts.length === 0) return Date.now();
-      
-      const todayShifts = options.shifts.filter((s) => s.dayOfWeek === currentDow);
-      if (todayShifts.length === 0) return Date.now();
+    const resolveScheduleBaseline = (locationId?: string): number => {
+      if (allShifts.length === 0) return nowMs;
 
-      // Check if we are currently inside any shift
+      let todayShifts = allShifts.filter((s) => s.dayOfWeek === currentDow);
+      if (locationId) {
+        const atLocation = todayShifts.filter((s) => s.locationId === locationId);
+        if (atLocation.length > 0) todayShifts = atLocation;
+      }
+      if (todayShifts.length === 0) return nowMs;
+
       const activeShift = todayShifts.find((s) => {
         const start = parseHmToMinutes(s.startTime);
         const end = parseHmToMinutes(s.endTime);
         return currentMin >= start && currentMin <= end;
       });
-      if (activeShift) return Date.now();
+      if (activeShift) return nowMs;
 
-      // Check if there is an upcoming shift today
-      const upcomingShift = todayShifts.find((s) => {
-        const start = parseHmToMinutes(s.startTime);
-        return start > currentMin;
-      });
+      const upcomingShift = todayShifts.find((s) => parseHmToMinutes(s.startTime) > currentMin);
       if (upcomingShift) {
         return istAppointmentDate(getIstServiceDay(), upcomingShift.startTime).getTime();
       }
 
-      return Date.now();
-    })();
+      return nowMs;
+    };
 
     const baseDelay = (doctor.delayMinutes ?? 0) + breakRemainingMinutes;
     const settings = options.settings;
@@ -311,12 +312,11 @@ export class EtaService {
         };
       }
 
-      // Group/partition waiting entries by their shift/appointmentTime
-      const sameShiftWaiting = waiting.filter((w) => {
-        const wTime = w.appointmentTime ? new Date(w.appointmentTime).getTime() : 0;
-        const eTime = entry.appointmentTime ? new Date(entry.appointmentTime).getTime() : 0;
-        return wTime === eTime;
-      });
+      // Group waiting entries by shift slot (not raw timestamp — avoids ms drift).
+      const shiftKey = (e: QueueEntry) =>
+        e.appointmentSlot ??
+        (e.appointmentTime ? new Date(e.appointmentTime).getTime().toString() : 'walkin');
+      const sameShiftWaiting = waiting.filter((w) => shiftKey(w) === shiftKey(entry));
       const indexInShift = sameShiftWaiting.findIndex((w) => w.id === entry.id);
       const peopleAhead = indexInShift >= 0 ? indexInShift : 0;
 
@@ -334,13 +334,18 @@ export class EtaService {
         };
       }
 
-      const entryBaseline =
-        entry.appointmentTime && new Date(entry.appointmentTime).getTime() > baselineTime
-          ? new Date(entry.appointmentTime).getTime()
-          : baselineTime;
+      const scheduleBaseline = resolveScheduleBaseline(entry.locationId);
+      const entryBaseline = (() => {
+        if (!entry.appointmentTime) return scheduleBaseline;
+        const aptMs = new Date(entry.appointmentTime).getTime();
+        // Due or overdue — count from now, not the next shift block later today.
+        if (aptMs <= nowMs) return nowMs;
+        return aptMs;
+      })();
 
+      const entryWaitingNow = entryBaseline <= nowMs + 1000;
       const shiftRemainingForCurrent =
-        peopleAhead === 0 && entryBaseline === Date.now() ? remainingForCurrent : 0;
+        peopleAhead === 0 && entryWaitingNow && inProgress ? remainingForCurrent : 0;
       const etaMin = shiftRemainingForCurrent + baseDelay + peopleAhead * avgMin;
       const etaAbsolute = new Date(entryBaseline + etaMin * 60_000);
       const finalEtaMin = Math.max(0, (etaAbsolute.getTime() - Date.now()) / 60_000);

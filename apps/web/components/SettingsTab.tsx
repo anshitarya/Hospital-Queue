@@ -16,6 +16,7 @@ interface SettingsData {
   bufferTime: number;
   gracePeriod: number;
   noShowTimeout: number;
+  maxSelfBookingNoShowsPerMonth: number;
   walkinJoinRule: string;
   walkinJoinRuleParam: number;
   followupJoinRule: string;
@@ -38,6 +39,7 @@ const EDITABLE_FIELDS = [
   'bufferTime',
   'gracePeriod',
   'noShowTimeout',
+  'maxSelfBookingNoShowsPerMonth',
   'walkinJoinRule',
   'walkinJoinRuleParam',
   'followupJoinRule',
@@ -60,6 +62,7 @@ function parseSettings(raw: Record<string, unknown>): SettingsData {
     bufferTime: Number(raw.bufferTime ?? 0),
     gracePeriod: Number(raw.gracePeriod ?? 4),
     noShowTimeout: Number(raw.noShowTimeout ?? 15),
+    maxSelfBookingNoShowsPerMonth: Number(raw.maxSelfBookingNoShowsPerMonth ?? 3),
     walkinJoinRule: String(raw.walkinJoinRule ?? 'END_OF_QUEUE'),
     walkinJoinRuleParam: Number(raw.walkinJoinRuleParam ?? 0),
     followupJoinRule: String(raw.followupJoinRule ?? 'END_OF_QUEUE'),
@@ -293,7 +296,7 @@ export function SettingsTab({
                 <span className="pill-sm bg-brand-100 text-brand-700 ring-brand-200 dark:bg-brand-900/40 dark:text-brand-300 dark:ring-brand-800 px-2 py-0.5">New</span>
               </h3>
               <p className="text-xs text-slate-400 mt-1 max-w-lg">
-                When enabled, patients can discover your business in the customer portal and join queues directly. Generate a QR code for each professional to print or share.
+                When enabled, patients can discover your business in the customer portal and join queues directly. Applies to the selected branch. Generate a QR code for each professional to print or share.
               </p>
             </div>
             <label className="flex items-center gap-2 shrink-0 cursor-pointer">
@@ -311,6 +314,27 @@ export function SettingsTab({
 
           {settings.allowOnlineBooking && doctors.length > 0 && (
             <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">No-show limit (self-booking)</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    After this many self-booking no-shows in a calendar month, the patient cannot book that professional again until next month. Set 0 for unlimited.
+                  </p>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={99}
+                  className="input w-20 !py-1.5 text-xs text-center"
+                  value={settings.maxSelfBookingNoShowsPerMonth}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      maxSelfBookingNoShowsPerMonth: Math.max(0, Number(e.target.value) || 0),
+                    })
+                  }
+                />
+              </div>
               {/* Doctor selector */}
               <div className="flex items-center gap-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider shrink-0">QR for</label>

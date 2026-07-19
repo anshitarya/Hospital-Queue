@@ -18,7 +18,7 @@ export class ProfessionalScheduleService {
   }
 
   private async assertCallerCanManageLocation(caller: AuthUser | undefined, locationId: string) {
-    if (!caller || caller.role === Role.ADMIN) return;
+    if (!caller || caller.role === Role.ADMIN || caller.role === Role.PATIENT) return;
     const location = await this.prisma.location.findUnique({
       where: { id: locationId },
       select: { clinicId: true },

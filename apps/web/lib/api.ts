@@ -160,6 +160,7 @@ export interface QueueEntry {
 }
 export interface MissedEntry {
   id: string;
+  locationId?: string;
   tokenNumber: number;
   patient: { id: string; name: string; phone?: string | null; customerPin?: string | null } | null;
   completedAt: string | null;

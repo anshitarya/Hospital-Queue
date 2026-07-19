@@ -36,7 +36,7 @@ export class BusinessSettingsService {
         emergencyJoinRule: 'TOP_PRIORITY',
         vipJoinRule: 'SEPARATE_QUEUE',
         allowWalkins: true,
-        allowOnlineBooking: true,
+        allowOnlineBooking: false,
         allowFollowups: true,
         maxDailyBookings: 100,
         emergencyQueueEnabled: true,
@@ -47,6 +47,7 @@ export class BusinessSettingsService {
         bufferTime: 5,
         gracePeriod: 10,
         noShowTimeout: 15,
+        maxSelfBookingNoShowsPerMonth: 3,
         autoQueueAssignment: true,
         bookingControl: 'CUSTOMER_CONTROLLED',
         appointmentInterval: 15,
@@ -63,6 +64,7 @@ export class BusinessSettingsService {
           businessType: 'CLINIC',
           queueMode: 'LIVE_QUEUE',
           appointmentMode: 'HYBRID',
+          allowOnlineBooking: false,
         },
       });
     }
@@ -73,6 +75,7 @@ export class BusinessSettingsService {
     const targetLocationId = locationId ?? (await this.resolveLocationId(clinicId));
     if (!targetLocationId) throw new Error('No location found for clinic');
     await this.getSettings(clinicId, targetLocationId);
+
     const updated = await this.prisma.businessSetting.update({
       where: { locationId: targetLocationId },
       data: dto,

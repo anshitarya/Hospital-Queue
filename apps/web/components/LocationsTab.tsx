@@ -76,7 +76,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setCountry(loc.country);
     setPostalCode(loc.postalCode);
     setContactNumber(loc.contactNumber);
-    setEmail(loc.email);
+    setEmail(loc.email ?? '');
     setStatus(loc.status);
   };
 

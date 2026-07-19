@@ -37,8 +37,8 @@ export class QueueController {
   /** Public join info for the QR self-booking landing page. */
   @Public()
   @Get('public/join-info/:doctorId')
-  getPublicJoinInfo(@Param('doctorId') doctorId: string) {
-    return this.queue.getPublicJoinInfo(doctorId);
+  getPublicJoinInfo(@Param('doctorId') doctorId: string, @Query('locationId') locationId?: string) {
+    return this.queue.getPublicJoinInfo(doctorId, locationId);
   }
 
   @Get('entry/:id')
@@ -62,7 +62,13 @@ export class QueueController {
   @Roles(Role.PATIENT)
   @Post('patient/join')
   patientJoin(@Body() dto: PatientJoinQueueDto, @CurrentUser() user: AuthUser) {
-    return this.queue.joinByPatient(user.id, dto.doctorId, dto.notes, dto.appointmentTime);
+    return this.queue.joinByPatient(
+      user.id,
+      dto.doctorId,
+      dto.notes,
+      dto.appointmentTime,
+      dto.locationId,
+    );
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)

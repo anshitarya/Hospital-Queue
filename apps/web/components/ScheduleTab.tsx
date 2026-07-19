@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { type ToastMessage } from './Toast';
+import { TimePicker } from './TimePicker';
 
 interface DoctorItem {
   id: string;
@@ -204,11 +205,9 @@ export function ScheduleTab({
                       rows.map((s, idx) => (
                         <div key={`${day}-${idx}`} className="flex flex-wrap items-center gap-2 pl-0 sm:pl-28">
                           <span className="text-[10px] text-slate-400 uppercase w-14">Shift {idx + 1}</span>
-                          <input className="input py-1 text-xs w-24" type="text" placeholder="HH:MM" value={s.startTime}
-                            onChange={(e) => updateShift(day, idx, 'startTime', e.target.value)} required />
+                          <TimePicker value={s.startTime} onChange={(v) => updateShift(day, idx, 'startTime', v)} />
                           <span className="text-slate-400 text-xs">to</span>
-                          <input className="input py-1 text-xs w-24" type="text" placeholder="HH:MM" value={s.endTime}
-                            onChange={(e) => updateShift(day, idx, 'endTime', e.target.value)} required />
+                          <TimePicker value={s.endTime} onChange={(v) => updateShift(day, idx, 'endTime', v)} />
                           <span className="text-[10px] text-slate-400">IST</span>
                           {rows.length > 1 && (
                             <button type="button" onClick={() => removeShift(day, idx)}

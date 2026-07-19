@@ -19,6 +19,7 @@ import {
   type DoctorCredentials,
 } from '@/components/DoctorCredentialsModal';
 import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst, fmtWait } from '@/lib/datetime';
+import { DatePicker } from '@/components/DatePicker';
 import { getLabels } from '@/lib/labels';
 
 interface ReceptionistRow {
@@ -1048,11 +1049,9 @@ function AllRecordsTab({
             ))}
           </div>
           <div className="flex items-center gap-1.5 ml-2">
-            <input type="date" value={from} max={to} onChange={(e) => onDateChange(e.target.value, to)}
-              className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs" />
+            <DatePicker value={from} max={to} onChange={(v) => onDateChange(v, to)} size="sm" />
             <span className="text-slate-400 text-xs">→</span>
-            <input type="date" value={to} min={from} max={TODAY} onChange={(e) => onDateChange(from, e.target.value)}
-              className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs" />
+            <DatePicker value={to} min={from} max={TODAY} onChange={(v) => onDateChange(from, v)} size="sm" />
           </div>
           <div className="flex items-center gap-2 ml-auto">
             <input type="text" placeholder="Search patient…" value={search} onChange={(e) => setSearch(e.target.value)}

@@ -147,6 +147,17 @@ const getCategoryIcon = (businessType: string) => {
   }
 };
 
+type PatientTab = 'active' | 'upcoming' | 'history' | 'discover';
+const PATIENT_TABS: PatientTab[] = ['active', 'upcoming', 'history', 'discover'];
+
+function readStoredPatientTab(): PatientTab {
+  try {
+    const raw = typeof window !== 'undefined' ? sessionStorage.getItem('hq_patient_tab') : null;
+    if (raw && PATIENT_TABS.includes(raw as PatientTab)) return raw as PatientTab;
+  } catch {}
+  return 'active';
+}
+
 // ─── Main PatientPage Component ───────────────────────────────────────────────
 export default function PatientPage() {
   const { user, ready } = useRequireRole(['PATIENT']);
@@ -161,9 +172,14 @@ export default function PatientPage() {
   const [expandedClinics, setExpandedClinics] = useState<Record<string, boolean>>({});
 
   // Filter & Search states
-  const [activeTab, setActiveTab]           = useState<'active' | 'upcoming' | 'history' | 'discover'>('active');
+  const [activeTab, setActiveTab]           = useState<PatientTab>(readStoredPatientTab);
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectedClinicId, setSelectedClinicId] = useState<string>('ALL');
+
+  const selectTab = useCallback((tab: PatientTab) => {
+    setActiveTab(tab);
+    try { sessionStorage.setItem('hq_patient_tab', tab); } catch {}
+  }, []);
 
   // Persistent "You were missed" banners
   const [missedBanners, setMissedBanners]   = useState<HistoryItem[]>([]);
@@ -309,34 +325,48 @@ export default function PatientPage() {
     });
   }, [history, isActive, isUpcoming]);
 
+  const filteredHistory = useMemo(() => {
+    return history.filter((e) => {
+      if (activeTab === 'active' && !isActive(e)) return false;
+      if (activeTab === 'upcoming' && !isUpcoming(e)) return false;
+      if (activeTab === 'history' && !isCompleted(e) && !isCancelled(e)) return false;
+      if (activeTab === 'discover') return false;
+
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const clinicName = e.doctor.clinic?.name?.toLowerCase() || '';
+        const doctorName = e.doctor.user.name?.toLowerCase() || '';
+        const deptName = e.doctor.department?.name?.toLowerCase() || '';
+        if (!clinicName.includes(query) && !doctorName.includes(query) && !deptName.includes(query)) return false;
+      }
+
+      if (selectedClinicId !== 'ALL' && e.doctor.clinicId !== selectedClinicId) return false;
+      return true;
+    });
+  }, [history, activeTab, searchQuery, selectedClinicId, isActive, isUpcoming, isCompleted, isCancelled]);
+
+  const sortedHistory = useMemo(() => {
+    return [...filteredHistory].sort((a, b) => {
+      const timeA = new Date(a.completedAt || a.joinedAt).getTime();
+      const timeB = new Date(b.completedAt || b.joinedAt).getTime();
+      return timeB - timeA;
+    });
+  }, [filteredHistory]);
+
+  const activeBookings = useMemo(
+    () =>
+      history
+        .filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION')
+        .map((e) => ({ doctorId: e.doctor.id, serviceDay: entryServiceDay(e) })),
+    [history],
+  );
+
   if (!ready) return <PageLoader label="Loading your queue…" />;
 
   // Group listings and status counts
   const liveEntries = history.filter(isActive);
   const upcomingEntries = history.filter(isUpcoming);
   const completedTodayEntries = history.filter((e) => isCompleted(e) && entryServiceDay(e) === serviceDay());
-
-  const filteredHistory = history.filter((e) => {
-    // Tab filtering
-    if (activeTab === 'active' && !isActive(e)) return false;
-    if (activeTab === 'upcoming' && !isUpcoming(e)) return false;
-    if (activeTab === 'history' && !isCompleted(e) && !isCancelled(e)) return false;
-    if (activeTab === 'discover') return false; // discover tab shows BookingDirectory instead
-
-    // Search query
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const clinicName = e.doctor.clinic?.name?.toLowerCase() || '';
-      const doctorName = e.doctor.user.name?.toLowerCase() || '';
-      const deptName = e.doctor.department?.name?.toLowerCase() || '';
-      if (!clinicName.includes(query) && !doctorName.includes(query) && !deptName.includes(query)) return false;
-    }
-
-    // Business filter selector
-    if (selectedClinicId !== 'ALL' && e.doctor.clinicId !== selectedClinicId) return false;
-
-    return true;
-  });
 
   // Group filtered results by Business (Clinic)
   const groupedBusinesses = Array.from(
@@ -358,14 +388,6 @@ export default function PatientPage() {
       return acc;
     }, new Map<string, { clinic: { id: string; name: string; address: string | null; businessType: string }; entries: HistoryItem[] }>()).values()
   );
-
-  const sortedHistory = useMemo(() => {
-    return [...filteredHistory].sort((a, b) => {
-      const timeA = new Date(a.completedAt || a.joinedAt).getTime();
-      const timeB = new Date(b.completedAt || b.joinedAt).getTime();
-      return timeB - timeA;
-    });
-  }, [filteredHistory]);
 
   // List of all unique businesses for dropdown filter
   const uniqueBusinessesList = Array.from(
@@ -540,11 +562,11 @@ export default function PatientPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Status tab bar */}
             <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full md:w-auto">
-              {(['active', 'upcoming', 'history', 'discover'] as const).map((tab) => (
+              {PATIENT_TABS.map((tab) => (
                 <button
                   key={tab}
                   type="button"
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => selectTab(tab)}
                   className={`flex-1 md:flex-none rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-all ${
                     activeTab === tab
                       ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
@@ -620,7 +642,11 @@ export default function PatientPage() {
         <section className="space-y-4">
           {/* Discover tab — self-booking business directory */}
           {activeTab === 'discover' && user && (
-            <BookingDirectory patientId={user.id} />
+            <BookingDirectory
+              patientId={user.id}
+              activeBookings={activeBookings}
+              onBooked={fetchHistory}
+            />
           )}
           {activeTab === 'history' ? (
             sortedHistory.length > 0 ? (

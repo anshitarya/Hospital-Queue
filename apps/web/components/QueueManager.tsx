@@ -28,7 +28,7 @@ import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput'
 import { DoctorCredentialsModal, type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { EmptyState, EmptyIcons } from '@/components/EmptyState';
 import { getLabels } from '@/lib/labels';
-import { serviceDay, fmtWait, formatDateIst } from '@/lib/datetime';
+import { serviceDay, fmtWait, formatDateIst, formatTimeIst, addServiceDays, istNowHHMM, istDayOfWeekFromKey, isShiftStillBookable } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 import { Spinner } from '@/components/PageLoader';
 
@@ -48,17 +48,30 @@ function computeMoveTarget(fromIdx: number, dropSlot: number, waitingCount: numb
   return Math.max(1, Math.min(target, waitingCount));
 }
 
+function isWaitingEntry(e: QueueEntry) {
+  return e.status === 'WAITING' && !e.id.startsWith('pending-');
+}
+
+function waitingCountBefore(filtered: QueueEntry[], endExclusive: number) {
+  return filtered.slice(0, endExclusive).filter(isWaitingEntry).length;
+}
+
 function reorderWaitingEntries(entries: QueueEntry[], id: string, targetPosition: number): QueueEntry[] {
-  const waiting = entries.filter((e) => e.status === 'WAITING');
-  const nonWaiting = entries.filter((e) => e.status !== 'WAITING');
+  const waiting = entries.filter(isWaitingEntry);
   const fromIdx = waiting.findIndex((e) => e.id === id);
   if (fromIdx < 0) return entries;
   const reordered = waiting.filter((e) => e.id !== id);
   const toIdx = Math.max(0, Math.min(targetPosition - 1, reordered.length));
-  reordered.splice(toIdx, 0, waiting[fromIdx]);
-  const inConsult = nonWaiting.filter((e) => e.status === 'IN_CONSULTATION');
-  const other = nonWaiting.filter((e) => e.status !== 'IN_CONSULTATION');
-  return [...inConsult, ...reordered, ...other];
+  const anchor = reordered[toIdx] ?? reordered[toIdx - 1];
+  const moved = { ...waiting[fromIdx] };
+  if (anchor) {
+    moved.serviceDay = anchor.serviceDay;
+    moved.appointmentTime = anchor.appointmentTime;
+    moved.appointmentSlot = anchor.appointmentSlot;
+  }
+  reordered.splice(toIdx, 0, moved);
+  let wi = 0;
+  return entries.map((e) => (isWaitingEntry(e) ? reordered[wi++] : e));
 }
 
 function DropPlaceholder() {
@@ -155,54 +168,79 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     }
   }, [selectedDoctorId, locationId]);
 
-  const todayDow = useMemo(() => {
-    const istDate = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-    return istDate.getDay();
-  }, []);
-
-  // Next 3 upcoming shifts (includes today's remaining shifts + future days)
+  // Upcoming shift blocks — always list every remaining shift today, then future days.
   const upcomingShifts = useMemo(() => {
-    const result: { id: string; startTime: string; endTime: string; dateLabel: string; appointmentTime: string }[] = [];
-    const istNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
-    const nowHHMM = `${String(istNow.getHours()).padStart(2, '0')}:${String(istNow.getMinutes()).padStart(2, '0')}`;
+    type ShiftOption = { id: string; startTime: string; endTime: string; dateLabel: string; appointmentTime: string };
+    const result: ShiftOption[] = [];
+    const today = serviceDay();
+    const nowHHMM = istNowHHMM();
+    const MAX_FUTURE = 12;
 
-    for (let dayOffset = 0; dayOffset <= 14 && result.length < 3; dayOffset++) {
-      const targetDate = new Date(istNow);
-      targetDate.setDate(istNow.getDate() + dayOffset);
-      const dow = targetDate.getDay();
-      const isToday = dayOffset === 0;
-      const isTomorrow = dayOffset === 1;
-
-      // Build a date label
-      const dateLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : targetDate.toLocaleDateString('en-IN', {
-        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata',
+    const pushShift = (
+      dateStr: string,
+      dateLabel: string,
+      s: { id?: string; startTime: string; endTime: string },
+    ) => {
+      result.push({
+        id: s.id || `${dateStr}-${s.startTime}`,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        dateLabel,
+        appointmentTime: `${dateStr}T${s.startTime}:00+05:30`,
       });
+    };
 
-      // ISO date prefix for appointmentTime
-      const yyyy = targetDate.getFullYear();
-      const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(targetDate.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
+    const todayDow = istDayOfWeekFromKey(today);
+    const todayShifts = doctorShifts
+      .filter((s) => s.dayOfWeek === todayDow && !s.isHoliday)
+      .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
+    for (const s of todayShifts) {
+      if (!isShiftStillBookable(s.endTime, nowHHMM)) continue;
+      pushShift(today, 'Today', s);
+    }
+
+    let futureCount = 0;
+    for (let dayOffset = 1; dayOffset <= 14 && futureCount < MAX_FUTURE; dayOffset++) {
+      const dateStr = addServiceDays(today, dayOffset);
+      const dow = istDayOfWeekFromKey(dateStr);
+      const isTomorrow = dayOffset === 1;
+      const dateLabel = isTomorrow ? 'Tomorrow' : formatDateIst(`${dateStr}T12:00:00+05:30`, {
+        weekday: 'short', month: 'short', day: 'numeric',
+      });
 
       const dayShifts = doctorShifts
         .filter((s) => s.dayOfWeek === dow && !s.isHoliday)
         .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
 
       for (const s of dayShifts) {
-        // Skip shifts that have already started today
-        if (isToday && s.startTime <= nowHHMM) continue;
-        result.push({
-          id: s.id || `${dateStr}-${s.startTime}`,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          dateLabel,
-          appointmentTime: `${dateStr}T${s.startTime}:00`,
-        });
-        if (result.length >= 3) break;
+        pushShift(dateStr, dateLabel, s);
+        futureCount += 1;
+        if (futureCount >= MAX_FUTURE) break;
       }
     }
     return result;
-  }, [doctorShifts, todayDow]);
+  }, [doctorShifts]);
+
+  const shiftEndByStart = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of doctorShifts) {
+      if (s.startTime && s.endTime) map.set(s.startTime, s.endTime);
+    }
+    return map;
+  }, [doctorShifts]);
+
+  const entrySlotKey = useCallback((e: { appointmentSlot?: string | null; appointmentTime?: string | null }) => {
+    if (e.appointmentSlot) return e.appointmentSlot;
+    if (e.appointmentTime) return formatTimeIst(e.appointmentTime);
+    return 'walk-in';
+  }, []);
+
+  const entrySlotLabel = useCallback((e: { appointmentSlot?: string | null; appointmentTime?: string | null }) => {
+    const start = e.appointmentSlot ?? (e.appointmentTime ? formatTimeIst(e.appointmentTime) : null);
+    if (!start) return 'Walk-in / unscheduled';
+    const end = shiftEndByStart.get(start);
+    return end ? `${start} – ${end}` : start;
+  }, [shiftEndByStart]);
 
   // ── Previous-visit lookup ────────────────────────────────────────────────
   useEffect(() => {
@@ -258,6 +296,21 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     return () => clearInterval(id);
   }, []);
   const avgDisplay = useMemo(() => resolveAvgMinutes(snapshot), [snapshot, avgTick]);
+
+  const callableWaitingCount = useMemo(() => {
+    const now = Date.now();
+    const today = serviceDay();
+    return (snapshot?.entries ?? []).filter((e) => {
+      if (e.status !== 'WAITING') return false;
+      if (!e.appointmentTime) return e.serviceDay <= today;
+      return new Date(e.appointmentTime).getTime() <= now;
+    }).length;
+  }, [snapshot?.entries]);
+
+  const inConsultation = useMemo(
+    () => (snapshot?.entries ?? []).some((e) => e.status === 'IN_CONSULTATION'),
+    [snapshot?.entries],
+  );
 
   const allDoctors = useMemo(
     () => (clinic?.doctors ?? []).map((d) => ({ ...d, deptName: d.department?.name ?? '' })),
@@ -678,15 +731,13 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     startAutoScroll(ev.clientY);
   }, [dragState, startAutoScroll]);
 
-  const handleDragOverRow = useCallback((ev: React.DragEvent, waitingIndex: number) => {
+  const handleDragOverRow = useCallback((ev: React.DragEvent, insertIdx: number, maxSlot: number) => {
     if (!dragState?.committed) return;
     ev.preventDefault();
+    ev.stopPropagation();
     ev.dataTransfer.dropEffect = 'move';
-    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    const insertIdx = ev.clientY < rect.top + rect.height / 2 ? waitingIndex : waitingIndex + 1;
     startAutoScroll(ev.clientY);
-    // Throttle slot updates to one RAF tick to prevent excessive re-renders
-    pendingDropSlot.current = insertIdx;
+    pendingDropSlot.current = Math.max(0, Math.min(insertIdx, maxSlot));
     if (dropSlotRaf.current === null) {
       dropSlotRaf.current = requestAnimationFrame(() => {
         dropSlotRaf.current = null;
@@ -694,6 +745,19 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
       });
     }
   }, [dragState?.committed, startAutoScroll]);
+
+  const handleRowDragOver = useCallback((
+    ev: React.DragEvent,
+    filtered: QueueEntry[],
+    rowIdx: number,
+    maxSlot: number,
+  ) => {
+    if (!dragState?.committed) return;
+    const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    const afterHalf = ev.clientY >= rect.top + rect.height / 2;
+    const insertIdx = waitingCountBefore(filtered, rowIdx + (afterHalf ? 1 : 0));
+    handleDragOverRow(ev, insertIdx, maxSlot);
+  }, [dragState?.committed, handleDragOverRow]);
 
   const handleListDragOver = useCallback((ev: React.DragEvent) => {
     if (!dragState?.committed) return;
@@ -896,7 +960,19 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
                   {doctorActionInFlight && <Spinner className="h-4 w-4 text-brand-500 mr-1" />}
-                  <button type="button" onClick={callNext} disabled={!!doctorActionInFlight} className="btn-primary flex-1 !py-2 text-xs min-w-[100px] disabled:opacity-50">
+                  <button
+                    type="button"
+                    onClick={callNext}
+                    disabled={!!doctorActionInFlight || callableWaitingCount === 0 || inConsultation}
+                    title={
+                      inConsultation
+                        ? 'Finish the current consultation first'
+                        : callableWaitingCount === 0
+                          ? 'No patients due for their slot yet'
+                          : undefined
+                    }
+                    className="btn-primary flex-1 !py-2 text-xs min-w-[100px] disabled:opacity-50"
+                  >
                     ▶ Call next
                   </button>
                   {snapshot.doctor.status === 'PAUSED' ? (
@@ -999,28 +1075,29 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   matchesTokenSearch(sq, e.tokenNumber),
                 )
               : activeEntries;
-            const waitingEntries = (snapshot?.entries ?? []).filter(
-              (e) => e.status === 'WAITING' && !e.id.startsWith('pending-'),
-            );
+            const waitingInDisplayOrder = filtered.filter(isWaitingEntry);
             const dragAllowed = !sq && !selectMode;
             const dragActive = dragAllowed && dragState?.committed === true;
+            const maxDropSlot = waitingInDisplayOrder.length;
             return (
               <div
                 ref={queueListRef}
                 className="divide-subtle max-h-[min(60vh,32rem)] overflow-y-auto overscroll-contain queue-scroll"
                 onDragOver={handleListDragOver}
-                onDrop={(ev) => handleDrop(ev, waitingEntries)}
+                onDrop={(ev) => handleDrop(ev, waitingInDisplayOrder)}
               >
                 {filtered.length > 0 ? (
                   filtered.map((e, idx) => {
-                    const waitingIndex = waitingEntries.findIndex((w) => w.id === e.id);
-                    const isWaitingDraggable =
-                      dragAllowed && e.status === 'WAITING' && !e.id.startsWith('pending-');
+                    const waitingIndex = waitingInDisplayOrder.findIndex((w) => w.id === e.id);
                     const showPlaceholderBefore =
                       dragActive && waitingIndex >= 0 && dropSlot === waitingIndex;
                     
                     const prevEntry = idx > 0 ? filtered[idx - 1] : null;
                     const showDaySeparator = !prevEntry || prevEntry.serviceDay !== e.serviceDay;
+                    const showSlotSeparator =
+                      !prevEntry ||
+                      prevEntry.serviceDay !== e.serviceDay ||
+                      entrySlotKey(prevEntry) !== entrySlotKey(e);
 
                     const todayStr = serviceDay(new Date());
                     const isToday = e.serviceDay === todayStr;
@@ -1035,7 +1112,11 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                     return (
                       <Fragment key={e.id}>
                         {showDaySeparator && (
-                          <div className="bg-slate-50 dark:bg-slate-900/60 px-4 py-2 border-y border-slate-100 dark:border-slate-800/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between gap-2 select-none">
+                          <div
+                            className="bg-slate-50 dark:bg-slate-900/60 px-4 py-2 border-y border-slate-100 dark:border-slate-800/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between gap-2 select-none"
+                            onDragOver={(ev) => handleDragOverRow(ev, waitingCountBefore(filtered, idx), maxDropSlot)}
+                            onDrop={(ev) => handleDrop(ev, waitingInDisplayOrder)}
+                          >
                             <span className="shrink-0">📅 {dayLabel}</span>
                             <div className="h-px bg-slate-200/80 dark:bg-slate-700/60 flex-1" />
                             <div className="flex items-center gap-1.5 shrink-0">
@@ -1058,15 +1139,23 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                             </div>
                           </div>
                         )}
+                        {showSlotSeparator && (
+                          <div
+                            className="bg-brand-50/50 dark:bg-brand-950/20 px-4 py-1.5 border-b border-brand-100/80 dark:border-brand-900/40 text-[10px] font-semibold text-brand-700 dark:text-brand-300 flex items-center gap-2 select-none"
+                            onDragOver={(ev) => handleDragOverRow(ev, waitingCountBefore(filtered, idx), maxDropSlot)}
+                            onDrop={(ev) => handleDrop(ev, waitingInDisplayOrder)}
+                          >
+                            <span>🕐 {entrySlotLabel(e)}</span>
+                            <div className="h-px bg-brand-200/60 dark:bg-brand-800/40 flex-1" />
+                          </div>
+                        )}
                         {showPlaceholderBefore && <DropPlaceholder />}
                         <div
                           className={`queue-list-item flex items-stretch ${
                             dragState?.id === e.id ? 'queue-row-dragging' : ''
                           } ${dragActive ? 'no-transition' : ''}`}
-                          onDragOver={(ev) => {
-                            if (waitingIndex >= 0) handleDragOverRow(ev, waitingIndex);
-                          }}
-                          onDrop={(ev) => handleDrop(ev, waitingEntries)}
+                          onDragOver={(ev) => handleRowDragOver(ev, filtered, idx, maxDropSlot)}
+                          onDrop={(ev) => handleDrop(ev, waitingInDisplayOrder)}
                         >
                           {selectMode && e.status === 'WAITING' && (
                             <label className="flex items-center pl-4 pr-2 cursor-pointer">
@@ -1111,7 +1200,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                     size="md"
                   />
                 )}
-                {dragActive && dropSlot === waitingEntries.length && waitingEntries.length > 0 && (
+                {dragActive && dropSlot === maxDropSlot && maxDropSlot > 0 && (
                   <DropPlaceholder />
                 )}
               </div>

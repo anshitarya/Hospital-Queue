@@ -114,6 +114,29 @@ describe('EtaService.enrich', () => {
     expect(out.find((e) => e.id === 'b')!.movingAvgMinutes).toBe(6);
   });
 
+  it('does not push morning-queue patients to the evening shift baseline', () => {
+    const NOW = new Date('2026-07-19T04:01:00.000Z').getTime(); // 9:31 IST, after 09:30 shift
+    jest.spyOn(Date, 'now').mockReturnValue(NOW);
+
+    const morningApt = new Date('2026-07-19T03:53:00.000Z'); // 09:23 IST
+    const d = doctor({ avgConsultMinutes: 10 });
+    const a = entry({
+      id: 'a',
+      tokenNumber: 1,
+      appointmentTime: morningApt,
+      appointmentSlot: '09:23',
+      locationId: 'loc-morning',
+    });
+    const shifts = [
+      { dayOfWeek: 0, startTime: '09:23', endTime: '09:25', locationId: 'loc-morning' },
+      { dayOfWeek: 0, startTime: '18:00', endTime: '20:00', locationId: 'loc-evening' },
+    ];
+
+    const out = svc.enrich(d, [a], { shifts, settings: { queueMode: 'LIVE_QUEUE' } });
+    expect(out[0].etaMinutes).toBeLessThan(30);
+    jest.restoreAllMocks();
+  });
+
   it('handles empty queue', () => {
     expect(svc.enrich(doctor(), [])).toEqual([]);
   });

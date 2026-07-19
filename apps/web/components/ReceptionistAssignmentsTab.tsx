@@ -117,8 +117,8 @@ export function ReceptionistAssignmentsTab({
             <h2 className="section-title">Receptionist assignments</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
               Match each {L.staff.toLowerCase()} to the {L.providerPlural.toLowerCase()} they manage at this branch.
-              All {L.providerPlural.toLowerCase()} in the business are listed — including those who primarily work at other branches.
-              If a {L.staff.toLowerCase()} has no assignments saved, they see all {L.providerPlural.toLowerCase()} (default for small teams).
+              Only {L.providerPlural.toLowerCase()} assigned to this branch are listed.
+              A {L.staff.toLowerCase()} with no doctors ticked cannot see or manage any queue at this branch.
             </p>
           </div>
           <button

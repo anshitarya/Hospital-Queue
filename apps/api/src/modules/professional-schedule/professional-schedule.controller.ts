@@ -9,7 +9,7 @@ import { CurrentUser, AuthUser } from '../../common/decorators/current-user.deco
 export class ProfessionalScheduleController {
   constructor(private readonly service: ProfessionalScheduleService) {}
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN, Role.PATIENT)
   @Get('doctor/:doctorId')
   async getDoctorSchedule(
     @CurrentUser() user: AuthUser,

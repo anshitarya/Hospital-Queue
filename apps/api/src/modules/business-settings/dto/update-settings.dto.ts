@@ -26,6 +26,7 @@ export class UpdateSettingsDto {
   @IsOptional() @IsInt() @Min(0) bufferTime?: number;
   @IsOptional() @IsInt() @Min(0) gracePeriod?: number;
   @IsOptional() @IsInt() @Min(0) noShowTimeout?: number;
+  @IsOptional() @IsInt() @Min(0) maxSelfBookingNoShowsPerMonth?: number;
   @IsOptional() @IsBoolean() autoQueueAssignment?: boolean;
   @IsOptional() @IsString() bookingControl?: string;
   @IsOptional() @IsInt() @Min(1) appointmentInterval?: number;

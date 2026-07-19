@@ -24,6 +24,7 @@ import { WorkflowTab } from '@/components/WorkflowTab';
 import { AnalyticsTab } from '@/components/AnalyticsTab';
 import { ReceptionistAssignmentsTab } from '@/components/ReceptionistAssignmentsTab';
 import { formatDateIst, formatTimeIst, formatDurationHms, serviceDay, serviceDaysAgo } from '@/lib/datetime';
+import { DatePicker } from '@/components/DatePicker';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,38 @@ interface DashboardDoctor {
   status: 'AVAILABLE' | 'PAUSED' | 'OFFLINE';
   waiting: number; inConsultation: number;
   completed: number; missed: number; skipped: number; cancelled: number;
+  locationIds?: string[];
+}
+
+interface BranchDoctorRef {
+  id: string;
+  userId: string;
+  name: string;
+  department: string;
+  locationIds?: string[];
+}
+
+const EMPTY_DOCTOR_STATS: Omit<DashboardDoctor, keyof BranchDoctorRef> = {
+  status: 'OFFLINE',
+  waiting: 0,
+  inConsultation: 0,
+  completed: 0,
+  missed: 0,
+  skipped: 0,
+  cancelled: 0,
+};
+
+function mergeBranchDoctors(
+  branchList: BranchDoctorRef[],
+  statsList: DashboardDoctor[],
+): DashboardDoctor[] {
+  const statsById = new Map(statsList.map((d) => [d.id, d]));
+  return branchList.map((d) => {
+    const stats = statsById.get(d.id);
+    return stats
+      ? { ...stats, locationIds: d.locationIds ?? stats.locationIds }
+      : { ...EMPTY_DOCTOR_STATS, ...d };
+  });
 }
 interface TrafficPoint { date: string; label: string; count: number }
 interface AnalyticsPoint {
@@ -84,9 +117,9 @@ function fmtDuration(mins: number | null | undefined): string {
 
 const HISTORY_STATUS_COLORS: Record<string, string> = {
   COMPLETED: 'text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30',
-  MISSED:    'text-amber-700 bg-amber-50 dark:bg-amber-900/30',
+  MISSED: 'text-amber-700 bg-amber-50 dark:bg-amber-900/30',
   CANCELLED: 'text-rose-700 bg-rose-50 dark:bg-rose-900/30',
-  SKIPPED:   'text-slate-600 bg-slate-100 dark:bg-slate-700',
+  SKIPPED: 'text-slate-600 bg-slate-100 dark:bg-slate-700',
 };
 
 function HistoryEntriesTable({
@@ -154,7 +187,7 @@ interface ClinicDashboard {
   clinic: { id: string; name: string; address?: string; businessType?: string | null };
   today: { waiting: number; inConsultation: number; completed: number; skipped: number; cancelled: number };
   doctors: DashboardDoctor[];
-  allDoctors?: Array<{ id: string; userId: string; name: string; department: string }>;
+  allDoctors?: BranchDoctorRef[];
   weeklyTraffic: TrafficPoint[];
   activeLocationId?: string | null;
   locations?: Array<{ id: string; name: string }>;
@@ -172,16 +205,16 @@ const SEVEN_AGO = daysAgo(6);
 // ─── Nav config ───────────────────────────────────────────────────────────────
 
 const NAV: { label: string; tab: Tab; icon: (p: { className?: string }) => JSX.Element }[] = [
-  { label: 'Dashboard', tab: 'dashboard', icon: GridIcon  },
-  { label: 'Queue',     tab: 'queue',     icon: ListIcon  },
-  { label: 'History',  tab: 'history',   icon: ClockIcon },
-  { label: 'Staff',    tab: 'staff',     icon: UsersIcon },
+  { label: 'Dashboard', tab: 'dashboard', icon: GridIcon },
+  { label: 'Queue', tab: 'queue', icon: ListIcon },
+  { label: 'History', tab: 'history', icon: ClockIcon },
+  { label: 'Staff', tab: 'staff', icon: UsersIcon },
 ];
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 type BookingPeriod = '7d' | '30d' | '3m' | '12m' | 'hourly' | 'custom';
-type DocPeriod     = '7d' | '30d' | '3m' | '12m' | 'today'  | 'custom';
+type DocPeriod = '7d' | '30d' | '3m' | '12m' | 'today' | 'custom';
 
 export default function ReceptionPage() {
   const { ready, user } = useRequireRole(['RECEPTIONIST', 'CLINIC_ADMIN', 'MANAGER', 'ADMIN']);
@@ -197,24 +230,24 @@ export default function ReceptionPage() {
     localStorage.setItem('turnos_reception_tab', tab);
   };
 
-  const [data, setData]                         = useState<ClinicDashboard | null>(null);
-  const [analytics, setAnalytics]               = useState<ClinicAnalytics | null>(null);
-  const [doctorAnalytics, setDoctorAnalytics]   = useState<DoctorAnalytics | null>(null);
-  const [history, setHistory]                   = useState<HistoryResponse | null>(null);
+  const [data, setData] = useState<ClinicDashboard | null>(null);
+  const [analytics, setAnalytics] = useState<ClinicAnalytics | null>(null);
+  const [doctorAnalytics, setDoctorAnalytics] = useState<DoctorAnalytics | null>(null);
+  const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [historyAnalytics, setHistoryAnalytics] = useState<ClinicAnalytics | null>(null);
-  const [loading, setLoading]                   = useState(true);
-  const [refreshing, setRefreshing]             = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Booking overview
-  const [bookingPeriod, setBookingPeriod]     = useState<BookingPeriod>('30d');
-  const [bookingFrom, setBookingFrom]         = useState(SEVEN_AGO);
-  const [bookingTo, setBookingTo]             = useState(TODAY);
+  const [bookingPeriod, setBookingPeriod] = useState<BookingPeriod>('30d');
+  const [bookingFrom, setBookingFrom] = useState(SEVEN_AGO);
+  const [bookingTo, setBookingTo] = useState(TODAY);
   const [bookingHourlyDate, setBookingHourlyDate] = useState(TODAY);
 
   // Doctor histogram — period presets
   const [histPeriod, setHistPeriod] = useState<DocPeriod>('today');
-  const [histFrom, setHistFrom]     = useState(TODAY);
-  const [histTo, setHistTo]         = useState(TODAY);
+  const [histFrom, setHistFrom] = useState(TODAY);
+  const [histTo, setHistTo] = useState(TODAY);
 
   // Active selected location state (receptionists/admins can switch locations)
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
@@ -227,9 +260,9 @@ export default function ReceptionPage() {
     if (histPeriod === 'custom') return;
     const map: Record<string, { from: string; to: string }> = {
       today: { from: TODAY, to: TODAY },
-      '7d':  { from: daysAgo(6),   to: TODAY },
-      '30d': { from: daysAgo(29),  to: TODAY },
-      '3m':  { from: daysAgo(89),  to: TODAY },
+      '7d': { from: daysAgo(6), to: TODAY },
+      '30d': { from: daysAgo(29), to: TODAY },
+      '3m': { from: daysAgo(89), to: TODAY },
       '12m': { from: daysAgo(364), to: TODAY },
     };
     const d = map[histPeriod];
@@ -238,35 +271,37 @@ export default function ReceptionPage() {
 
   // History tab
   const [historyFrom, setHistoryFrom] = useState(SEVEN_AGO);
-  const [historyTo, setHistoryTo]     = useState(TODAY);
+  const [historyTo, setHistoryTo] = useState(TODAY);
   const [historyPage, setHistoryPage] = useState(1);
 
   // Add-doctor form (staff tab)
-  const [docName, setDocName]               = useState('');
-  const [docEmail, setDocEmail]             = useState('');
-  const [docPhone, setDocPhone]             = useState('');
+  const [docName, setDocName] = useState('');
+  const [docEmail, setDocEmail] = useState('');
+  const [docPhone, setDocPhone] = useState('');
   const [docPhoneResult, setDocPhoneResult] = useState<PhoneValidationResult>({ ok: false });
-  const [docDeptId, setDocDeptId]           = useState('');
-  const [docAvg, setDocAvg]                 = useState(7);
+  const [docDeptId, setDocDeptId] = useState('');
+  const [docAvg, setDocAvg] = useState(7);
   const [docUseDefaultSchedule, setDocUseDefaultSchedule] = useState(true);
-  const [docBusy, setDocBusy]               = useState(false);
-  const [departments, setDepartments]       = useState<DepartmentOption[]>([]);
-  const [creds, setCreds]                   = useState<DoctorCredentials | null>(null);
-  const [toast, setToast]                   = useState<ToastMessage | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
+  const [departments, setDepartments] = useState<DepartmentOption[]>([]);
+  const [creds, setCreds] = useState<DoctorCredentials | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [togglingDocId, setTogglingDocId] = useState<string | null>(null);
+  const [manageAssignmentsMode, setManageAssignmentsMode] = useState(false);
 
   // Add-receptionist form (business admin / clinic admin in staff tab)
-  const [recName, setRecName]               = useState('');
-  const [recEmail, setRecEmail]             = useState('');
-  const [recPhone, setRecPhone]             = useState('');
+  const [recName, setRecName] = useState('');
+  const [recEmail, setRecEmail] = useState('');
+  const [recPhone, setRecPhone] = useState('');
   const [recPhoneResult, setRecPhoneResult] = useState<PhoneValidationResult>({ ok: false });
-  const [recBusy, setRecBusy]               = useState(false);
+  const [recBusy, setRecBusy] = useState(false);
 
   // Add branch manager form (business admin only)
-  const [mgrName, setMgrName]               = useState('');
-  const [mgrEmail, setMgrEmail]             = useState('');
-  const [mgrPhone, setMgrPhone]             = useState('');
+  const [mgrName, setMgrName] = useState('');
+  const [mgrEmail, setMgrEmail] = useState('');
+  const [mgrPhone, setMgrPhone] = useState('');
   const [mgrPhoneResult, setMgrPhoneResult] = useState<PhoneValidationResult>({ ok: false });
-  const [mgrBusy, setMgrBusy]               = useState(false);
+  const [mgrBusy, setMgrBusy] = useState(false);
 
   const [editEmailUserId, setEditEmailUserId] = useState<string | null>(null);
   const [editEmailValue, setEditEmailValue] = useState('');
@@ -454,6 +489,25 @@ export default function ReceptionPage() {
     }
   }
 
+  async function toggleDoctorBranchAssignment(doc: any) {
+    if (togglingDocId || !selectedLocationId) return;
+    setTogglingDocId(doc.id);
+    try {
+      const isAssigned = doc.locationIds?.includes(selectedLocationId);
+      await api(`/clinics/my/doctors/${doc.id}/locations/${selectedLocationId}`, {
+        method: isAssigned ? 'DELETE' : 'POST',
+      });
+
+      setToast({ type: 'ok', msg: `Updated branch assignment for ${doc.name}` });
+      void loadStaffLists();
+      await loadDashboard(true);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update branch assignment' });
+    } finally {
+      setTogglingDocId(null);
+    }
+  }
+
   async function removeWorker(userId: string, name: string) {
     if (!window.confirm(`Remove ${name}? They will lose access to this business.`)) return;
     try {
@@ -474,6 +528,23 @@ export default function ReceptionPage() {
       void loadStaffLists();
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove manager' });
+    }
+  }
+
+  async function toggleStaffBranchAssignment(staff: any) {
+    if (!selectedLocationId) return;
+    try {
+      const currentIds = staff.locations?.map((l: any) => l.locationId) ?? [];
+      const isAssigned = currentIds.includes(selectedLocationId);
+
+      await api(`/clinics/my/staff/${staff.id}/locations/${selectedLocationId}`, {
+        method: isAssigned ? 'DELETE' : 'POST',
+      });
+
+      setToast({ type: 'ok', msg: `Updated branch assignment for ${staff.name}` });
+      void loadStaffLists();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update branch assignment' });
     }
   }
 
@@ -655,13 +726,18 @@ export default function ReceptionPage() {
     }
   }
 
+  const scheduleDoctors = useMemo(
+    (): DashboardDoctor[] =>
+      mergeBranchDoctors(data?.allDoctors ?? data?.doctors ?? [], data?.doctors ?? []),
+    [data?.allDoctors, data?.doctors],
+  );
+
   if (!ready || loading) return <PageLoader label="Loading…" />;
 
   const L = getLabels(data?.clinic?.businessType);
 
-  const today   = data?.today ?? { waiting: 0, inConsultation: 0, completed: 0, skipped: 0, cancelled: 0 };
+  const today = data?.today ?? { waiting: 0, inConsultation: 0, completed: 0, skipped: 0, cancelled: 0 };
   const doctors = data?.doctors ?? [];
-  const scheduleDoctors = data?.allDoctors ?? doctors;
   const histDoctors = doctorAnalytics?.doctors ?? doctors;
 
   const todayDate = formatDateIst(new Date(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -699,8 +775,8 @@ export default function ReceptionPage() {
           <div className="hidden sm:block min-w-0">
             <div className="font-semibold text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
             <div className="text-[10px] text-slate-500 mt-0.5">
-                {user?.role === 'CLINIC_ADMIN' ? 'Business Admin' : user?.role === 'MANAGER' ? 'Branch Manager' : user?.role === 'ADMIN' ? 'Admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Reception'}
-              </div>
+              {user?.role === 'CLINIC_ADMIN' ? 'Business Admin' : user?.role === 'MANAGER' ? 'Branch Manager' : user?.role === 'ADMIN' ? 'Admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Reception'}
+            </div>
           </div>
         </div>
 
@@ -708,11 +784,10 @@ export default function ReceptionPage() {
         <nav className="flex-1 py-4 px-2 space-y-0.5">
           {NAV.map(({ label, tab, icon: Icon }) => (
             <button key={tab} type="button" onClick={() => handleTabChange(tab)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${
-                activeTab === tab
-                  ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
-              }`}>
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === tab
+                ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
+                : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
+                }`}>
               <Icon className="w-4 h-4 shrink-0" />
               <span className="hidden sm:block">{label}</span>
               {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
@@ -730,11 +805,10 @@ export default function ReceptionPage() {
               { label: 'Analytics', tab: 'analytics', icon: ChartIcon },
             ].map(({ label, tab, icon: Icon }) => (
               <button key={tab} type="button" onClick={() => handleTabChange(tab as Tab)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${
-                  activeTab === tab
-                    ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
-                    : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
-                }`}>
+                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === tab
+                  ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
+                  }`}>
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="hidden sm:block text-xs">{label}</span>
                 {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
@@ -767,21 +841,21 @@ export default function ReceptionPage() {
           <div className="flex items-center gap-1.5">
             {data?.locations && data.locations.length > 0 && (
               data.locations.length > 1 ? (
-              <select
-                value={selectedLocationId || ''}
-                onChange={(e) => selectLocation(e.target.value)}
-                className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer"
-              >
-                {data.locations.map((loc: any) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={selectedLocationId || ''}
+                  onChange={(e) => selectLocation(e.target.value)}
+                  className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer"
+                >
+                  {data.locations.map((loc: any) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
               ) : (
-              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750">
-                {data.locations[0].name}
-              </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750">
+                  {data.locations[0].name}
+                </span>
               )
             )}
             <button type="button" onClick={refresh} disabled={refreshing}
@@ -799,11 +873,11 @@ export default function ReceptionPage() {
           <div className="p-5 sm:p-6 space-y-5">
             {/* Today's stat cards */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <StatCard label="Waiting"         value={today.waiting}        color="teal"  />
-              <StatCard label={L.inService}      value={today.inConsultation} color="blue"  />
-              <StatCard label="Completed"        value={today.completed}      color="green" />
-              <StatCard label="Skipped"          value={today.skipped}        color="amber" />
-              <StatCard label="Cancelled"        value={today.cancelled}      color="red"   />
+              <StatCard label="Waiting" value={today.waiting} color="teal" />
+              <StatCard label={L.inService} value={today.inConsultation} color="blue" />
+              <StatCard label="Completed" value={today.completed} color="green" />
+              <StatCard label="Skipped" value={today.skipped} color="amber" />
+              <StatCard label="Cancelled" value={today.cancelled} color="red" />
             </div>
 
             {/* Booking Overview */}
@@ -816,9 +890,8 @@ export default function ReceptionPage() {
                 <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
                   {(['7d', '30d', '3m', '12m', 'hourly', 'custom'] as BookingPeriod[]).map((p) => (
                     <button key={p} type="button" onClick={() => setBookingPeriod(p)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-                        bookingPeriod === p ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                      }`}>
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${bookingPeriod === p ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                        }`}>
                       {p === 'hourly' ? 'Today/hr' : p === 'custom' ? 'Custom' : p === '12m' ? '12 mo' : p === '3m' ? '3 mo' : p}
                     </button>
                   ))}
@@ -827,27 +900,24 @@ export default function ReceptionPage() {
               {bookingPeriod === 'custom' && (
                 <div className="flex flex-wrap items-center gap-3 mb-3 p-3 bg-slate-50 dark:bg-slate-700/40 rounded-lg">
                   <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    From <input type="date" value={bookingFrom} max={bookingTo} onChange={(e) => setBookingFrom(e.target.value)}
-                      className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs" />
+                    From <DatePicker value={bookingFrom} max={bookingTo} onChange={setBookingFrom} size="sm" />
                   </label>
                   <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    To <input type="date" value={bookingTo} min={bookingFrom} max={TODAY} onChange={(e) => setBookingTo(e.target.value)}
-                      className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs" />
+                    To <DatePicker value={bookingTo} min={bookingFrom} max={TODAY} onChange={setBookingTo} size="sm" />
                   </label>
                 </div>
               )}
               {bookingPeriod === 'hourly' && (
                 <div className="flex items-center gap-3 mb-3 p-3 bg-slate-50 dark:bg-slate-700/40 rounded-lg">
                   <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                    Date <input type="date" value={bookingHourlyDate} max={TODAY} onChange={(e) => setBookingHourlyDate(e.target.value)}
-                      className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs" />
+                    Date <DatePicker value={bookingHourlyDate} max={TODAY} onChange={setBookingHourlyDate} size="sm" />
                   </label>
                   <span className="text-xs text-slate-400">Visits distributed by hour of day</span>
                 </div>
               )}
               <div className="flex items-center gap-4 mb-3 flex-wrap">
                 <LegendDot color="#14b8a6" label="Completed" />
-                <LegendDot color="#f59e0b" label="Missed"    />
+                <LegendDot color="#f59e0b" label="Missed" />
                 <LegendDot color="#ef4444" label="Cancelled" />
               </div>
               <BookingLineChart points={analytics?.points ?? []} />
@@ -864,9 +934,8 @@ export default function ReceptionPage() {
                   <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
                     {(['today', '7d', '30d', '3m', '12m', 'custom'] as DocPeriod[]).map((p) => (
                       <button key={p} type="button" onClick={() => setHistPeriod(p)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
-                          histPeriod === p ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                        }`}>
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${histPeriod === p ? 'bg-white dark:bg-slate-600 text-slate-800 dark:text-slate-100 shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                          }`}>
                         {p === 'today' ? 'Today' : p === 'custom' ? 'Custom' : p === '12m' ? '12 mo' : p === '3m' ? '3 mo' : p}
                       </button>
                     ))}
@@ -874,12 +943,10 @@ export default function ReceptionPage() {
                   {histPeriod === 'custom' && (
                     <div className="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700/40 rounded-lg">
                       <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                        From <input type="date" value={histFrom} max={histTo} onChange={(e) => setHistFrom(e.target.value)}
-                          className="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs" />
+                        From <DatePicker value={histFrom} max={histTo} onChange={setHistFrom} size="sm" />
                       </label>
                       <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
-                        To <input type="date" value={histTo} min={histFrom} max={TODAY} onChange={(e) => setHistTo(e.target.value)}
-                          className="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-xs" />
+                        To <DatePicker value={histTo} min={histFrom} max={TODAY} onChange={setHistTo} size="sm" />
                       </label>
                     </div>
                   )}
@@ -887,9 +954,9 @@ export default function ReceptionPage() {
               </div>
               <div className="flex items-center gap-4 mb-3 flex-wrap">
                 <LegendDot color="#14b8a6" label="Completed" />
-                <LegendDot color="#f59e0b" label="Missed"    />
+                <LegendDot color="#f59e0b" label="Missed" />
                 <LegendDot color="#ef4444" label="Cancelled" />
-                <LegendDot color="#94a3b8" label="Skipped"   />
+                <LegendDot color="#94a3b8" label="Skipped" />
               </div>
               <DoctorHistogram doctors={histDoctors} />
             </div>
@@ -1135,11 +1202,67 @@ export default function ReceptionPage() {
 
             {/* Doctor list */}
             <div className="card p-5">
-              <h2 className="section-title mb-4">
-                {L.providerPlural}
-                <span className="ml-2 text-slate-400 dark:text-slate-500 font-normal text-sm">({doctors.length})</span>
-              </h2>
-              {doctors.length === 0 ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <h2 className="section-title">
+                  {L.providerPlural}
+                  <span className="ml-2 text-slate-400 dark:text-slate-500 font-normal text-sm">
+                    ({manageAssignmentsMode ? scheduleDoctors.length : doctors.length})
+                  </span>
+                </h2>
+                {canManageStaff && (
+                  <button
+                    type="button"
+                    onClick={() => setManageAssignmentsMode(!manageAssignmentsMode)}
+                    className="btn btn-secondary !py-1.5 !px-3 !text-xs font-semibold w-fit"
+                  >
+                    {manageAssignmentsMode ? 'Show Working at Branch' : 'Manage Branch Assignments'}
+                  </button>
+                )}
+              </div>
+
+              {manageAssignmentsMode ? (
+                scheduleDoctors.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">No {L.providerPlural.toLowerCase()} in clinic yet.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {scheduleDoctors.map((doc) => {
+                      const isAssigned = selectedLocationId
+                        ? (doc.locationIds?.includes(selectedLocationId) ?? false)
+                        : false;
+                      const isToggling = togglingDocId === doc.id;
+                      return (
+                        <div key={doc.id} className="card-hover p-4 flex flex-col justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-brand-100 flex items-center justify-center text-sm font-bold text-indigo-700 shrink-0">
+                              {doc.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">{doc.name}</p>
+                              <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{doc.department}</p>
+                            </div>
+                          </div>
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-slate-400">
+                              {isAssigned ? 'Assigned to branch' : 'Not assigned to branch'}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={isToggling}
+                              onClick={() => void toggleDoctorBranchAssignment(doc)}
+                              className={`btn !py-1 !px-3 !text-xs font-bold ${isAssigned
+                                ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400'
+                                : 'btn-primary'
+                                }`}
+                            >
+                              {isToggling ? 'Saving…' : isAssigned ? 'Remove' : 'Add to Branch'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              ) : scheduleDoctors.length === 0 ? (
                 <div className="py-8 flex flex-col items-center text-center">
                   <div className="h-14 w-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mb-3">
                     <UsersIcon className="w-7 h-7" />
@@ -1149,61 +1272,93 @@ export default function ReceptionPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {doctors.map((doc) => (
-                    <div key={doc.id} className="card-hover p-4 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-100 to-emerald-100 dark:from-brand-900/40 dark:to-emerald-900/40 flex items-center justify-center text-sm font-bold text-brand-700 dark:text-brand-400 shrink-0">
-                          {doc.name.charAt(0).toUpperCase()}
+                  {scheduleDoctors.map((doc) => {
+                    const isAssigned = !selectedLocationId || doc.locationIds?.includes(selectedLocationId);
+                    return (
+                      <div key={doc.id} className={`card-hover p-4 space-y-3 transition-all ${!isAssigned ? 'opacity-65 bg-slate-50/50 dark:bg-slate-900/30' : ''}`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${isAssigned
+                            ? 'bg-gradient-to-br from-brand-100 to-emerald-100 dark:from-brand-900/40 dark:to-emerald-900/40 text-brand-700 dark:text-brand-400'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                            }`}>
+                            {doc.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">{doc.name}</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{doc.department}</p>
+                          </div>
+                          <div className="shrink-0">
+                            {isAssigned ? (
+                              <DoctorStatusBadge status={doc.status} />
+                            ) : (
+                              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700/60 uppercase">Not in Branch</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm truncate">{doc.name}</p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500 truncate">{doc.department}</p>
+                        <div className="grid grid-cols-4 gap-1.5 text-center text-xs pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                          <div className="space-y-0.5">
+                            <p className={`font-bold text-base leading-none ${isAssigned ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                              {isAssigned ? doc.completed : '—'}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">Done</p>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className={`font-bold text-base leading-none ${isAssigned ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                              {isAssigned ? doc.missed : '—'}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">Missed</p>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className={`font-bold text-base leading-none ${isAssigned ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'}`}>
+                              {isAssigned ? doc.cancelled : '—'}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">Cancel</p>
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className={`font-bold text-base leading-none ${isAssigned ? 'text-slate-500 dark:text-slate-400' : 'text-slate-400'}`}>
+                              {isAssigned ? doc.skipped : '—'}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">Skip</p>
+                          </div>
                         </div>
-                        <div className="shrink-0"><DoctorStatusBadge status={doc.status} /></div>
+                        <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                          <div className="card-inset p-2 rounded-xl">
+                            <p className={`font-bold ${isAssigned ? 'text-brand-700 dark:text-brand-400' : 'text-slate-400'}`}>
+                              {isAssigned ? doc.waiting : '—'}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">Waiting</p>
+                          </div>
+                          <div className="card-inset p-2 rounded-xl">
+                            <p className={`font-bold ${isAssigned ? 'text-blue-700 dark:text-blue-400' : 'text-slate-400'}`}>
+                              {isAssigned ? (doc.inConsultation ? '1' : '0') : '—'}
+                            </p>
+                            <p className="text-slate-400 dark:text-slate-500">In {L.service.toLowerCase()}</p>
+                          </div>
+                        </div>
+                        {canManageStaff && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1"
+                              onClick={() => void resetStaffPassword({ userId: doc.userId, name: doc.name, email: null, phone: null, role: 'doctor' })}>Reset pwd</button>
+                            <button
+                              type="button"
+                              className={`btn !px-2 !py-1 text-xs flex-1 font-bold ${isAssigned
+                                ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400'
+                                : 'btn-primary'
+                                }`}
+                              onClick={() => void toggleDoctorBranchAssignment(doc)}
+                            >
+                              {isAssigned ? 'Remove' : 'Add to Branch'}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <div className="grid grid-cols-4 gap-1.5 text-center text-xs pt-2 border-t border-slate-100 dark:border-slate-800/60">
-                        <div className="space-y-0.5">
-                          <p className="text-emerald-600 dark:text-emerald-400 font-bold text-base leading-none">{doc.completed}</p>
-                          <p className="text-slate-400 dark:text-slate-500">Done</p>
-                        </div>
-                        <div className="space-y-0.5">
-                          <p className="text-amber-600 dark:text-amber-400 font-bold text-base leading-none">{doc.missed}</p>
-                          <p className="text-slate-400 dark:text-slate-500">Missed</p>
-                        </div>
-                        <div className="space-y-0.5">
-                          <p className="text-rose-600 dark:text-rose-400 font-bold text-base leading-none">{doc.cancelled}</p>
-                          <p className="text-slate-400 dark:text-slate-500">Cancel</p>
-                        </div>
-                        <div className="space-y-0.5">
-                          <p className="text-slate-500 dark:text-slate-400 font-bold text-base leading-none">{doc.skipped}</p>
-                          <p className="text-slate-400 dark:text-slate-500">Skip</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                        <div className="card-inset p-2 rounded-xl">
-                          <p className="text-brand-700 dark:text-brand-400 font-bold">{doc.waiting}</p>
-                          <p className="text-slate-400 dark:text-slate-500">Waiting</p>
-                        </div>
-                        <div className="card-inset p-2 rounded-xl">
-                          <p className="text-blue-700 dark:text-blue-400 font-bold">{doc.inConsultation ? '1' : '0'}</p>
-                          <p className="text-slate-400 dark:text-slate-500">In {L.service.toLowerCase()}</p>
-                        </div>
-                      </div>
-                      {canManageStaff && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1"
-                            onClick={() => void resetStaffPassword({ userId: doc.userId, name: doc.name, email: null, phone: null, role: 'doctor' })}>Reset pwd</button>
-                          <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1 text-rose-600 border-rose-200"
-                            onClick={() => void removeProfessional(doc.id, doc.name)}>Remove</button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
         {/* ── Settings ── */}
         {activeTab === 'settings' && (
@@ -1221,7 +1376,7 @@ export default function ReceptionPage() {
 
         {/* ── Schedule ── */}
         {activeTab === 'schedule' && (
-          <ScheduleTab doctors={scheduleDoctors as any[]} setToast={setToast} locationId={selectedLocationId} />
+          <ScheduleTab doctors={scheduleDoctors} setToast={setToast} locationId={selectedLocationId} />
         )}
 
         {/* ── Leaves ── */}
@@ -1408,11 +1563,10 @@ function ReportCatalog({
                 key={r.id}
                 type="button"
                 onClick={() => onSelect(r.id)}
-                className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${
-                  active === r.id
-                    ? 'border-teal-500 bg-teal-50/60 dark:bg-teal-900/20 ring-2 ring-teal-500/20'
-                    : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
-                }`}
+                className={`text-left rounded-xl border p-4 transition-all hover:shadow-sm ${active === r.id
+                  ? 'border-teal-500 bg-teal-50/60 dark:bg-teal-900/20 ring-2 ring-teal-500/20'
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
               >
                 <div className="font-semibold text-sm text-slate-800 dark:text-slate-100">{r.title}</div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{r.description}</p>
@@ -1686,7 +1840,7 @@ function LeavesReportView({ from, to }: { from: string; to: string }) {
 
 // ─── History Tab (redesigned) ─────────────────────────────────────────────────
 
-type StatusFilter  = 'ALL' | 'COMPLETED' | 'MISSED' | 'CANCELLED' | 'SKIPPED';
+type StatusFilter = 'ALL' | 'COMPLETED' | 'MISSED' | 'CANCELLED' | 'SKIPPED';
 
 function HistoryTab({
   from, to, page, data, trendPoints,
@@ -1706,7 +1860,7 @@ function HistoryTab({
   const [importing, setImporting] = useState(false);
   const [activeReport, setActiveReport] = useState<HistoryReport>('catalog');
   const [staffSearch, setStaffSearch] = useState('');
-  const [search, setSearch]           = useState('');
+  const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [selectedOfficer, setSelectedOfficer] = useState<string>('ALL');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -1715,10 +1869,10 @@ function HistoryTab({
   const summary = data?.summary ?? { completed: 0, missed: 0, cancelled: 0, skipped: 0, total: 0 };
 
   const presets = [
-    { label: 'Today', from: TODAY,       to: TODAY },
-    { label: '7d',    from: daysAgo(6),  to: TODAY },
-    { label: '30d',   from: daysAgo(29), to: TODAY },
-    { label: '3 mo',  from: daysAgo(89), to: TODAY },
+    { label: 'Today', from: TODAY, to: TODAY },
+    { label: '7d', from: daysAgo(6), to: TODAY },
+    { label: '30d', from: daysAgo(29), to: TODAY },
+    { label: '3 mo', from: daysAgo(89), to: TODAY },
   ];
 
   // Build doctor list for officer pills
@@ -1753,11 +1907,11 @@ function HistoryTab({
   }, [filtered, selectedOfficer]);
 
   const statusBtns: { value: StatusFilter; label: string; color: string }[] = [
-    { value: 'ALL',       label: 'All',       color: 'bg-slate-700 text-white' },
+    { value: 'ALL', label: 'All', color: 'bg-slate-700 text-white' },
     { value: 'COMPLETED', label: 'Completed', color: 'bg-emerald-600 text-white' },
-    { value: 'MISSED',    label: 'Missed',    color: 'bg-amber-500 text-white' },
+    { value: 'MISSED', label: 'Missed', color: 'bg-amber-500 text-white' },
     { value: 'CANCELLED', label: 'Cancelled', color: 'bg-rose-500 text-white' },
-    { value: 'SKIPPED',   label: 'Skipped',   color: 'bg-slate-500 text-white' },
+    { value: 'SKIPPED', label: 'Skipped', color: 'bg-slate-500 text-white' },
   ];
 
   const hasFilters = search || statusFilter !== 'ALL' || selectedOfficer !== 'ALL';
@@ -1809,20 +1963,17 @@ function HistoryTab({
           <div className="flex gap-1">
             {presets.map((pr) => (
               <button key={pr.label} type="button" onClick={() => onDateChange(pr.from, pr.to)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                  from === pr.from && to === pr.to
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                }`}>{pr.label}</button>
+                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${from === pr.from && to === pr.to
+                  ? 'bg-teal-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  }`}>{pr.label}</button>
             ))}
           </div>
           {/* Custom date range */}
           <div className="flex items-center gap-1.5 ml-2">
-            <input type="date" value={from} max={to} onChange={(e) => onDateChange(e.target.value, to)}
-              className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs" />
+            <DatePicker value={from} max={to} onChange={(v) => onDateChange(v, to)} size="sm" />
             <span className="text-slate-400 text-xs">→</span>
-            <input type="date" value={to} min={from} max={TODAY} onChange={(e) => onDateChange(from, e.target.value)}
-              className="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs" />
+            <DatePicker value={to} min={from} max={TODAY} onChange={(v) => onDateChange(from, v)} size="sm" />
           </div>
           {/* Search */}
           <div className="flex items-center gap-2 ml-auto flex-1 min-w-[160px] max-w-xs">
@@ -1847,9 +1998,8 @@ function HistoryTab({
           <div className="flex gap-1 flex-wrap">
             {statusBtns.map(({ value, label, color }) => (
               <button key={value} type="button" onClick={() => setStatusFilter(value)}
-                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity ${
-                  statusFilter === value ? color : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-                }`}>{label}</button>
+                className={`px-2.5 py-0.5 rounded-full text-xs font-medium transition-opacity ${statusFilter === value ? color : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                  }`}>{label}</button>
             ))}
           </div>
         </div>
@@ -1857,11 +2007,11 @@ function HistoryTab({
 
       {/* ── Summary cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard label="Total"     value={summary.total}     color="teal"  />
+        <StatCard label="Total" value={summary.total} color="teal" />
         <StatCard label="Completed" value={summary.completed} color="green" />
-        <StatCard label="Missed"    value={summary.missed}    color="amber" />
-        <StatCard label="Cancelled" value={summary.cancelled} color="red"   />
-        <StatCard label="Skipped"   value={summary.skipped}   color="slate" />
+        <StatCard label="Missed" value={summary.missed} color="amber" />
+        <StatCard label="Cancelled" value={summary.cancelled} color="red" />
+        <StatCard label="Skipped" value={summary.skipped} color="slate" />
       </div>
 
       {/* ── Trend chart (queue overview) ── */}
@@ -1871,7 +2021,7 @@ function HistoryTab({
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Visit Trend</h3>
             <div className="flex items-center gap-3">
               <LegendDot color="#14b8a6" label="Completed" />
-              <LegendDot color="#f59e0b" label="Missed"    />
+              <LegendDot color="#f59e0b" label="Missed" />
               <LegendDot color="#ef4444" label="Cancelled" />
             </div>
           </div>
@@ -1884,11 +2034,10 @@ function HistoryTab({
         <button
           type="button"
           onClick={() => setActiveReport('catalog')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-            activeReport === 'catalog'
-              ? 'border-teal-600 text-teal-600'
-              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${activeReport === 'catalog'
+            ? 'border-teal-600 text-teal-600'
+            : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           All reports
         </button>
@@ -2177,11 +2326,10 @@ function OfficerSelectorPills({
         <button
           type="button"
           onClick={() => onSelect('ALL')}
-          className={`rounded-xl border px-3.5 py-2 text-left text-sm transition-all ${
-            selected === 'ALL'
-              ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 shadow-sm ring-2 ring-teal-500/20'
-              : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
-          }`}
+          className={`rounded-xl border px-3.5 py-2 text-left text-sm transition-all ${selected === 'ALL'
+            ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 shadow-sm ring-2 ring-teal-500/20'
+            : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+            }`}
         >
           <div className={`font-semibold ${selected === 'ALL' ? 'text-teal-700 dark:text-teal-300' : 'text-slate-800 dark:text-slate-100'}`}>
             All {L.providerPlural.toLowerCase()}
@@ -2196,11 +2344,10 @@ function OfficerSelectorPills({
               key={g.name}
               type="button"
               onClick={() => onSelect(g.name)}
-              className={`rounded-xl border px-3.5 py-2 text-left text-sm transition-all ${
-                isSelected
-                  ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 shadow-sm ring-2 ring-teal-500/20'
-                  : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
-              }`}
+              className={`rounded-xl border px-3.5 py-2 text-left text-sm transition-all ${isSelected
+                ? 'border-teal-500 bg-teal-50 dark:bg-teal-900/20 shadow-sm ring-2 ring-teal-500/20'
+                : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+                }`}
             >
               <div className={`font-semibold truncate ${isSelected ? 'text-teal-700 dark:text-teal-300' : 'text-slate-800 dark:text-slate-100'}`}>
                 {g.name}
@@ -2241,9 +2388,9 @@ function ByDoctorView({ entries, labels: L }: { entries: HistoryEntry[]; labels:
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5">
         <div className="flex items-center gap-4 mb-3 flex-wrap">
           <LegendDot color="#14b8a6" label="Completed" />
-          <LegendDot color="#f59e0b" label="Missed"    />
+          <LegendDot color="#f59e0b" label="Missed" />
           <LegendDot color="#ef4444" label="Cancelled" />
-          <LegendDot color="#94a3b8" label="Skipped"   />
+          <LegendDot color="#94a3b8" label="Skipped" />
         </div>
         <DoctorHistogram doctors={rows as DoctorAnalyticsRow[]} />
       </div>
@@ -2282,12 +2429,12 @@ function ByDoctorView({ entries, labels: L }: { entries: HistoryEntry[]; labels:
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   const cls: Record<string, { bg: string; text: string; bar: string }> = {
-    teal:  { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-brand-600 dark:text-brand-400',   bar: 'bg-brand-500'   },
-    blue:  { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-blue-600 dark:text-blue-400',     bar: 'bg-blue-500'    },
-    green: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-emerald-600 dark:text-emerald-400', bar: 'bg-emerald-500' },
-    amber: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-amber-600 dark:text-amber-400',   bar: 'bg-amber-500'   },
-    red:   { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-rose-600 dark:text-rose-400',     bar: 'bg-rose-500'    },
-    slate: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800',  text: 'text-slate-500 dark:text-slate-400',   bar: 'bg-slate-400'   },
+    teal: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800', text: 'text-brand-600 dark:text-brand-400', bar: 'bg-brand-500' },
+    blue: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800', text: 'text-blue-600 dark:text-blue-400', bar: 'bg-blue-500' },
+    green: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800', text: 'text-emerald-600 dark:text-emerald-400', bar: 'bg-emerald-500' },
+    amber: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800', text: 'text-amber-600 dark:text-amber-400', bar: 'bg-amber-500' },
+    red: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800', text: 'text-rose-600 dark:text-rose-400', bar: 'bg-rose-500' },
+    slate: { bg: 'bg-white dark:bg-slate-900 ring-1 ring-slate-200/60 dark:ring-slate-800', text: 'text-slate-500 dark:text-slate-400', bar: 'bg-slate-400' },
   };
   const c = cls[color] ?? cls.slate;
   return (
@@ -2334,9 +2481,9 @@ function BookingLineChart({ points }: { points: AnalyticsPoint[] }) {
   const cH = H - pad.t - pad.b;
 
   const maxVal = Math.max(...points.flatMap((p) => [p.completed, p.missed, p.cancelled]), 1);
-  const step   = cW / Math.max(points.length - 1, 1);
-  const toX    = (i: number) => pad.l + i * step;
-  const toY    = (v: number) => pad.t + cH - (v / maxVal) * cH;
+  const step = cW / Math.max(points.length - 1, 1);
+  const toX = (i: number) => pad.l + i * step;
+  const toY = (v: number) => pad.t + cH - (v / maxVal) * cH;
 
   const tickCount = Math.min(maxVal, 5);
   const yTicks = [...new Set(Array.from({ length: tickCount + 1 }, (_, i) => Math.round((maxVal * i) / tickCount)))];
@@ -2346,7 +2493,7 @@ function BookingLineChart({ points }: { points: AnalyticsPoint[] }) {
 
   const series: Array<{ key: 'completed' | 'missed' | 'cancelled'; color: string }> = [
     { key: 'completed', color: '#14b8a6' },
-    { key: 'missed',    color: '#f59e0b' },
+    { key: 'missed', color: '#f59e0b' },
     { key: 'cancelled', color: '#ef4444' },
   ];
 
@@ -2356,7 +2503,7 @@ function BookingLineChart({ points }: { points: AnalyticsPoint[] }) {
     if (!svgRef.current || points.length < 2) return;
     const rect = svgRef.current.getBoundingClientRect();
     const relX = (e.clientX - rect.left) / rect.width;
-    const idx  = Math.max(0, Math.min(points.length - 1, Math.round(relX * (points.length - 1))));
+    const idx = Math.max(0, Math.min(points.length - 1, Math.round(relX * (points.length - 1))));
     setTip({ idx, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
   };
 
@@ -2420,33 +2567,33 @@ function DoctorHistogram({ doctors }: { doctors: (DashboardDoctor | DoctorAnalyt
 
   const W = 700; const H = 220;
   const pad = { t: 10, r: 20, b: 54, l: 36 };
-  const cW  = W - pad.l - pad.r;
-  const cH  = H - pad.t - pad.b;
+  const cW = W - pad.l - pad.r;
+  const cH = H - pad.t - pad.b;
 
   const BARS: Array<{ key: keyof DoctorAnalyticsRow; color: string; label: string }> = [
     { key: 'completed', color: '#14b8a6', label: 'Completed' },
-    { key: 'missed',    color: '#f59e0b', label: 'Missed'    },
+    { key: 'missed', color: '#f59e0b', label: 'Missed' },
     { key: 'cancelled', color: '#ef4444', label: 'Cancelled' },
-    { key: 'skipped',   color: '#94a3b8', label: 'Skipped'   },
+    { key: 'skipped', color: '#94a3b8', label: 'Skipped' },
   ];
-  const barW       = Math.min(12, Math.floor((cW / doctors.length - 8) / BARS.length));
-  const gap        = Math.max(2, Math.floor(barW * 0.35));
-  const groupW     = BARS.length * barW + (BARS.length - 1) * gap;
+  const barW = Math.min(12, Math.floor((cW / doctors.length - 8) / BARS.length));
+  const gap = Math.max(2, Math.floor(barW * 0.35));
+  const groupW = BARS.length * barW + (BARS.length - 1) * gap;
   const docSpacing = cW / doctors.length;
 
   const getVal = (d: DashboardDoctor | DoctorAnalyticsRow, key: string) =>
     (d as unknown as Record<string, number>)[key] ?? 0;
 
-  const maxVal    = Math.max(...doctors.flatMap((d) => BARS.map(({ key }) => getVal(d, key as string))), 1);
+  const maxVal = Math.max(...doctors.flatMap((d) => BARS.map(({ key }) => getVal(d, key as string))), 1);
   const tickCount = Math.min(maxVal, 5);
-  const yTicks    = [...new Set(Array.from({ length: tickCount + 1 }, (_, i) => Math.round((maxVal * i) / tickCount)))];
-  const toY       = (v: number) => pad.t + cH - (v / maxVal) * cH;
+  const yTicks = [...new Set(Array.from({ length: tickCount + 1 }, (_, i) => Math.round((maxVal * i) / tickCount)))];
+  const toY = (v: number) => pad.t + cH - (v / maxVal) * cH;
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
     const svgX = ((e.clientX - rect.left) / rect.width) * W;
-    const idx  = Math.max(0, Math.min(doctors.length - 1, Math.floor((svgX - pad.l) / docSpacing)));
+    const idx = Math.max(0, Math.min(doctors.length - 1, Math.floor((svgX - pad.l) / docSpacing)));
     setTip({ doctorIdx: idx, screenX: e.clientX - rect.left, screenY: e.clientY - rect.top });
   };
 
@@ -2468,16 +2615,16 @@ function DoctorHistogram({ doctors }: { doctors: (DashboardDoctor | DoctorAnalyt
             fill="currentColor" fillOpacity="0.04" />
         )}
         {doctors.map((doc, di) => {
-          const cx        = pad.l + di * docSpacing + docSpacing / 2;
+          const cx = pad.l + di * docSpacing + docSpacing / 2;
           const groupLeft = cx - groupW / 2;
           const nameLabel = doc.name.length > 10 ? doc.name.split(' ').map((w) => w[0]).join('') : doc.name.split(' ')[0];
           return (
             <g key={(doc as DoctorAnalyticsRow).id ?? doc.name}>
               {BARS.map(({ key, color }, bi) => {
-                const val  = getVal(doc, key as string);
+                const val = getVal(doc, key as string);
                 const barH = val > 0 ? Math.max((val / maxVal) * cH, 3) : 0;
-                const x    = groupLeft + bi * (barW + gap);
-                const y    = pad.t + cH - barH;
+                const x = groupLeft + bi * (barW + gap);
+                const y = pad.t + cH - barH;
                 return (
                   <g key={key}>
                     <rect x={x} y={y} width={barW} height={barH} fill={color} rx="2"

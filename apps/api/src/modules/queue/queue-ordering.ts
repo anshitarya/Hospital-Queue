@@ -10,6 +10,72 @@ export function effectivePosition(e: { sortOrder: number | null; tokenNumber: nu
   return e.sortOrder ?? e.tokenNumber;
 }
 
+/** Same order as the live queue UI: day → appointment time → token/sortOrder. */
+export function compareActiveEntries(
+  a: {
+    serviceDay: string;
+    appointmentTime?: Date | null;
+    sortOrder: number | null;
+    tokenNumber: number;
+  },
+  b: {
+    serviceDay: string;
+    appointmentTime?: Date | null;
+    sortOrder: number | null;
+    tokenNumber: number;
+  },
+): number {
+  if (a.serviceDay !== b.serviceDay) return a.serviceDay.localeCompare(b.serviceDay);
+  const timeA = a.appointmentTime ? new Date(a.appointmentTime).getTime() : Infinity;
+  const timeB = b.appointmentTime ? new Date(b.appointmentTime).getTime() : Infinity;
+  if (timeA !== timeB) return timeA - timeB;
+  return effectivePosition(a) - effectivePosition(b);
+}
+
+type MovableEntry = {
+  id: string;
+  sortOrder: number | null;
+  tokenNumber: number;
+  status: EntryStatus;
+  serviceDay: string;
+  appointmentTime: Date | null;
+  appointmentSlot: string | null;
+};
+
+/** Manual drag/move: pick sortOrder + adopt neighbor schedule so order persists across days/slots. */
+export function computeManualMoveData(
+  entry: MovableEntry,
+  peers: MovableEntry[],
+  targetPosition: number,
+): { sortOrder: number; serviceDay: string; appointmentTime: Date | null; appointmentSlot: string | null } {
+  const waitingSorted = [...peers.filter((e) => e.status === EntryStatus.WAITING), entry].sort(
+    compareActiveEntries,
+  );
+  const without = waitingSorted.filter((e) => e.id !== entry.id);
+  const pos = Math.max(0, Math.min(targetPosition - 1, without.length));
+  const before = without[pos - 1] ?? null;
+  const after = without[pos] ?? null;
+  const slotSource = after ?? before ?? entry;
+
+  let sortOrder: number;
+  if (!before && !after) {
+    sortOrder = 1;
+  } else if (!before) {
+    sortOrder = effectivePosition(after!) - 0.5;
+  } else if (!after) {
+    sortOrder = effectivePosition(before) + 0.5;
+  } else {
+    sortOrder = (effectivePosition(before) + effectivePosition(after)) / 2;
+  }
+
+  return {
+    sortOrder,
+    serviceDay: slotSource.serviceDay,
+    appointmentTime: slotSource.appointmentTime,
+    appointmentSlot: slotSource.appointmentSlot,
+  };
+}
+
 export interface OrderingInput {
   doctorId:         string;
   priority:         number;

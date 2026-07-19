@@ -42,6 +42,16 @@ interface FakeEntry {
   completedAt: Date | null;
 }
 
+function entryMatchesWhere(e: FakeEntry, where: Record<string, unknown>): boolean {
+  if (where.id && e.id !== where.id) return false;
+  if (where.doctorId && e.doctorId !== where.doctorId) return false;
+  if (where.patientId && e.patientId !== where.patientId) return false;
+  if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
+  const status = where.status as { in?: EntryStatus[] } | undefined;
+  if (status?.in && !status.in.includes(e.status)) return false;
+  return true;
+}
+
 function makeFakePrisma() {
   const entries: FakeEntry[] = [];
   const users = new Map<string, { id: string; phone: string; name: string; role: Role }>();
@@ -58,6 +68,7 @@ function makeFakePrisma() {
     updatedAt: Date;
     user: { id: string; name: string };
     department: { id: string; name: string };
+    locations: { locationId: string }[];
   } = {
     id: 'doc-1',
     userId: 'doc-user',
@@ -70,6 +81,7 @@ function makeFakePrisma() {
     updatedAt: new Date(),
     user: { id: 'doc-user', name: 'Dr A' },
     department: { id: 'dept-1', name: 'General' },
+    locations: [{ locationId: 'loc-1' }],
   };
 
   return {
@@ -92,10 +104,27 @@ function makeFakePrisma() {
         return created;
       }),
     },
+    businessSetting: {
+      findUnique: jest.fn(async ({ where }: { where: { locationId: string } }) => ({
+        locationId: where.locationId,
+        allowOnlineBooking: true,
+        maxSelfBookingNoShowsPerMonth: 0,
+        queueMode: 'LIVE_QUEUE',
+      })),
+      findMany: jest.fn(async ({ where }: { where: { locationId: { in: string[] } } }) =>
+        (where.locationId.in ?? ['loc-1']).map((locationId) => ({
+          locationId,
+          allowOnlineBooking: true,
+          maxSelfBookingNoShowsPerMonth: 0,
+          queueMode: 'LIVE_QUEUE',
+        })),
+      ),
+    },
     queueEntry: {
+      count: jest.fn(async () => 0),
       findFirst: jest.fn(async ({ where, orderBy }: any) => {
         const list = entries
-          .filter((e) => e.doctorId === where.doctorId && e.serviceDay === where.serviceDay)
+          .filter((e) => entryMatchesWhere(e, where))
           .sort((a, b) =>
             orderBy?.tokenNumber === 'desc'
               ? b.tokenNumber - a.tokenNumber
@@ -164,7 +193,7 @@ function makeFakePrisma() {
         queueEntry: {
           findFirst: jest.fn(async ({ where, orderBy }: any) => {
             const list = entries
-              .filter((e) => e.doctorId === where.doctorId && e.serviceDay === where.serviceDay)
+              .filter((e) => entryMatchesWhere(e, where))
               .sort((a, b) =>
                 orderBy?.tokenNumber === 'desc'
                   ? b.tokenNumber - a.tokenNumber
@@ -505,6 +534,30 @@ describe('QueueService — priority handling', () => {
 
     const next = await svc.callNext('doc-1', staffUser('r'));
     expect(next.id).toBe(urgent.id);
+  });
+});
+
+describe('QueueService — self-booking duplicate guard', () => {
+  it('blocks a second self-booking with the same doctor regardless of service day', async () => {
+    const { svc, prisma } = makeService();
+    prisma._entries.push({
+      id: 'existing',
+      doctorId: 'doc-1',
+      patientId: 'patient-1',
+      createdById: null,
+      serviceDay: '2026-07-20',
+      tokenNumber: 1,
+      priority: 0,
+      notes: null,
+      status: EntryStatus.WAITING,
+      version: 1,
+      joinedAt: new Date(),
+      calledAt: null,
+      startedAt: null,
+      completedAt: null,
+    });
+
+    await expect(svc.joinByPatient('patient-1', 'doc-1')).rejects.toBeInstanceOf(ConflictException);
   });
 });
 

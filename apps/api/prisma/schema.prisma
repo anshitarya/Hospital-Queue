@@ -388,7 +388,7 @@ model BusinessSetting {
   vipJoinRule           String   @default("SEPARATE_QUEUE")
   
   allowWalkins          Boolean  @default(true)
-  allowOnlineBooking    Boolean  @default(true)
+  allowOnlineBooking    Boolean  @default(false)
   allowFollowups        Boolean  @default(true)
   maxDailyBookings      Int      @default(100)
   emergencyQueueEnabled Boolean  @default(true)
@@ -400,6 +400,7 @@ model BusinessSetting {
   bufferTime            Int      @default(5)
   gracePeriod           Int      @default(10)
   noShowTimeout         Int      @default(15)
+  maxSelfBookingNoShowsPerMonth Int @default(3)
 
   autoQueueAssignment   Boolean  @default(true)
   bookingControl        String   @default("CUSTOMER_CONTROLLED")

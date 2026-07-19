@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
+import { DoctorStatus, EntryStatus, Prisma, Role } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -83,77 +83,91 @@ export class ClinicsService {
   async listPublicBusinesses(search?: string) {
     const today = serviceDay();
 
-    const settings = await this.prisma.businessSetting.findMany({
-      where: { allowOnlineBooking: true },
-      select: { locationId: true },
-    });
-    const locationIds = settings.map((s) => s.locationId);
-    if (locationIds.length === 0) return [];
-
-    const locations = await this.prisma.location.findMany({
+    const clinics = await this.prisma.clinic.findMany({
       where: {
-        id: { in: locationIds },
-        status: 'ACTIVE',
         ...(search
           ? {
               OR: [
                 { name: { contains: search, mode: 'insensitive' as const } },
-                { clinic: { name: { contains: search, mode: 'insensitive' as const } } },
                 {
-                  doctors: {
-                    some: { doctor: { user: { name: { contains: search, mode: 'insensitive' as const } } } },
+                  locations: {
+                    some: {
+                      OR: [
+                        { name: { contains: search, mode: 'insensitive' as const } },
+                        {
+                          doctors: {
+                            some: { doctor: { user: { name: { contains: search, mode: 'insensitive' as const } } } },
+                          },
+                        },
+                      ],
+                    },
                   },
                 },
               ],
             }
           : {}),
+        locations: {
+          some: {
+            status: 'ACTIVE',
+            businessSetting: { allowOnlineBooking: true },
+          },
+        },
       },
       include: {
-        clinic: true,
-        doctors: {
+        locations: {
+          where: {
+            status: 'ACTIVE',
+            businessSetting: { allowOnlineBooking: true },
+          },
           include: {
-            doctor: {
+            businessSetting: true,
+            doctors: {
               include: {
-                user: { select: { id: true, name: true } },
-                department: { select: { id: true, name: true } },
-                entries: {
-                  where: {
-                    serviceDay: today,
-                    status: { in: ['WAITING', 'IN_CONSULTATION'] },
+                doctor: {
+                  include: {
+                    user: { select: { id: true, name: true } },
+                    department: { select: { id: true, name: true } },
+                    entries: {
+                      where: {
+                        serviceDay: today,
+                        status: { in: ['WAITING', 'IN_CONSULTATION'] },
+                      },
+                      select: { id: true, status: true, appointmentTime: true, locationId: true },
+                    },
                   },
-                  select: { id: true, status: true, appointmentTime: true, locationId: true },
                 },
-              }
-            }
-          }
-        },
-        businessSetting: {
-          select: { queueMode: true, allowOnlineBooking: true, queueStarts: true, queueEnds: true },
+              },
+            },
+          },
         },
       },
       orderBy: { name: 'asc' },
     });
 
-    return locations.map((loc) => ({
-      id: loc.id,
-      name: `${loc.clinic.name} - ${loc.name}`,
-      address: `${loc.address}, ${loc.city}, ${loc.state}`,
-      businessType: loc.clinic.businessType,
-      settings: loc.businessSetting,
-      doctors: loc.doctors.map((dl) => {
-        const d = dl.doctor;
-        const locEntries = d.entries.filter(e => e.locationId === loc.id);
-        return {
-          id: d.id,
-          name: d.user.name,
-          specialization: d.specialization,
-          department: d.department?.name,
-          status: d.status,
-          avgConsultMinutes: d.avgConsultMinutes,
-          queueLength: locEntries.filter((e) => e.status === 'WAITING').length,
-          inConsultation: locEntries.some((e) => e.status === 'IN_CONSULTATION'),
-        };
-      }),
+    return clinics.map((c) => ({
+      id: c.id,
+      name: c.name,
+      businessType: c.businessType,
+      locations: c.locations.map((loc) => ({
+        id: loc.id,
+        name: loc.name,
+        address: `${loc.address}, ${loc.city}, ${loc.state}`,
+        settings: loc.businessSetting,
+        doctors: loc.doctors.map((dl) => {
+          const d = dl.doctor;
+          const locEntries = d.entries.filter((e) => e.locationId === loc.id);
+          return {
+            id: d.id,
+            name: d.user.name,
+            specialization: d.specialization,
+            department: d.department?.name,
+            status: d.status,
+            avgConsultMinutes: d.avgConsultMinutes,
+            queueLength: locEntries.filter((e) => e.status === 'WAITING').length,
+            inConsultation: locEntries.some((e) => e.status === 'IN_CONSULTATION'),
+          };
+        }),
+      })),
     }));
   }
 
@@ -238,32 +252,26 @@ export class ClinicsService {
     await this.backfillStaffLocationLinks(clinicId);
 
     const doctors = await this.prisma.doctor.findMany({
-      where: {
-        clinicId,
-        ...(locationId ? { locations: { some: { locationId } } } : {}),
-      },
+      where: { clinicId },
       include: { user: { select: { id: true, name: true, email: true, phone: true } }, department: true },
       orderBy: { user: { name: 'asc' } },
     });
     if (caller && caller.role === Role.RECEPTIONIST && locationId) {
       const scope = await this.getAssignedDoctorIds(caller.id, locationId);
-      if (scope !== null) return doctors.filter((d) => scope.includes(d.id));
+      return doctors.filter((d) => scope.includes(d.id));
     } else if (caller && caller.role === Role.RECEPTIONIST) {
       const userLocs = await this.prisma.userLocation.findMany({
         where: { userId: caller.id },
         select: { locationId: true },
       });
       const locIds = userLocs.map((l) => l.locationId);
-      if (locIds.length > 0) {
-        const assignments = await this.prisma.receptionistAssignment.findMany({
-          where: { receptionistId: caller.id, locationId: { in: locIds } },
-          select: { doctorId: true },
-        });
-        if (assignments.length > 0) {
-          const docIds = assignments.map((a) => a.doctorId);
-          return doctors.filter((d) => docIds.includes(d.id));
-        }
-      }
+      if (locIds.length === 0) return [];
+      const assignments = await this.prisma.receptionistAssignment.findMany({
+        where: { receptionistId: caller.id, locationId: { in: locIds } },
+        select: { doctorId: true },
+      });
+      const docIds = [...new Set(assignments.map((a) => a.doctorId))];
+      return doctors.filter((d) => docIds.includes(d.id));
     }
     return doctors;
   }
@@ -326,12 +334,34 @@ export class ClinicsService {
     }
   }
 
-  private async resolveStaffLocationIds(
+  /** Doctors work clinic-wide — default to every active branch unless explicitly scoped. */
+  private async resolveDoctorLocationIds(
     clinicId: string,
     locationId?: string,
     locationIds?: string[],
   ): Promise<string[]> {
-    if (locationIds && locationIds.length > 0) {
+    if (locationIds?.length || locationId) {
+      return this.resolveStaffLocationIds(clinicId, locationId, locationIds);
+    }
+    const locations = await this.prisma.location.findMany({
+      where: { clinicId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!locations.length) {
+      throw new BadRequestException('Clinic has no active locations. Add a branch first.');
+    }
+    return locations.map((l) => l.id);
+  }
+
+  private async resolveStaffLocationIds(
+    clinicId: string,
+    locationId?: string,
+    locationIds?: string[],
+    opts?: { requireActive?: boolean },
+  ): Promise<string[]> {
+    const requireActive = opts?.requireActive !== false;
+    if (locationIds) {
+      if (locationIds.length === 0) return [];
       const valid = await this.prisma.location.findMany({
         where: { clinicId, status: 'ACTIVE', id: { in: locationIds } },
         select: { id: true },
@@ -354,7 +384,10 @@ export class ClinicsService {
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });
-    if (!first) throw new BadRequestException('Clinic has no active locations. Add a branch first.');
+    if (!first) {
+      if (!requireActive) return [];
+      throw new BadRequestException('Clinic has no active locations. Add a branch first.');
+    }
     return [first.id];
   }
 
@@ -376,12 +409,12 @@ export class ClinicsService {
     throw new ForbiddenException('Not authorized for this branch');
   }
 
-  async getAssignedDoctorIds(receptionistId: string, locationId: string): Promise<string[] | null> {
+  /** Doctors this receptionist may manage at a branch. Empty = none assigned. */
+  async getAssignedDoctorIds(receptionistId: string, locationId: string): Promise<string[]> {
     const rows = await this.prisma.receptionistAssignment.findMany({
       where: { receptionistId, locationId },
       select: { doctorId: true },
     });
-    if (rows.length === 0) return null;
     return rows.map((r) => r.doctorId);
   }
 
@@ -417,16 +450,14 @@ export class ClinicsService {
       where: {
         receptionistId: caller.id,
         doctorId,
-        locationId: { in: locIds }
-      }
+        locationId: { in: locIds },
+      },
     });
 
-    const hasAnyAssignment = await this.prisma.receptionistAssignment.count({
-      where: { receptionistId: caller.id, locationId: { in: locIds } }
-    });
-
-    if (hasAnyAssignment > 0 && !assigned) {
-      throw new ForbiddenException('You are not assigned to manage this professional at any of your locations');
+    if (!assigned) {
+      throw new ForbiddenException(
+        'You are not assigned to manage this professional at your branch',
+      );
     }
   }
 
@@ -447,7 +478,10 @@ export class ClinicsService {
         orderBy: { name: 'asc' },
       }),
       this.prisma.doctor.findMany({
-        where: { clinicId: location.clinicId },
+        where: {
+          clinicId: location.clinicId,
+          locations: { some: { locationId } },
+        },
         include: { user: { select: { name: true } }, department: { select: { name: true } } },
         orderBy: { user: { name: 'asc' } },
       }),
@@ -502,10 +536,14 @@ export class ClinicsService {
 
     if (allDoctorIds.length > 0) {
       const validDocs = await this.prisma.doctor.count({
-        where: { id: { in: allDoctorIds }, clinicId },
+        where: {
+          id: { in: allDoctorIds },
+          clinicId,
+          locations: { some: { locationId } },
+        },
       });
       if (validDocs !== allDoctorIds.length) {
-        throw new BadRequestException('One or more professionals are not in this business');
+        throw new BadRequestException('One or more professionals are not assigned to this branch');
       }
     }
 
@@ -535,31 +573,40 @@ export class ClinicsService {
       where: { id: clinicId },
       include: {
         doctors: {
-          where: locationId ? { locations: { some: { locationId } } } : undefined,
           include: { user: true, department: true },
           orderBy: { user: { name: 'asc' } },
         },
       },
     });
     if (!clinic) throw new NotFoundException('Clinic not found');
+
+    if (locationId) {
+      const atBranch = await this.prisma.doctor.findMany({
+        where: { clinicId, locations: { some: { locationId } } },
+        select: { id: true },
+      });
+      const branchDoctorIds = new Set(atBranch.map((d) => d.id));
+      clinic.doctors = clinic.doctors.filter((d) => branchDoctorIds.has(d.id));
+    }
+
     if (caller && caller.role === Role.RECEPTIONIST && locationId) {
       const scope = await this.getAssignedDoctorIds(caller.id, locationId);
-      if (scope !== null) clinic.doctors = clinic.doctors.filter((d) => scope.includes(d.id));
+      clinic.doctors = clinic.doctors.filter((d) => scope.includes(d.id));
     } else if (caller && caller.role === Role.RECEPTIONIST) {
       const userLocs = await this.prisma.userLocation.findMany({
         where: { userId: caller.id },
         select: { locationId: true },
       });
       const locIds = userLocs.map((l) => l.locationId);
-      if (locIds.length > 0) {
+      if (locIds.length === 0) {
+        clinic.doctors = [];
+      } else {
         const assignments = await this.prisma.receptionistAssignment.findMany({
           where: { receptionistId: caller.id, locationId: { in: locIds } },
           select: { doctorId: true },
         });
-        if (assignments.length > 0) {
-          const docIds = assignments.map((a) => a.doctorId);
-          clinic.doctors = clinic.doctors.filter((d) => docIds.includes(d.id));
-        }
+        const docIds = [...new Set(assignments.map((a) => a.doctorId))];
+        clinic.doctors = clinic.doctors.filter((d) => docIds.includes(d.id));
       }
     }
     return clinic;
@@ -590,7 +637,7 @@ export class ClinicsService {
     const dept = await this.prisma.department.findUnique({ where: { id: dto.departmentId } });
     if (!dept) throw new NotFoundException('Department not found');
 
-    const branchIds = await this.resolveStaffLocationIds(clinicId, defaultLocationId, dto.locationIds);
+    const branchIds = await this.resolveDoctorLocationIds(clinicId, defaultLocationId, dto.locationIds);
 
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -689,10 +736,10 @@ export class ClinicsService {
       { email: dto.email, phone: dto.phone, role: 'business admin' },
     );
 
-    const branchIds = await this.resolveStaffLocationIds(
-      clinicId,
-      dto.locationId ?? defaultLocationId,
-    );
+    const explicitLocation = dto.locationId ?? defaultLocationId;
+    const branchIds = explicitLocation
+      ? await this.resolveStaffLocationIds(clinicId, explicitLocation)
+      : [];
 
     const user = await this.prisma.user.create({
       data: {
@@ -703,9 +750,9 @@ export class ClinicsService {
         passwordHash,
         clinicId,
         emailVerified: dto.email ? true : undefined,
-        locations: {
-          create: branchIds.map((locationId) => ({ locationId })),
-        },
+        ...(branchIds.length > 0
+          ? { locations: { create: branchIds.map((locationId) => ({ locationId })) } }
+          : {}),
       },
       select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
     });
@@ -853,24 +900,229 @@ export class ClinicsService {
         email: true,
         phone: true,
         createdAt: true,
+        locations: { select: { locationId: true, location: { select: { id: true, name: true } } } },
       },
       orderBy: { name: 'asc' },
     });
   }
 
-  async setDoctorLocations(clinicId: string, doctorId: string, locationIds: string[]) {
-    const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
+  private async cleanupDoctorAtLocation(
+    tx: Prisma.TransactionClient,
+    doctorId: string,
+    locationId: string,
+  ) {
+    await tx.queueEntry.deleteMany({
+      where: {
+        doctorId,
+        locationId,
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+      },
+    });
+    await tx.receptionistAssignment.deleteMany({
+      where: { doctorId, locationId },
+    });
+    await tx.professionalSchedule.deleteMany({
+      where: { doctorId, locationId },
+    });
+  }
+
+  async addDoctorToLocation(clinicId: string, doctorId: string, locationId: string, caller?: AuthUser) {
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: { locations: { select: { locationId: true } } },
+    });
     if (!doctor || doctor.clinicId !== clinicId) {
       throw new NotFoundException('Professional not found in this clinic');
     }
-    const validIds = await this.resolveStaffLocationIds(clinicId, undefined, locationIds);
+
+    await this.resolveStaffLocationIds(clinicId, locationId);
+    if (caller?.role === Role.MANAGER) {
+      await this.assertCallerManagesLocation(caller, locationId);
+    }
+
+    if (doctor.locations.some((l) => l.locationId === locationId)) {
+      return { doctorId, locationId, locationIds: doctor.locations.map((l) => l.locationId) };
+    }
+
+    await this.prisma.doctorLocation.create({
+      data: { doctorId, locationId },
+    });
+
+    const locationIds = [...doctor.locations.map((l) => l.locationId), locationId];
+    return { doctorId, locationId, locationIds };
+  }
+
+  async removeDoctorFromLocation(clinicId: string, doctorId: string, locationId: string, caller?: AuthUser) {
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: { locations: { select: { locationId: true } } },
+    });
+    if (!doctor || doctor.clinicId !== clinicId) {
+      throw new NotFoundException('Professional not found in this clinic');
+    }
+    if (!doctor.locations.some((l) => l.locationId === locationId)) {
+      throw new BadRequestException('Professional is not assigned to this branch');
+    }
+
+    await this.resolveStaffLocationIds(clinicId, locationId);
+    if (caller?.role === Role.MANAGER) {
+      await this.assertCallerManagesLocation(caller, locationId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.doctorLocation.deleteMany({ where: { doctorId, locationId } });
+      await this.cleanupDoctorAtLocation(tx, doctorId, locationId);
+    });
+
+    const locationIds = doctor.locations
+      .map((l) => l.locationId)
+      .filter((id) => id !== locationId);
+    return { doctorId, locationId, locationIds };
+  }
+
+  async setDoctorLocations(clinicId: string, doctorId: string, locationIds: string[], caller?: AuthUser) {
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      include: { locations: { select: { locationId: true } } },
+    });
+    if (!doctor || doctor.clinicId !== clinicId) {
+      throw new NotFoundException('Professional not found in this clinic');
+    }
+
+    let finalLocationIds = [...locationIds];
+
+    if (caller && caller.role === Role.MANAGER) {
+      const managedLocs = (
+        await this.prisma.userLocation.findMany({
+          where: { userId: caller.id },
+          select: { locationId: true },
+        })
+      ).map((ul) => ul.locationId);
+
+      const currentLocIds = doctor.locations.map((dl) => dl.locationId);
+      const unmanagedLocs = currentLocIds.filter((id) => !managedLocs.includes(id));
+      const managedToAddOrKeep = locationIds.filter((id) => managedLocs.includes(id));
+      finalLocationIds = [...managedToAddOrKeep, ...unmanagedLocs];
+    }
+
+    const validIds = await this.resolveStaffLocationIds(clinicId, undefined, finalLocationIds);
+    const currentLocIds = doctor.locations.map((dl) => dl.locationId);
+    const removedLocIds = currentLocIds.filter((id) => !validIds.includes(id));
+
     await this.prisma.$transaction(async (tx) => {
       await tx.doctorLocation.deleteMany({ where: { doctorId } });
       await tx.doctorLocation.createMany({
         data: validIds.map((locationId) => ({ doctorId, locationId })),
       });
+      if (removedLocIds.length > 0) {
+        for (const locId of removedLocIds) {
+          await this.cleanupDoctorAtLocation(tx, doctorId, locId);
+        }
+      }
     });
     return { doctorId, locationIds: validIds };
+  }
+
+  async addStaffToLocation(clinicId: string, userId: string, locationId: string, caller?: AuthUser) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { locations: { select: { locationId: true } } },
+    });
+    if (!user || user.clinicId !== clinicId) {
+      throw new NotFoundException('Staff member not found in this clinic');
+    }
+    if (user.role !== Role.RECEPTIONIST && user.role !== Role.MANAGER) {
+      throw new BadRequestException('Only receptionists and branch managers can be assigned to branches');
+    }
+
+    await this.resolveStaffLocationIds(clinicId, locationId);
+    if (caller?.role === Role.MANAGER) {
+      await this.assertCallerManagesLocation(caller, locationId);
+    }
+
+    if (user.locations.some((l) => l.locationId === locationId)) {
+      return { userId, locationId, locationIds: user.locations.map((l) => l.locationId) };
+    }
+
+    await this.prisma.userLocation.create({
+      data: { userId, locationId },
+    });
+
+    const locationIds = [...user.locations.map((l) => l.locationId), locationId];
+    return { userId, locationId, locationIds };
+  }
+
+  async removeStaffFromLocation(clinicId: string, userId: string, locationId: string, caller?: AuthUser) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { locations: { select: { locationId: true } } },
+    });
+    if (!user || user.clinicId !== clinicId) {
+      throw new NotFoundException('Staff member not found in this clinic');
+    }
+    if (!user.locations.some((l) => l.locationId === locationId)) {
+      throw new BadRequestException('Staff member is not assigned to this branch');
+    }
+
+    await this.resolveStaffLocationIds(clinicId, locationId);
+    if (caller?.role === Role.MANAGER) {
+      await this.assertCallerManagesLocation(caller, locationId);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userLocation.deleteMany({ where: { userId, locationId } });
+      if (user.role === Role.RECEPTIONIST) {
+        await tx.receptionistAssignment.deleteMany({ where: { receptionistId: userId, locationId } });
+      }
+    });
+
+    const locationIds = user.locations
+      .map((l) => l.locationId)
+      .filter((id) => id !== locationId);
+    return { userId, locationId, locationIds };
+  }
+
+  async setStaffLocations(clinicId: string, userId: string, locationIds: string[], caller?: AuthUser) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { locations: { select: { locationId: true } } },
+    });
+    if (!user || user.clinicId !== clinicId) {
+      throw new NotFoundException('Staff member not found in this clinic');
+    }
+
+    let finalLocationIds = [...locationIds];
+    if (caller?.role === Role.MANAGER) {
+      const managedLocs = (
+        await this.prisma.userLocation.findMany({
+          where: { userId: caller.id },
+          select: { locationId: true },
+        })
+      ).map((ul) => ul.locationId);
+      const currentLocIds = user.locations.map((l) => l.locationId);
+      const unmanagedLocs = currentLocIds.filter((id) => !managedLocs.includes(id));
+      const managedToAddOrKeep = locationIds.filter((id) => managedLocs.includes(id));
+      finalLocationIds = [...managedToAddOrKeep, ...unmanagedLocs];
+    }
+
+    const validIds = await this.resolveStaffLocationIds(clinicId, undefined, finalLocationIds);
+    const currentLocIds = user.locations.map((l) => l.locationId);
+    const removedLocIds = currentLocIds.filter((id) => !validIds.includes(id));
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userLocation.deleteMany({ where: { userId } });
+      if (validIds.length > 0) {
+        await tx.userLocation.createMany({
+          data: validIds.map((locationId) => ({ userId, locationId })),
+        });
+      }
+      if (removedLocIds.length > 0 && user.role === Role.RECEPTIONIST) {
+        await tx.receptionistAssignment.deleteMany({
+          where: { receptionistId: userId, locationId: { in: removedLocIds } },
+        });
+      }
+    });
+    return { userId, locationIds: validIds };
   }
 
   /**
@@ -1084,12 +1336,20 @@ export class ClinicsService {
           clinicId,
           ...(targetLocationId ? { locations: { some: { locationId: targetLocationId } } } : {}),
         },
-        include: { user: { select: { id: true, name: true } }, department: { select: { name: true } } },
+        include: {
+          user: { select: { id: true, name: true } },
+          department: { select: { name: true } },
+          locations: { select: { locationId: true } },
+        },
         orderBy: { user: { name: 'asc' } },
       }),
       this.prisma.doctor.findMany({
         where: { clinicId },
-        include: { user: { select: { id: true, name: true } }, department: { select: { name: true } } },
+        include: {
+          user: { select: { id: true, name: true } },
+          department: { select: { name: true } },
+          locations: { select: { locationId: true } },
+        },
         orderBy: { user: { name: 'asc' } },
       }),
       targetLocationId
@@ -1112,6 +1372,7 @@ export class ClinicsService {
       userId: d.user.id,
       name: d.user.name,
       department: d.department?.name ?? '—',
+      locationIds: d.locations.map((l) => l.locationId),
     }));
 
     const scope = targetLocationId
@@ -1144,7 +1405,7 @@ export class ClinicsService {
             by: ['serviceDay'],
             where: {
               doctorId: { in: doctorIds },
-              serviceDay: { gte: serviceDaysAgo(6) },
+              serviceDay: { in: recentServiceDays(7) },
               status: { in: [EntryStatus.COMPLETED, EntryStatus.SKIPPED, EntryStatus.CANCELLED] },
               ...(targetLocationId ? { locationId: targetLocationId } : {}),
             },
@@ -1177,6 +1438,7 @@ export class ClinicsService {
       name: d.user.name,
       department: d.department?.name ?? '—',
       status: d.status,
+      locationIds: d.locations.map((l) => l.locationId),
       waiting:        dqMap.get(d.id)?.[EntryStatus.WAITING]         ?? 0,
       inConsultation: dqMap.get(d.id)?.[EntryStatus.IN_CONSULTATION] ?? 0,
       completed:      dqMap.get(d.id)?.[EntryStatus.COMPLETED]       ?? 0,
@@ -1259,6 +1521,7 @@ export class ClinicsService {
         businessType: 'CLINIC',
         queueMode: 'LIVE_QUEUE',
         appointmentMode: 'HYBRID',
+        allowOnlineBooking: false,
       },
     });
     return loc;

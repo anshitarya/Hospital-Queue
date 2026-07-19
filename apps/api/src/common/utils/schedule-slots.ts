@@ -165,4 +165,90 @@ export function nextShiftSameDay(
   return dayShifts.find((s) => parseHmToMinutes(s.startTime) > afterMinutes) ?? null;
 }
 
+/** Next shift start strictly after `afterTime` — later today, else first shift on a future day. */
+export function resolveNextShiftAfter(
+  allShifts: ScheduleShift[],
+  afterTime: Date,
+): { serviceDay: string; slotStr: string; time: Date } | null {
+  if (!allShifts.length) return null;
+
+  const afterDay = serviceDay(afterTime);
+  const afterMin = istMinutesOfDay(afterTime);
+  const afterDow = istDayOfWeek(afterTime);
+
+  const laterToday = shiftsForDay(allShifts, afterDow).find(
+    (s) => parseHmToMinutes(s.startTime) > afterMin,
+  );
+  if (laterToday) {
+    return {
+      serviceDay: afterDay,
+      slotStr: laterToday.startTime,
+      time: istAppointmentDate(afterDay, laterToday.startTime),
+    };
+  }
+
+  for (let offset = 1; offset <= 14; offset++) {
+    const dayKey = addServiceDays(afterDay, offset);
+    const dow = istDayOfWeek(istAppointmentDate(dayKey, '12:00'));
+    const dayShifts = shiftsForDay(allShifts, dow);
+    if (dayShifts.length > 0) {
+      return {
+        serviceDay: dayKey,
+        slotStr: dayShifts[0].startTime,
+        time: istAppointmentDate(dayKey, dayShifts[0].startTime),
+      };
+    }
+  }
+
+  return null;
+}
+
+type RolloverEntry = { appointmentTime: Date | null | undefined };
+
+/**
+ * Reference instant for rollover: must be at or after the waiting entry's assigned
+ * shift end — not wall clock alone — so repeated rolls advance past the same day.
+ */
+export function resolveRolloverRefTime(
+  entries: RolloverEntry[],
+  serviceDayKey: string,
+  shifts: ScheduleShift[],
+  now: Date = new Date(),
+): Date {
+  let ref = now;
+
+  for (const entry of entries) {
+    if (!entry.appointmentTime) continue;
+    const appt = new Date(entry.appointmentTime);
+    if (appt.getTime() > ref.getTime()) ref = appt;
+
+    const apptDay = serviceDay(appt);
+    const apptDow = istDayOfWeek(appt);
+    const apptMin = istMinutesOfDay(appt);
+    const shift = shifts.find(
+      (s) =>
+        !s.isHoliday &&
+        s.dayOfWeek === apptDow &&
+        parseHmToMinutes(s.startTime) <= apptMin &&
+        parseHmToMinutes(s.endTime) >= apptMin,
+    );
+    if (shift) {
+      const shiftEnd = istAppointmentDate(apptDay, shift.endTime);
+      if (shiftEnd.getTime() > ref.getTime()) ref = shiftEnd;
+    }
+  }
+
+  if (serviceDayKey !== serviceDay(now)) {
+    const dow = istDayOfWeek(istAppointmentDate(serviceDayKey, '12:00'));
+    const dayShifts = shiftsForDay(shifts, dow);
+    if (dayShifts.length > 0) {
+      const lastEnd = Math.max(...dayShifts.map((s) => parseHmToMinutes(s.endTime)));
+      const dayEnd = istAppointmentDate(serviceDayKey, minutesToHm(lastEnd));
+      if (dayEnd.getTime() > ref.getTime()) ref = dayEnd;
+    }
+  }
+
+  return ref;
+}
+
 export { serviceDay };

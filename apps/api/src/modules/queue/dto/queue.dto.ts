@@ -66,6 +66,11 @@ export class PatientJoinQueueDto {
   @IsOptional()
   @IsString()
   appointmentTime?: string;
+
+  /** Branch shown in the patient portal listing (required when multiple branches allow self-booking). */
+  @IsOptional()
+  @IsString()
+  locationId?: string;
 }
 
 export class ReorderEntryDto {

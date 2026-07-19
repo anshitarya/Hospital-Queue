@@ -78,13 +78,13 @@ export class ClinicsController {
     return this.clinics.lookupPatient(user.clinicId, phone);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN)
   @Get('my/departments')
   listDepartments() {
     return this.clinics.listDepartments();
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN)
   @Post('my/departments')
   findOrCreateDepartment(@Body('name') name: string) {
     return this.clinics.findOrCreateDepartment(name);
@@ -358,26 +358,50 @@ export class ClinicsController {
     return this.clinics.addManager(clinicId, dto, locationId);
   }
 
-  @Roles(Role.CLINIC_ADMIN, Role.ADMIN)
+  @Roles(Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Get('my/managers')
-  listMyClinicManagers(
+  async listMyClinicManagers(
     @CurrentUser() user: AuthUser,
     @Query('locationId') locationId?: string,
   ) {
     const clinicId = user.clinicId;
     if (!clinicId) throw new ForbiddenException('No clinic assigned');
-    return this.clinics.listManagersInClinic(clinicId, locationId);
+    let targetLocationId = locationId;
+    if (user.role === Role.MANAGER || user.role === Role.RECEPTIONIST) {
+      const managedLocs = await this.clinics.listLocations(clinicId, user);
+      const managedIds = managedLocs.map(l => l.id);
+      if (targetLocationId) {
+        if (!managedIds.includes(targetLocationId)) {
+          throw new ForbiddenException('You are not assigned to this branch');
+        }
+      } else {
+        targetLocationId = managedIds[0];
+      }
+    }
+    return this.clinics.listManagersInClinic(clinicId, targetLocationId);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.DOCTOR, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.DOCTOR, Role.ADMIN)
   @Get('my/receptionists')
-  listMyClinicReceptionists(
+  async listMyClinicReceptionists(
     @CurrentUser() user: AuthUser,
     @Query('locationId') locationId?: string,
   ) {
     const clinicId = user.clinicId;
     if (!clinicId) throw new ForbiddenException('No clinic assigned');
-    return this.clinics.listReceptionistsInClinic(clinicId, locationId);
+    let targetLocationId = locationId;
+    if (user.role === Role.MANAGER || user.role === Role.RECEPTIONIST) {
+      const managedLocs = await this.clinics.listLocations(clinicId, user);
+      const managedIds = managedLocs.map(l => l.id);
+      if (targetLocationId) {
+        if (!managedIds.includes(targetLocationId)) {
+          throw new ForbiddenException('You are not assigned to this branch');
+        }
+      } else {
+        targetLocationId = managedIds[0];
+      }
+    }
+    return this.clinics.listReceptionistsInClinic(clinicId, targetLocationId);
   }
 
   @Roles(Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
@@ -416,7 +440,29 @@ export class ClinicsController {
     return this.clinics.updateStaffEmail(clinicId, userId, email);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN)
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Post('my/doctors/:doctorId/locations/:locationId')
+  addDoctorToLocation(
+    @CurrentUser() user: AuthUser,
+    @Param('doctorId') doctorId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.addDoctorToLocation(user.clinicId, doctorId, locationId, user);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Delete('my/doctors/:doctorId/locations/:locationId')
+  removeDoctorFromLocation(
+    @CurrentUser() user: AuthUser,
+    @Param('doctorId') doctorId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.removeDoctorFromLocation(user.clinicId, doctorId, locationId, user);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Put('my/doctors/:doctorId/locations')
   setDoctorLocations(
     @CurrentUser() user: AuthUser,
@@ -424,7 +470,40 @@ export class ClinicsController {
     @Body('locationIds') locationIds: string[],
   ) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
-    return this.clinics.setDoctorLocations(user.clinicId, doctorId, locationIds ?? []);
+    return this.clinics.setDoctorLocations(user.clinicId, doctorId, locationIds ?? [], user);
+  }
+
+  @Roles(Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Post('my/staff/:userId/locations/:locationId')
+  addStaffToLocation(
+    @CurrentUser() user: AuthUser,
+    @Param('userId') userId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.addStaffToLocation(user.clinicId, userId, locationId, user);
+  }
+
+  @Roles(Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Delete('my/staff/:userId/locations/:locationId')
+  removeStaffFromLocation(
+    @CurrentUser() user: AuthUser,
+    @Param('userId') userId: string,
+    @Param('locationId') locationId: string,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.removeStaffFromLocation(user.clinicId, userId, locationId, user);
+  }
+
+  @Roles(Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Put('my/staff/:userId/locations')
+  setStaffLocations(
+    @CurrentUser() user: AuthUser,
+    @Param('userId') userId: string,
+    @Body('locationIds') locationIds: string[],
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.clinics.setStaffLocations(user.clinicId, userId, locationIds ?? [], user);
   }
 
   /* ════════════════════════════════════════════════════════════════════════

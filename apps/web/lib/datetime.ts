@@ -26,6 +26,29 @@ export function serviceDay(date: Date = new Date()): string {
   return IST_DATE.format(date);
 }
 
+/** HH:mm (24h) for the current instant in IST. */
+export function istNowHHMM(): string {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: APP_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+  const hour = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const minute = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  return `${hour}:${minute}`;
+}
+
+/** JS weekday 0=Sun … 6=Sat for a YYYY-MM-DD service day in IST. */
+export function istDayOfWeekFromKey(dayKey: string): number {
+  return new Date(`${dayKey}T12:00:00+05:30`).getDay();
+}
+
+/** True when an HH:mm shift block has not ended yet today. */
+export function isShiftStillBookable(endTime: string, nowHHMM: string): boolean {
+  return endTime > nowHHMM;
+}
+
 export function serviceDaysAgo(n: number): string {
   const t = new Date(`${serviceDay()}T12:00:00+05:30`);
   t.setTime(t.getTime() - n * 86_400_000);
