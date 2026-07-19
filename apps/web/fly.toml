@@ -1,0 +1,37 @@
+app            = "turnos"
+primary_region = "sin"   # Singapore
+
+[build]
+  dockerfile = "Dockerfile.prod"
+
+  [build.args]
+    NEXT_PUBLIC_API_URL    = "https://turnos-api-hq.fly.dev"
+    NEXT_PUBLIC_SOCKET_URL = "https://turnos-api-hq.fly.dev"
+    NEXT_PUBLIC_REVIEW_FORM_URL              = "https://forms.gle/C2QHX8Bv7qZGtmxr5"
+    NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_ACTION  = "https://docs.google.com/forms/d/e/1FAIpQLScnafxsmPVeL_bdjLNIxJ7xGsjr6PCMVnHluuloUFMINHQl0A/formResponse"
+    NEXT_PUBLIC_BUSINESS_SIGNUP_FORM_URL       = "https://forms.gle/76Zk339nJkQQqt4p8"
+    NEXT_PUBLIC_BUSINESS_FORM_ENTRY_BUSINESS   = "entry.1778268907"
+    NEXT_PUBLIC_BUSINESS_FORM_ENTRY_NAME       = "entry.275317772"
+    NEXT_PUBLIC_BUSINESS_FORM_ENTRY_EMAIL      = "entry.445315508"
+    NEXT_PUBLIC_BUSINESS_FORM_ENTRY_MOBILE     = "entry.613579027"
+
+[env]
+  PORT               = "3000"
+  NODE_ENV           = "production"
+  # false = /admin accessible from any domain (current state — no domain yet)
+  # true  = /admin only accessible from SUPER_ADMIN_HOST (after buying domain)
+  # Flip via: fly secrets set SUPER_ADMIN_LOCKED=true -a turnos
+  SUPER_ADMIN_LOCKED = "false"
+  SUPER_ADMIN_HOST   = "admin.turnos.fly.dev"
+
+[http_service]
+  internal_port        = 3000
+  force_https          = true
+  auto_stop_machines   = false
+  auto_start_machines  = true
+  min_machines_running = 1   # 1 machine is enough — Next.js is stateless
+
+[[vm]]
+  cpu_kind  = "shared"
+  cpus      = 1
+  memory_mb = 1024

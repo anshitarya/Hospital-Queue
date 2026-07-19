@@ -4,37 +4,37 @@ import { create } from 'zustand';
 import { api, AuthResult } from './api';
 
 interface AuthState {
-  token: string | null;
   user: AuthResult['user'] | null;
   loaded: boolean;
   hydrate: () => void;
   setSession: (r: AuthResult) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useAuth = create<AuthState>((set) => ({
-  token: null,
   user: null,
   loaded: false,
   hydrate: () => {
     if (typeof window === 'undefined') return;
-    const token = window.localStorage.getItem('hq_token');
     const userRaw = window.localStorage.getItem('hq_user');
     set({
-      token,
       user: userRaw ? JSON.parse(userRaw) : null,
       loaded: true,
     });
   },
   setSession: (r: AuthResult) => {
-    window.localStorage.setItem('hq_token', r.token);
     window.localStorage.setItem('hq_user', JSON.stringify(r.user));
-    set({ token: r.token, user: r.user, loaded: true });
+    // Only overwrite the token when we actually received one. The profile page
+    // calls setSession with token:'' just to refresh display fields — that must
+    // NOT clobber the stored auth token.
+    if (r.token) window.localStorage.setItem('hq_token', r.token);
+    set({ user: r.user, loaded: true });
   },
-  logout: () => {
-    window.localStorage.removeItem('hq_token');
+  logout: async () => {
+    try { await api('/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     window.localStorage.removeItem('hq_user');
-    set({ token: null, user: null });
+    window.localStorage.removeItem('hq_token');
+    set({ user: null });
   },
 }));
 
@@ -51,19 +51,20 @@ export async function registerReceptionist(opts: {
   return api<AuthResult>('/auth/register', { method: 'POST', body: opts });
 }
 
-export async function requestOtp(phone: string) {
-  return api<{ devCode?: string }>('/auth/otp/request', { method: 'POST', body: { phone } });
+export async function loginCustomer(phone: string, pin: string) {
+  return api<AuthResult>('/auth/customer/login', { method: 'POST', body: { phone, pin } });
 }
 
-export async function verifyOtp(phone: string, code: string, name?: string) {
-  return api<AuthResult>('/auth/otp/verify', { method: 'POST', body: { phone, code, name } });
+/** @deprecated Use loginCustomer */
+export async function loginWithPin(phone: string, pin: string) {
+  return loginCustomer(phone, pin);
 }
 
 /* ─── Profile ─────────────────────────────────────────────────────────────── */
 
 export interface UserProfile {
   id: string;
-  role: 'PATIENT' | 'RECEPTIONIST' | 'DOCTOR' | 'ADMIN';
+  role: 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'MANAGER' | 'DOCTOR' | 'ADMIN';
   name: string;
   email: string | null;
   emailVerified: boolean;
@@ -74,6 +75,7 @@ export interface UserProfile {
   clinic: { id: string; name: string } | null;
   createdAt: string;
   hasPassword: boolean;
+  customerPin?: string | null;
 }
 
 export async function getProfile() {
@@ -114,4 +116,18 @@ export async function verifyEmail(code: string) {
 
 export async function cancelPendingEmail() {
   return api<UserProfile>('/auth/email/cancel-pending', { method: 'POST' });
+}
+
+export async function registerCustomer(phone: string, name: string) {
+  return api<AuthResult & { pin: string }>('/auth/customer/register', {
+    method: 'POST',
+    body: { phone, name },
+  });
+}
+
+export async function changePin(currentPin: string, newPin: string) {
+  return api<{ ok: true }>('/auth/customer/change-pin', {
+    method: 'POST',
+    body: { currentPin, newPin },
+  });
 }

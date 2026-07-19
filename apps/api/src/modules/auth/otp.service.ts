@@ -70,11 +70,10 @@ export class OtpService {
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
     if (this.devMode) {
-      // Visible in `docker-compose logs -f api`. Replace with real provider
-      // call in production (e.g. SMS for "phone", SES for "email").
       this.logger.warn(`[DEV OTP] channel=${channel} target=${target} code=${code} (expires in ${this.ttl}s)`);
       return { devCode: code };
     }
+    // Production: call SMS provider here, then return {}.
     return {};
   }
 

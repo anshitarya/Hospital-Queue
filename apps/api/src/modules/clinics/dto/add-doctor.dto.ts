@@ -1,6 +1,25 @@
-import { IsEmail, IsInt, IsOptional, IsString, Matches, Min, MinLength } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength, ValidateNested } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { normalizeIndianMobile } from '../../../common/utils/phone';
+
+export class ScheduleShiftDto {
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  dayOfWeek!: number;
+
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'startTime must be HH:MM (24h, IST)' })
+  startTime!: string;
+
+  @IsString()
+  @Matches(/^\d{2}:\d{2}$/, { message: 'endTime must be HH:MM (24h, IST)' })
+  endTime!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isHoliday?: boolean;
+}
 
 /**
  * AddDoctorDto — used by both reception (`POST /clinics/my/doctors`) and
@@ -40,4 +59,21 @@ export class AddDoctorDto {
   @IsInt()
   @Min(1)
   avgConsultMinutes?: number;
+
+  /** When true (default), seeds Mon–Sat working hours if `shifts` is omitted. */
+  @IsOptional()
+  @IsBoolean()
+  useDefaultSchedule?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ScheduleShiftDto)
+  shifts?: ScheduleShiftDto[];
+
+  /** Branch(es) where this professional practices. Defaults to caller's selected branch. */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  locationIds?: string[];
 }

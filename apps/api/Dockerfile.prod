@@ -4,7 +4,7 @@ RUN apt-get update -y \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
 # Install ALL deps (including devDeps) — needed for prisma CLI + ts-node in seed.
 RUN npm ci --no-audit --no-fund
 COPY prisma ./prisma
@@ -37,17 +37,13 @@ COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
 # Trade-off: larger image; avoids cross-compiling native modules (argon2).
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
 
-# Prisma schema + seed (seed is run on every boot — it's idempotent).
+# Prisma schema (needed by migrate deploy + prisma client at runtime).
 COPY --chown=appuser:appgroup prisma ./prisma
 COPY --chown=appuser:appgroup package.json ./
 
 USER appuser
 EXPOSE 4000
 
-# db push: syncs schema changes on every deploy (safe for single-instance MVP).
-# Seed: upserts base data (doctors, departments, admin account).
-# Then: start compiled app.
-CMD ["sh", "-c", \
-  "npx prisma db push --skip-generate --accept-data-loss && \
-   npx prisma db seed && \
-   node dist/main.js"]
+# Migrations and seed run as a Fly release_command (see fly.toml) before
+# traffic switches. The machine itself just starts the app.
+CMD ["node", "dist/src/main.js"]

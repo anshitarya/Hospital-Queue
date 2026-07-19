@@ -23,8 +23,8 @@ import { useState } from 'react';
  * the wording in the header.
  */
 export interface DoctorCredentials {
-  /** "doctor" | "receptionist" — drives header text only. Defaults to doctor. */
-  role?: 'doctor' | 'receptionist';
+  /** "doctor" | "receptionist" | "clinic_admin" — drives header text only. Defaults to doctor. */
+  role?: 'doctor' | 'receptionist' | 'clinic_admin' | 'manager';
   name: string;
   /** Whichever identifier the user will use to sign in — email or phone. */
   email: string | null;
@@ -47,7 +47,11 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
 
   const { name, email, phone, tempPassword, clinicName } = credentials;
   const role = credentials.role ?? 'doctor';
-  const roleLabel = role === 'receptionist' ? 'Receptionist' : 'Doctor';
+  const roleLabel =
+    role === 'receptionist' ? 'Receptionist'
+    : role === 'clinic_admin' ? 'Business Admin'
+    : role === 'manager' ? 'Branch Manager'
+    : 'Doctor';
   // Prefer email as the "primary" identifier shown first, but show both if present.
   const primaryId = email ?? phone ?? '—';
 
@@ -81,7 +85,7 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
       aria-labelledby="doctor-cred-title"
       className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 bg-slate-900/50 backdrop-blur-sm animate-fade-in"
     >
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 overflow-hidden">
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-5 py-4">
           <div className="flex items-center gap-3">
@@ -103,7 +107,7 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
         {/* Body */}
         <div className="p-5 space-y-4">
           {/* Warning banner */}
-          <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 px-3 py-2 text-xs text-amber-800">
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 ring-1 ring-amber-200 dark:ring-amber-700/50 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
             <strong>Save this now.</strong> The password is shown only once
             and cannot be recovered.
           </div>
@@ -166,11 +170,11 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
           </div>
 
           {/* Sign-in URL hint */}
-          <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 px-3 py-2">
-            <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-0.5">
+          <div className="rounded-lg bg-slate-50 dark:bg-slate-700 ring-1 ring-slate-200 dark:ring-slate-600 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-0.5">
               Sign-in URL
             </div>
-            <code className="text-xs text-slate-700 break-all">
+            <code className="text-xs text-slate-700 dark:text-slate-200 break-all">
               {typeof window !== 'undefined' ? `${window.location.origin}/login` : '/login'}
             </code>
           </div>

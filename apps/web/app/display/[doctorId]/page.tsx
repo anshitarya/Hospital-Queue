@@ -1,6 +1,8 @@
 'use client';
 
 import { useDoctorQueue } from '@/lib/socket';
+import { tokenDisplay } from '@/lib/tokenCode';
+import { ReviewFormButton } from '@/components/ReviewFormButton';
 
 /**
  * Public TV display. Mount this on a clinic-room screen at
@@ -30,16 +32,19 @@ export default function DisplayPage({ params }: { params: { doctorId: string } }
             )}
           </div>
         </div>
-        <div className="text-xs text-slate-500">
-          {connected ? '● live' : '○ reconnecting…'}
+        <div className="flex items-center gap-3">
+          <ReviewFormButton variant="dark" />
+          <div className="text-xs text-slate-500">
+            {connected ? '● live' : '○ reconnecting…'}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <div className="text-slate-400 uppercase tracking-widest text-xl">Now serving</div>
-          <div className="text-[12rem] font-bold leading-none mt-4">
-            {snapshot?.currentToken ?? '—'}
+          <div className="text-[10rem] font-bold leading-none mt-4 font-mono tracking-widest">
+            {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
           </div>
         </div>
       </div>
@@ -50,12 +55,13 @@ export default function DisplayPage({ params }: { params: { doctorId: string } }
             Up next
           </div>
           <div className="flex gap-3 flex-wrap">
-            {upcoming.map((e) => (
+            {upcoming.map((e, i) => (
               <div
                 key={e.id}
-                className="bg-slate-800 rounded-lg px-6 py-4 text-3xl font-semibold min-w-[110px] text-center"
+                className="bg-slate-800 rounded-lg px-6 py-4 text-center min-w-[120px]"
               >
-                #{e.tokenNumber}
+                <div className="text-slate-400 text-xs mb-1">#{i + 1}</div>
+                <div className="text-3xl font-semibold font-mono">{tokenDisplay(e.tokenNumber)}</div>
               </div>
             ))}
           </div>

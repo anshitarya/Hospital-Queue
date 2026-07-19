@@ -1,18 +1,7 @@
 'use client';
 
-/**
- * Login-choice portal — the first stop for every new sign-in flow.
- *
- * "Sign in" and "Get started" in the landing nav both point here.
- * The user picks their role and is forwarded to the correct auth page.
- *
- * Three choices:
- *   Patient          → /login/patient  (OTP via mobile)
- *   Reception / Doctor → /login        (password)
- *   Admin            → /login          (password)
- */
-
 import Link from 'next/link';
+import { TurnosIcon } from '@/components/Icons';
 
 interface Choice {
   emoji: string;
@@ -20,59 +9,45 @@ interface Choice {
   subtitle: string;
   description: string;
   href: string;
-  accent: string;       // Tailwind gradient classes for the icon ring
-  badge?: string;       // Optional pill label
+  accent: string;
+  badge?: string;
 }
 
 const CHOICES: Choice[] = [
   {
     emoji: '🏥',
-    title: 'Patient',
-    subtitle: 'No password needed',
+    title: 'Customer',
+    subtitle: 'Mobile + PIN',
     description:
-      "Sign in with your mobile number. We'll send a one-time code — no account setup required.",
+      'Sign in with your mobile number and permanent 4-digit Customer PIN. Ask reception for your PIN on your first visit.',
     href: '/login/patient',
     accent: 'from-emerald-500 to-teal-600',
-    badge: 'OTP login',
+    badge: 'PIN login',
   },
   {
     emoji: '🩺',
-    title: 'Doctor / Receptionist',
-    subtitle: 'Clinic staff',
+    title: 'Staff',
+    subtitle: 'Business staff',
     description:
-      'Use your registered email or mobile and password to access the reception or doctor dashboard.',
+      'Use your registered email or mobile and password to access the reception or provider dashboard.',
     href: '/login',
     accent: 'from-brand-500 to-brand-700',
-  },
-  {
-    emoji: '⚙️',
-    title: 'Admin',
-    subtitle: 'Clinic administrator',
-    description:
-      'Manage your clinic, create invite codes, and oversee all doctors and queues.',
-    href: '/login',
-    accent: 'from-violet-500 to-purple-700',
   },
 ];
 
 export default function LoginChoosePage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
-      {/* Background decoration */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[400px] w-[400px] rounded-full bg-brand-200/30 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-[350px] w-[350px] rounded-full bg-purple-200/30 blur-3xl" />
       </div>
 
-      <div className="w-full max-w-3xl">
-        {/* Header */}
+      <div className="w-full max-w-2xl">
         <div className="text-center mb-10">
-          {/* Logo — non-interactive in this flow; brand only */}
           <div className="inline-flex items-center gap-2.5 mb-6">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md">
-              HQ
-            </span>
-            <span className="text-xl font-semibold tracking-tight">Hospital Queue</span>
+            <TurnosIcon className="h-11 w-11 shadow-md" />
+            <span className="text-xl font-semibold tracking-tight">Turnos</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
@@ -83,22 +58,19 @@ export default function LoginChoosePage() {
           </p>
         </div>
 
-        {/* Choice cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl mx-auto">
           {CHOICES.map((c) => (
             <Link
               key={c.title}
               href={c.href}
               className="group card p-6 flex flex-col gap-4 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 cursor-pointer"
             >
-              {/* Icon */}
               <div
                 className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${c.accent} shadow-md text-2xl group-hover:shadow-lg transition-shadow`}
               >
                 {c.emoji}
               </div>
 
-              {/* Title + badge */}
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-lg font-semibold text-slate-900">{c.title}</span>
@@ -111,39 +83,25 @@ export default function LoginChoosePage() {
                 <p className="text-xs text-slate-500 mt-0.5">{c.subtitle}</p>
               </div>
 
-              {/* Description */}
               <p className="text-sm text-slate-600 leading-relaxed flex-1">{c.description}</p>
 
-              {/* CTA arrow */}
               <div className="flex items-center gap-1.5 text-sm font-medium text-brand-600 group-hover:gap-2.5 transition-all">
                 Sign in
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"
-                    clipRule="evenodd"
-                  />
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                  <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
               </div>
             </Link>
           ))}
         </div>
 
-        {/* Footer help */}
         <p className="text-center text-sm text-slate-500 mt-8">
-          New receptionist?{' '}
-          <Link href="/register" className="text-brand-600 hover:text-brand-700 font-medium">
-            Register with an invite code →
+          New business?{' '}
+          <Link href="/get-started" className="text-brand-600 hover:text-brand-700 font-medium">
+            Register your business →
           </Link>
         </p>
 
-        {/* Back to home */}
         <p className="text-center text-xs text-slate-400 mt-4">
           <Link href="/" className="hover:text-slate-600 underline underline-offset-2">
             ← Back to homepage

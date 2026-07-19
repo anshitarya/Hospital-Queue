@@ -3,8 +3,16 @@ import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
 import { QueueService } from './queue.service';
 import { EtaService } from './eta.service';
 import { QueueGateway } from './gateway/queue.gateway';
+import { NotificationsService } from '../notifications/notifications.service';
+import { CustomerService } from '../patients/customer.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { ClinicsService } from '../clinics/clinics.service';
+import { AuthUser } from '../../common/decorators/current-user.decorator';
+
+function staffUser(id: string, clinicId = 'clinic-1'): AuthUser {
+  return { id, role: Role.RECEPTIONIST, name: 'Receptionist', clinicId };
+}
 
 /**
  * Integration-style tests for QueueService. We mock prisma + redis at the
@@ -34,6 +42,16 @@ interface FakeEntry {
   completedAt: Date | null;
 }
 
+function entryMatchesWhere(e: FakeEntry, where: Record<string, unknown>): boolean {
+  if (where.id && e.id !== where.id) return false;
+  if (where.doctorId && e.doctorId !== where.doctorId) return false;
+  if (where.patientId && e.patientId !== where.patientId) return false;
+  if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
+  const status = where.status as { in?: EntryStatus[] } | undefined;
+  if (status?.in && !status.in.includes(e.status)) return false;
+  return true;
+}
+
 function makeFakePrisma() {
   const entries: FakeEntry[] = [];
   const users = new Map<string, { id: string; phone: string; name: string; role: Role }>();
@@ -50,6 +68,7 @@ function makeFakePrisma() {
     updatedAt: Date;
     user: { id: string; name: string };
     department: { id: string; name: string };
+    locations: { locationId: string }[];
   } = {
     id: 'doc-1',
     userId: 'doc-user',
@@ -62,6 +81,7 @@ function makeFakePrisma() {
     updatedAt: new Date(),
     user: { id: 'doc-user', name: 'Dr A' },
     department: { id: 'dept-1', name: 'General' },
+    locations: [{ locationId: 'loc-1' }],
   };
 
   return {
@@ -84,10 +104,27 @@ function makeFakePrisma() {
         return created;
       }),
     },
+    businessSetting: {
+      findUnique: jest.fn(async ({ where }: { where: { locationId: string } }) => ({
+        locationId: where.locationId,
+        allowOnlineBooking: true,
+        maxSelfBookingNoShowsPerMonth: 0,
+        queueMode: 'LIVE_QUEUE',
+      })),
+      findMany: jest.fn(async ({ where }: { where: { locationId: { in: string[] } } }) =>
+        (where.locationId.in ?? ['loc-1']).map((locationId) => ({
+          locationId,
+          allowOnlineBooking: true,
+          maxSelfBookingNoShowsPerMonth: 0,
+          queueMode: 'LIVE_QUEUE',
+        })),
+      ),
+    },
     queueEntry: {
+      count: jest.fn(async () => 0),
       findFirst: jest.fn(async ({ where, orderBy }: any) => {
         const list = entries
-          .filter((e) => e.doctorId === where.doctorId && e.serviceDay === where.serviceDay)
+          .filter((e) => entryMatchesWhere(e, where))
           .sort((a, b) =>
             orderBy?.tokenNumber === 'desc'
               ? b.tokenNumber - a.tokenNumber
@@ -156,7 +193,7 @@ function makeFakePrisma() {
         queueEntry: {
           findFirst: jest.fn(async ({ where, orderBy }: any) => {
             const list = entries
-              .filter((e) => e.doctorId === where.doctorId && e.serviceDay === where.serviceDay)
+              .filter((e) => entryMatchesWhere(e, where))
               .sort((a, b) =>
                 orderBy?.tokenNumber === 'desc'
                   ? b.tokenNumber - a.tokenNumber
@@ -216,11 +253,46 @@ function makeService() {
   const redis = makeFakeRedis();
   const gateway = makeGatewaySpy();
   const eta = new EtaService();
+  const notifications = {
+    notifyJoined: () => Promise.resolve(),
+    notifyTurnNow: () => Promise.resolve(),
+    notifyAlmostNext: () => Promise.resolve(),
+    notifyQueueCleared: () => Promise.resolve(),
+    notifyTurnSoon: () => Promise.resolve(),
+    notifyDelayed: () => Promise.resolve(),
+  } as unknown as NotificationsService;
+  const customers = {
+    upsertByPhone: jest.fn(async (phone: string, name: string) => {
+      const users = prisma._users as unknown as Map<string, { id: string; phone: string; name: string; customerPin?: string }>;
+      const existing = [...users.values()].find((u) => u.phone === phone);
+      if (existing) {
+        Object.assign(existing, { name });
+        return existing;
+      }
+      const created = {
+        id: `u-${users.size + 1}`,
+        role: 'PATIENT',
+        phone,
+        name,
+        customerPin: '1234',
+      };
+      users.set(created.id, created);
+      return created;
+    }),
+    ensurePin: jest.fn(async (u: { id: string; customerPin?: string | null }) => u.customerPin ?? '1234'),
+  } as unknown as CustomerService;
+  const clinics = {
+    assertCallerCanAccessDoctor: jest.fn(async () => undefined),
+    getAssignedDoctorIds: jest.fn(async () => null),
+  } as unknown as ClinicsService;
   const svc = new QueueService(
     prisma as unknown as PrismaService,
     redis as unknown as RedisService,
     eta,
     gateway as unknown as QueueGateway,
+    notifications,
+    customers,
+    clinics,
   );
   return { svc, prisma, gateway, redis };
 }
@@ -235,7 +307,7 @@ describe('QueueService — reception join → patient sync', () => {
         patientName: 'Alice',
         patientPhone: '+919876543210',
       },
-      'recp-1',
+      staffUser('recp-1'),
     );
 
     expect(entry.tokenNumber).toBe(1);
@@ -267,11 +339,11 @@ describe('QueueService — reception join → patient sync', () => {
 
     await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'Alice', patientPhone: '+919876543210' },
-      'recp-1',
+      staffUser('recp-1'),
     );
     await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'Alice K', patientPhone: '+919876543210' },
-      'recp-1',
+      staffUser('recp-1'),
     );
 
     expect(prisma._users.size).toBe(1);
@@ -288,7 +360,7 @@ describe('QueueService — reception join → patient sync', () => {
         patientPhone: '+919876543210',
         idempotencyKey: 'dup-key-1',
       },
-      'recp-1',
+      staffUser('recp-1'),
     );
     const b = await svc.joinByReception(
       {
@@ -297,7 +369,7 @@ describe('QueueService — reception join → patient sync', () => {
         patientPhone: '+919876543210',
         idempotencyKey: 'dup-key-1',
       },
-      'recp-1',
+      staffUser('recp-1'),
     );
 
     expect(b.id).toBe(a.id);
@@ -310,11 +382,11 @@ describe('QueueService — transitions notify the patient', () => {
 
     const entry = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      'r-1',
+      staffUser('r-1'),
     );
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.callNext('doc-1', 'r-1');
+    await svc.callNext('doc-1', staffUser('r-1'));
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),
@@ -332,12 +404,12 @@ describe('QueueService — transitions notify the patient', () => {
     const { svc, gateway } = makeService();
     const e = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      'r-1',
+      staffUser('r-1'),
     );
-    await svc.callNext('doc-1', 'r-1');
+    await svc.callNext('doc-1', staffUser('r-1'));
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.complete(e.id, 'r-1');
+    await svc.complete(e.id, staffUser('r-1'));
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),
@@ -350,11 +422,11 @@ describe('QueueService — transitions notify the patient', () => {
     const { svc, gateway } = makeService();
     const e = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      'r-1',
+      staffUser('r-1'),
     );
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.skip(e.id, 'r-1');
+    await svc.skip(e.id, staffUser('r-1'));
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),
@@ -367,11 +439,11 @@ describe('QueueService — transitions notify the patient', () => {
     const { svc, gateway } = makeService();
     const e = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      'r-1',
+      staffUser('r-1'),
     );
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.cancel(e.id, 'r-1');
+    await svc.cancel(e.id, staffUser('r-1'));
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),
@@ -384,11 +456,11 @@ describe('QueueService — transitions notify the patient', () => {
     const { svc, gateway } = makeService();
     const e = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      'r-1',
+      staffUser('r-1'),
     );
     gateway.emitToPatientRoom.mockClear();
 
-    await svc.reorder(e.id, { priority: 50 }, 'r-1');
+    await svc.reorder(e.id, { priority: 50 }, staffUser('r-1'));
 
     expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
       expect.any(String),
@@ -403,39 +475,39 @@ describe('QueueService — state-machine guards', () => {
     const { svc } = makeService();
     await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'A', patientPhone: '+919876543210' },
-      'r',
+      staffUser('r'),
     );
     await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'B', patientPhone: '+919876543211' },
-      'r',
+      staffUser('r'),
     );
-    await svc.callNext('doc-1', 'r');
+    await svc.callNext('doc-1', staffUser('r'));
 
-    await expect(svc.callNext('doc-1', 'r')).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.callNext('doc-1', staffUser('r'))).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('callNext throws NotFoundException when queue is empty', async () => {
     const { svc } = makeService();
-    await expect(svc.callNext('doc-1', 'r')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.callNext('doc-1', staffUser('r'))).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('cannot complete a WAITING entry — only IN_CONSULTATION', async () => {
     const { svc } = makeService();
     const e = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'A', patientPhone: '+919876543210' },
-      'r',
+      staffUser('r'),
     );
-    await expect(svc.complete(e.id, 'r')).rejects.toBeInstanceOf(ConflictException);
+    await expect(svc.complete(e.id, staffUser('r'))).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('cannot reorder a non-WAITING entry', async () => {
     const { svc } = makeService();
     const e = await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'A', patientPhone: '+919876543210' },
-      'r',
+      staffUser('r'),
     );
-    await svc.callNext('doc-1', 'r');
-    await expect(svc.reorder(e.id, { priority: 50 }, 'r')).rejects.toThrow();
+    await svc.callNext('doc-1', staffUser('r'));
+    await expect(svc.reorder(e.id, { priority: 50 }, staffUser('r'))).rejects.toThrow();
   });
 });
 
@@ -444,11 +516,11 @@ describe('QueueService — priority handling', () => {
     const { svc, prisma } = makeService();
     await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'Normal-1', patientPhone: '+919876543210' },
-      'r',
+      staffUser('r'),
     );
     await svc.joinByReception(
       { doctorId: 'doc-1', patientName: 'Normal-2', patientPhone: '+919876543211' },
-      'r',
+      staffUser('r'),
     );
     const urgent = await svc.joinByReception(
       {
@@ -457,18 +529,42 @@ describe('QueueService — priority handling', () => {
         patientPhone: '+919876543212',
         priority: 100,
       },
-      'r',
+      staffUser('r'),
     );
 
-    const next = await svc.callNext('doc-1', 'r');
+    const next = await svc.callNext('doc-1', staffUser('r'));
     expect(next.id).toBe(urgent.id);
+  });
+});
+
+describe('QueueService — self-booking duplicate guard', () => {
+  it('blocks a second self-booking with the same doctor regardless of service day', async () => {
+    const { svc, prisma } = makeService();
+    prisma._entries.push({
+      id: 'existing',
+      doctorId: 'doc-1',
+      patientId: 'patient-1',
+      createdById: null,
+      serviceDay: '2026-07-20',
+      tokenNumber: 1,
+      priority: 0,
+      notes: null,
+      status: EntryStatus.WAITING,
+      version: 1,
+      joinedAt: new Date(),
+      calledAt: null,
+      startedAt: null,
+      completedAt: null,
+    });
+
+    await expect(svc.joinByPatient('patient-1', 'doc-1')).rejects.toBeInstanceOf(ConflictException);
   });
 });
 
 describe('QueueService — pause / resume', () => {
   it('pauseDoctor sets status PAUSED and broadcasts to doctor room', async () => {
     const { svc, prisma, gateway } = makeService();
-    await svc.pauseDoctor('doc-1', 'r-1');
+    await svc.pauseDoctor('doc-1', staffUser('r-1'));
     expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',
@@ -479,8 +575,8 @@ describe('QueueService — pause / resume', () => {
 
   it('resumeDoctor sets status AVAILABLE', async () => {
     const { svc, prisma } = makeService();
-    await svc.pauseDoctor('doc-1', 'r-1');
-    await svc.resumeDoctor('doc-1', 'r-1');
+    await svc.pauseDoctor('doc-1', staffUser('r-1'));
+    await svc.resumeDoctor('doc-1', staffUser('r-1'));
     expect(prisma._doctor.status).toBe(DoctorStatus.AVAILABLE);
   });
 });

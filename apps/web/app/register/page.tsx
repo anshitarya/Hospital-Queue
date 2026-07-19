@@ -2,6 +2,7 @@
 
 import { Suspense, useId, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { Icon, TurnosIcon } from '@/components/Icons';
 import Link from 'next/link';
 import { registerReceptionist, useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
@@ -102,9 +103,9 @@ function RegisterForm() {
       <div className="text-center mb-6">
         <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md">
-            HQ
+          <TurnosIcon className="h-7 w-7" />
           </span>
-          <span className="text-lg font-semibold">Hospital Queue</span>
+          <span className="text-lg font-semibold">Clinic Queue</span>
         </Link>
       </div>
 

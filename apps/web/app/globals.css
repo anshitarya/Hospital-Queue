@@ -1,3 +1,6 @@
+/* ── Google Fonts — Inter ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,63 +8,159 @@
 @layer base {
   html {
     scroll-behavior: smooth;
-    scroll-padding-top: 5rem; /* offset for sticky nav when jumping to anchors */
+    scroll-padding-top: 5rem;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
   html, body {
     @apply bg-slate-50 text-slate-900 antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
   body {
-    background-image: radial-gradient(circle at 10% -10%, rgba(56, 132, 255, 0.06), transparent 40%),
-                      radial-gradient(circle at 90% 110%, rgba(56, 132, 255, 0.04), transparent 40%);
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(34, 197, 94, 0.06), transparent),
+      radial-gradient(ellipse 60% 50% at 90% 110%, rgba(22, 163, 74, 0.04), transparent);
     background-attachment: fixed;
   }
+  html.dark, html.dark body {
+    @apply bg-[#0a0a0b] text-slate-100;
+    background-image: none;
+  }
   ::selection {
-    background-color: rgba(29, 109, 255, 0.2);
+    background-color: rgba(34, 197, 94, 0.2);
+    color: inherit;
+  }
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
 @layer components {
+  /* ── Buttons ─────────────────────────────────────────────────────────────── */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all
-           focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-500/40 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+           transition-all duration-150 focus-visible:outline-none focus-visible:ring-2
+           focus-visible:ring-offset-1 focus-visible:ring-brand-500/40
+           disabled:cursor-not-allowed select-none relative overflow-hidden;
   }
   .btn-primary {
-    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:translate-y-px disabled:opacity-50 disabled:hover:bg-brand-600;
+    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700
+           hover:shadow-md active:scale-[0.97] disabled:opacity-50 disabled:hover:bg-brand-600
+           disabled:hover:shadow-sm;
   }
   .btn-secondary {
-    @apply btn bg-white text-slate-700 border border-slate-200 shadow-sm hover:bg-slate-50 hover:border-slate-300 active:translate-y-px;
+    @apply btn bg-white text-slate-700 border border-slate-200/80 shadow-sm
+           hover:bg-slate-50 hover:border-slate-300 active:scale-[0.97]
+           dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700
+           dark:hover:bg-slate-700 dark:hover:border-slate-600;
   }
   .btn-ghost {
-    @apply btn text-slate-600 hover:bg-slate-100;
+    @apply btn text-slate-600 hover:bg-slate-100 hover:text-slate-800 active:bg-slate-200
+           dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200;
   }
   .btn-danger {
-    @apply btn bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:translate-y-px;
+    @apply btn bg-rose-600 text-white shadow-sm hover:bg-rose-700 active:scale-[0.97];
   }
+  .btn-success {
+    @apply btn bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 active:scale-[0.97];
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center rounded-xl p-2 text-slate-500
+           hover:bg-slate-100 hover:text-slate-700 transition-colors
+           dark:hover:bg-slate-800 dark:text-slate-400 dark:hover:text-slate-200;
+  }
+
+  /* ── Inputs ──────────────────────────────────────────────────────────────── */
   .input {
-    @apply w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400
-           transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20;
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm
+           placeholder:text-slate-400 transition-all duration-150
+           focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20
+           dark:bg-slate-800/60 dark:border-slate-700 dark:text-slate-100
+           dark:placeholder:text-slate-500 dark:focus:border-brand-400
+           dark:focus:ring-brand-400/20;
   }
+  .input-sm {
+    @apply input !py-1.5 !px-2.5 text-xs;
+  }
+
+  /* ── Cards ───────────────────────────────────────────────────────────────── */
   .card {
-    @apply rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 transition-shadow;
+    @apply rounded-2xl bg-white shadow-card ring-1 ring-slate-200/60 transition-shadow duration-200
+           dark:bg-slate-900 dark:ring-slate-800/80;
   }
   .card-hover {
-    @apply card hover:shadow-md hover:ring-slate-300;
+    @apply card hover:shadow-card-hover hover:ring-slate-300/60 cursor-pointer
+           dark:hover:ring-slate-700;
   }
+  .card-inset {
+    @apply rounded-xl bg-slate-50/80 ring-1 ring-slate-200/50
+           dark:bg-slate-800/50 dark:ring-slate-700/40;
+  }
+  .card-glass {
+    @apply rounded-2xl bg-white/70 backdrop-blur-sm ring-1 ring-white/80 shadow-soft
+           dark:bg-slate-900/70 dark:ring-slate-700/60;
+  }
+
+  /* ── Pills / Badges ──────────────────────────────────────────────────────── */
   .pill {
-    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset;
   }
+  .pill-sm {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset;
+  }
+
+  /* ── Tabs ────────────────────────────────────────────────────────────────── */
+  .tabs-bar {
+    @apply flex gap-0.5 overflow-x-auto;
+    scrollbar-width: none;
+  }
+  .tabs-bar::-webkit-scrollbar { display: none; }
   .tab {
-    @apply px-4 py-2 text-sm font-medium rounded-lg transition-colors;
+    @apply px-3.5 py-2 text-sm font-medium rounded-xl transition-all duration-150 whitespace-nowrap shrink-0;
   }
   .tab-active {
-    @apply bg-brand-600 text-white shadow-sm;
+    @apply bg-white text-slate-900 shadow-soft ring-1 ring-slate-200/60
+           dark:bg-slate-800 dark:text-slate-100 dark:ring-slate-700;
   }
   .tab-inactive {
-    @apply text-slate-600 hover:bg-slate-100;
+    @apply text-slate-500 hover:text-slate-700 hover:bg-white/60
+           dark:text-slate-400 dark:hover:text-slate-200 dark:hover:bg-slate-800/60;
+  }
+
+  /* ── Section titles ──────────────────────────────────────────────────────── */
+  .section-title {
+    @apply text-[15px] font-semibold text-slate-900 leading-tight tracking-tight
+           dark:text-slate-100;
+  }
+  .section-sub {
+    @apply text-xs text-slate-500 mt-0.5 dark:text-slate-400;
+  }
+
+  /* ── Sidebar nav items ───────────────────────────────────────────────────── */
+  .sidebar-item {
+    @apply w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium
+           transition-all duration-150 group;
+  }
+  .sidebar-item-active {
+    @apply sidebar-item bg-white/10 text-white shadow-sm;
+  }
+  .sidebar-item-inactive {
+    @apply sidebar-item text-slate-400 hover:text-white hover:bg-white/8 cursor-pointer;
+  }
+
+  /* ── Skeleton loading ────────────────────────────────────────────────────── */
+  .skeleton {
+    @apply bg-slate-200 dark:bg-slate-700 rounded-lg animate-skeleton;
+  }
+
+  /* ── Dividers ────────────────────────────────────────────────────────────── */
+  .divide-subtle > * + * {
+    @apply border-t border-slate-100 dark:border-slate-800/60;
   }
 }
 
 @layer utilities {
+  /* ── Animations ──────────────────────────────────────────────────────────── */
   .animate-pulse-slow {
     animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
@@ -71,27 +170,61 @@
   .animate-fade-in {
     animation: fade-in 0.3s ease-out both;
   }
+  .animate-queue-add {
+    animation: queue-add 0.25s ease-out;
+  }
+  .animate-toast-in {
+    animation: toast-in 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .animate-enter {
+    animation: slide-up 0.25s ease-out both;
+  }
 
   @keyframes pulse-slow {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
   }
   @keyframes slide-up {
-    from { transform: translateY(8px); opacity: 0; }
+    from { transform: translateY(10px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
   @keyframes fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
   }
+  @keyframes queue-add {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes toast-in {
+    from { opacity: 0; transform: translateY(12px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes dots-bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-5px); opacity: 1; }
+  }
 
-  /* Touch/tap ripple — subtle, translucent indicator used on landing demos. */
-  .animate-tap-ring {
-    animation: tap-ring 1.6s ease-out infinite;
+  /* ── Gradient ring spinner ────────────────────────────────────────────────── */
+  .spinner-gradient-ring {
+    background: conic-gradient(from 0deg, #22c55e 0%, #16a34a 30%, transparent 60%);
+    border-radius: 9999px;
+    animation: spin-ring 0.85s linear infinite;
   }
-  .animate-tap-dot {
-    animation: tap-dot 1.6s ease-out infinite;
+  @keyframes spin-ring {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
   }
+
+  /* ── Skeleton loading ────────────────────────────────────────────────────── */
+  @keyframes skeleton-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* ── Tap/ripple (landing demos) ──────────────────────────────────────────── */
+  .animate-tap-ring { animation: tap-ring 1.6s ease-out infinite; }
+  .animate-tap-dot  { animation: tap-dot  1.6s ease-out infinite; }
 
   @keyframes tap-ring {
     0%   { transform: scale(0.5); opacity: 0.6; }
@@ -102,9 +235,13 @@
     0%, 100% { transform: scale(1); opacity: 0.7; }
     50%      { transform: scale(0.9); opacity: 1; }
   }
+
+  /* ── bg-white/8 utility (sidebar hover) ─────────────────────────────────── */
+  .bg-white\/8 { background-color: rgba(255,255,255,0.08); }
+  .hover\:bg-white\/8:hover { background-color: rgba(255,255,255,0.08); }
 }
 
-/* Live indicator dot */
+/* ── Live / Offline indicator dot ────────────────────────────────────────── */
 .live-dot {
   @apply inline-block h-2 w-2 rounded-full bg-emerald-500;
   box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
@@ -114,7 +251,138 @@
   @apply inline-block h-2 w-2 rounded-full bg-slate-300;
 }
 @keyframes live-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
-  70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  0%   { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6); }
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
   100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
 }
+
+/* ── Drag handle styling ─────────────────────────────────────────────────── */
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.drag-handle:active { cursor: grabbing; }
+
+/* ── Queue drag-and-drop ─────────────────────────────────────────────────── */
+.queue-scroll {
+  /* intentionally no scroll-behavior: smooth — it interferes with RAF-based auto-scroll during drag */
+}
+.queue-drop-placeholder {
+  @apply mx-3 my-1.5 rounded-xl border-2 border-dashed border-brand-400 bg-brand-50/60 dark:bg-brand-950/40;
+  height: 3.25rem;
+  animation: drop-placeholder-in 180ms ease-out;
+  transition: height 180ms ease, opacity 180ms ease, margin 180ms ease;
+}
+html.dark .queue-drop-placeholder {
+  @apply border-brand-500/70;
+}
+@keyframes drop-placeholder-in {
+  from { opacity: 0; transform: scaleY(0.5); }
+  to   { opacity: 1; transform: scaleY(1); }
+}
+.queue-row-dragging {
+  opacity: 0.35;
+  transform: scale(0.985);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+.queue-list-item {
+  /* keep transition for non-drag state changes; suppressed during active drag via .no-transition */
+  transition: background-color 150ms ease;
+}
+/* Applied to each queue-list-item while a drag is active — kills layout transitions
+   that cause visible jank as the placeholder shifts rows around */
+.no-transition,
+.no-transition * {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DARK MODE OVERRIDES
+   (targets component utility classes when html.dark is active)
+   ════════════════════════════════════════════════════════════════════════════ */
+
+html.dark .card { @apply bg-slate-900 ring-slate-800/80; }
+html.dark .card-inset { @apply bg-slate-800/50 ring-slate-700/40; }
+html.dark .input { @apply bg-slate-800/60 border-slate-700 text-slate-100 placeholder:text-slate-500; }
+html.dark .input:focus { @apply border-brand-400 ring-brand-400/20; }
+html.dark .btn-secondary {
+  @apply bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700 hover:border-slate-600;
+}
+html.dark .btn-ghost { @apply text-slate-400 hover:bg-slate-800 hover:text-slate-200; }
+html.dark .tabs-bar { @apply border-slate-800; }
+html.dark .tab-active { @apply bg-slate-800 text-slate-100 ring-slate-700 shadow-none; }
+html.dark .tab-inactive { @apply text-slate-400 hover:text-slate-200 hover:bg-slate-800/60; }
+html.dark .section-title { @apply text-slate-100; }
+html.dark .section-sub { @apply text-slate-400; }
+
+/* ── Background overrides ─────────────────────────────────────────────────── */
+html.dark .bg-white {
+  --tw-bg-opacity: 1;
+  background-color: rgb(15 15 18 / var(--tw-bg-opacity));
+}
+html.dark .bg-slate-50 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(15 15 18 / var(--tw-bg-opacity));
+}
+html.dark .bg-slate-100 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(30 30 36 / var(--tw-bg-opacity));
+}
+
+/* ── Border overrides ─────────────────────────────────────────────────────── */
+html.dark .border-slate-100 {
+  --tw-border-opacity: 1;
+  border-color: rgb(30 30 36 / var(--tw-border-opacity));
+}
+html.dark .border-slate-200 {
+  --tw-border-opacity: 1;
+  border-color: rgb(40 40 48 / var(--tw-border-opacity));
+}
+html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  --tw-divide-opacity: 1;
+  border-color: rgb(30 30 36 / var(--tw-divide-opacity));
+}
+
+/* ── Text overrides ───────────────────────────────────────────────────────── */
+html.dark .text-slate-900 { color: rgb(241 245 249); }
+html.dark .text-slate-800 { color: rgb(226 232 240); }
+html.dark .text-slate-700 { color: rgb(203 213 225); }
+html.dark .text-slate-600 { color: rgb(148 163 184); }
+html.dark .text-slate-500 { color: rgb(148 163 184); }
+
+/* ── Ring overrides ───────────────────────────────────────────────────────── */
+html.dark .ring-slate-200\/80 { --tw-ring-color: rgb(40 40 48 / 0.6); }
+html.dark .ring-slate-200    { --tw-ring-color: rgb(40 40 48 / 1); }
+html.dark .ring-slate-200\/70 { --tw-ring-color: rgb(40 40 48 / 0.7); }
+
+/* ── Select elements ──────────────────────────────────────────────────────── */
+html.dark select.input {
+  background-color: rgb(30 30 36);
+  color: rgb(226 232 240);
+}
+
+/* ── Hover overrides ──────────────────────────────────────────────────────── */
+html.dark .hover\:bg-slate-50:hover  { background-color: rgb(20 20 24); }
+html.dark .hover\:bg-slate-100:hover { background-color: rgb(30 30 36); }
+html.dark .hover\:bg-slate-200:hover { background-color: rgb(40 40 48); }
+
+/* ── Surface opacity variants ─────────────────────────────────────────────── */
+html.dark .bg-slate-50\/40 { background-color: rgb(15 15 18 / 0.6); }
+html.dark .bg-slate-50\/50 { background-color: rgb(15 15 18 / 0.5); }
+html.dark .bg-slate-50\/60 { background-color: rgb(15 15 18 / 0.6); }
+html.dark .bg-white\/70  { background-color: rgb(8 8 10 / 0.7); }
+html.dark .bg-white\/85  { background-color: rgb(8 8 10 / 0.85); }
+html.dark .bg-brand-50\/40 { background-color: rgb(5 20 10 / 0.6); }
+html.dark .bg-emerald-50\/60 { background-color: rgb(4 18 10 / 0.6); }
+html.dark .hover\:bg-slate-50\/60:hover { background-color: rgb(15 15 18 / 0.6); }
+html.dark .hover\:bg-brand-50:hover { background-color: rgb(5 20 10); }
+
+/* ── Brand/contextual surface overrides ───────────────────────────────────── */
+html.dark .bg-brand-50   { background-color: rgb(5 20 10); }
+html.dark .bg-emerald-50 { background-color: rgb(4 18 10); }
+html.dark .bg-rose-50    { background-color: rgb(28 6 6); }
+html.dark .bg-amber-50   { background-color: rgb(30 22 4); }
+html.dark .text-emerald-700 { color: rgb(52 211 153); }
+html.dark .text-brand-700   { color: rgb(74 222 128); }
+html.dark .text-brand-800   { color: rgb(134 239 172); }

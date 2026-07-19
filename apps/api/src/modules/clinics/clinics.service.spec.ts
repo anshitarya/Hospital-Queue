@@ -68,13 +68,16 @@ function makeFakePrisma() {
         if (where.phone) return all.find((u) => u.phone === where.phone) ?? null;
         return null;
       }),
-      findMany: jest.fn(async (args?: { where?: { clinicId?: string; role?: string } }) => {
+      findMany: jest.fn(async (args?: { where?: { clinicId?: string; role?: string | { in?: string[] } } }) => {
         const where = args?.where ?? {};
         let list = [...users.values()];
         if (where.clinicId) list = list.filter((u) => u.clinicId === where.clinicId);
-        if (where.role) list = list.filter((u) => u.role === where.role);
-        // Stamp createdAt so list endpoints can serialise the field.
-        return list.map((u) => ({ ...u, createdAt: new Date() }));
+        const roleFilter = where.role;
+        if (typeof roleFilter === 'string') list = list.filter((u) => u.role === roleFilter);
+        else if (roleFilter && Array.isArray(roleFilter.in)) {
+          list = list.filter((u) => roleFilter.in!.includes(u.role));
+        }
+        return list.map((u) => ({ ...u, createdAt: new Date(), locations: [] }));
       }),
       create: jest.fn(async ({ data }: { data: any }) => {
         const id = `u-${++userSeq}`;
@@ -108,19 +111,40 @@ function makeFakePrisma() {
         if (include?.department) out.department = departments.get(data.departmentId);
         return out;
       }),
-      findMany: jest.fn(async ({ where }: { where: { clinicId: string } }) => {
-        return [...doctors.values()]
-          .filter((d) => d.clinicId === where.clinicId)
-          .map((d) => ({
-            ...d,
-            user: users.get(d.userId),
-            department: departments.get(d.departmentId),
-          }));
+      findMany: jest.fn(async (args?: { where?: any; select?: any; include?: any }) => {
+        const where = args?.where ?? {};
+        let list = [...doctors.values()];
+        if (where.clinicId) list = list.filter((d) => d.clinicId === where.clinicId);
+        return list.map((d) => ({
+          ...d,
+          locations: [],
+          user: users.get(d.userId),
+          department: departments.get(d.departmentId),
+        }));
       }),
+      count: jest.fn(async () => 0),
+    },
+    location: {
+      findFirst: jest.fn(async () => ({ id: 'loc-1' })),
+      findMany: jest.fn(async () => [{ id: 'loc-1' }]),
+    },
+    userLocation: {
+      createMany: jest.fn(async () => ({ count: 0 })),
+    },
+    doctorLocation: {
+      createMany: jest.fn(async () => ({ count: 1 })),
+    },
+    professionalSchedule: {
+      createMany: jest.fn(async () => ({ count: 0 })),
     },
     $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) => {
       // Use the same fake prisma instance as the tx — enough for these tests.
-      return fn({ user: { create: this.user.create }, doctor: { create: this.doctor.create } });
+      return fn({
+        user: { create: this.user.create },
+        doctor: { create: this.doctor.create },
+        doctorLocation: { createMany: this.doctorLocation.createMany },
+        professionalSchedule: { createMany: this.professionalSchedule.createMany },
+      });
     }),
 
     // Inspection helpers
@@ -133,9 +157,16 @@ function makeService() {
   const prisma = makeFakePrisma();
   // $transaction proxying — needs `this` to be valid. Re-create with arrow style.
   prisma.$transaction = jest.fn(async (fn: (tx: any) => Promise<unknown>) =>
-    fn({ user: prisma.user, doctor: prisma.doctor }),
+    fn({
+      user: prisma.user,
+      doctor: prisma.doctor,
+      doctorLocation: prisma.doctorLocation,
+      professionalSchedule: prisma.professionalSchedule,
+    }),
   );
-  return { svc: new ClinicsService(prisma as unknown as PrismaService), prisma };
+  return { svc: new ClinicsService(prisma as unknown as PrismaService, {
+    ensurePin: jest.fn(async (u: { id: string }) => '1234'),
+  } as any), prisma };
 }
 
 describe('ClinicsService.addDoctor', () => {
@@ -541,5 +572,39 @@ describe('ClinicsService.listDoctorsInClinic', () => {
   it('throws NotFoundException for missing clinic', async () => {
     const { svc } = makeService();
     await expect(svc.listDoctorsInClinic('nope')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('ClinicsService staff location rules', () => {
+  it('creates a business admin without any active branch', async () => {
+    const { svc, prisma } = makeService();
+    prisma.location.findFirst = jest.fn(async () => null) as any;
+    prisma.location.findMany = jest.fn(async () => []) as any;
+
+    const out = await svc.addClinicAdmin('c-1', {
+      name: 'Owner',
+      email: 'owner@x.com',
+    } as any);
+
+    expect(out.user.role).toBe('CLINIC_ADMIN');
+    expect(out.tempPassword).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it('requires an active branch before adding a receptionist', async () => {
+    const { svc, prisma } = makeService();
+    prisma.location.findFirst = jest.fn(async () => null) as any;
+
+    await expect(
+      svc.addReceptionist('c-1', { name: 'Rep', email: 'rep@x.com' } as any),
+    ).rejects.toThrow(/no active locations/i);
+  });
+
+  it('requires an active branch before adding a branch manager', async () => {
+    const { svc, prisma } = makeService();
+    prisma.location.findFirst = jest.fn(async () => null) as any;
+
+    await expect(
+      svc.addManager('c-1', { name: 'Mgr', email: 'mgr@x.com' } as any),
+    ).rejects.toThrow(/no active locations/i);
   });
 });

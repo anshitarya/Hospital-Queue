@@ -1,16 +1,21 @@
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import * as cookie from 'cookie';
+const parseCookie = (cookie as any).parseCookie as (str: string) => Record<string, string>;
 import {
   ConnectedSocket,
   MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { QueueService } from '../queue.service';
 
@@ -32,9 +37,12 @@ import { QueueService } from '../queue.service';
  * connections for the public TV display board.
  */
 @WebSocketGateway({
-  cors: { origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',') },
+  cors: {
+    origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(','),
+    credentials: true,
+  },
 })
-export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class QueueGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(QueueGateway.name);
   @WebSocketServer() server!: Server;
 
@@ -45,10 +53,35 @@ export class QueueGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Inject(forwardRef(() => QueueService)) private readonly queue: QueueService,
   ) {}
 
+  afterInit(server: Server) {
+    const useRedisAdapter = this.config.get<boolean>('socketio.redisAdapter') === true;
+    if (!useRedisAdapter) {
+      this.logger.log(
+        'Socket.IO without Redis adapter (single-instance). Set SOCKET_IO_REDIS_ADAPTER=true when scaling to 2+ API machines.',
+      );
+      return;
+    }
+    const redisUrl = this.config.get<string>('redis.url');
+    if (!redisUrl || redisUrl.startsWith('redis://localhost')) {
+      this.logger.warn('SOCKET_IO_REDIS_ADAPTER=true but REDIS_URL is local — adapter skipped');
+      return;
+    }
+    // Two separate connections required by the Redis adapter (pub + sub).
+    const pub = new Redis(redisUrl, { lazyConnect: false, maxRetriesPerRequest: null });
+    const sub = pub.duplicate();
+    server.adapter(createAdapter(pub, sub));
+    this.logger.log('Socket.IO Redis adapter attached');
+  }
+
   async handleConnection(client: Socket) {
-    // Optional token in `auth.token`. We don't kick anonymous connections —
-    // the public TV display uses them.
-    const token = (client.handshake.auth?.token as string | undefined) ?? undefined;
+    // Try cookie first (browser clients with withCredentials), then auth field (fallback).
+    const rawCookie = client.handshake.headers?.cookie ?? '';
+    const cookies = parseCookie(rawCookie);
+    const token =
+      cookies.hq_session ??
+      (client.handshake.auth?.token as string | undefined) ??
+      undefined;
+
     if (token) {
       try {
         const payload = this.jwt.verify(token, {

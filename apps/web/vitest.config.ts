@@ -12,7 +12,7 @@ import tsconfigPaths from 'vite-tsconfig-paths';
  *    file-system router doesn't pick them up at build time.
  */
 export default defineConfig({
-  plugins: [react(), tsconfigPaths()],
+  plugins: [react() as any, tsconfigPaths() as any],
   test: {
     environment: 'jsdom',
     globals: true,

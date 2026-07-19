@@ -14,6 +14,9 @@ interface Props {
   onChange: (id: string) => void;
   placeholder?: string;
   required?: boolean;
+  label?: string;
+  /** When true, shows a "+ Add custom…" option if the typed query has no exact match */
+  allowCustom?: boolean;
 }
 
 /**
@@ -23,6 +26,7 @@ interface Props {
  * - Filter narrows by substring match.
  * - Keyboard: ↑/↓ to move, Enter to select, Esc to close.
  * - Closes on outside click.
+ * - When allowCustom=true, typing a new name shows a "+ Add …" option.
  */
 export function DepartmentPicker({
   options,
@@ -30,6 +34,8 @@ export function DepartmentPicker({
   onChange,
   placeholder = 'Search department…',
   required,
+  label = 'Select department',
+  allowCustom = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -116,7 +122,7 @@ export function DepartmentPicker({
         aria-expanded={open}
       >
         <span className={selected ? 'text-slate-900' : 'text-slate-400'}>
-          {selected ? selected.name : 'Select department'}
+          {selected ? selected.name : label}
         </span>
         <Icon.ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -143,40 +149,75 @@ export function DepartmentPicker({
 
           <ul ref={listRef} className="max-h-64 overflow-y-auto py-1" role="listbox">
             {filtered.length === 0 ? (
-              <li className="px-3 py-6 text-center text-sm text-slate-400">
-                No departments match “{query}”
-              </li>
+              allowCustom && query.trim().length >= 2 ? (
+                <li
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => {
+                    onChange(`__new__${query.trim()}`);
+                    setOpen(false);
+                    setQuery('');
+                  }}
+                  className="flex items-center gap-2 px-3 py-2.5 text-sm cursor-pointer text-brand-700 hover:bg-brand-50"
+                >
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold shrink-0">+</span>
+                  Add &ldquo;<span className="font-semibold truncate">{query.trim()}</span>&rdquo;
+                </li>
+              ) : (
+                <li className="px-3 py-6 text-center text-sm text-slate-400">
+                  {query.trim()
+                    ? `No match${allowCustom ? ' — type a name to add a custom one' : ''}`
+                    : 'No options available'}
+                </li>
+              )
             ) : (
-              filtered.map((d, i) => {
-                const isActive = i === activeIdx;
-                const isSelected = d.id === value;
-                return (
+              <>
+                {filtered.map((d, i) => {
+                  const isActive = i === activeIdx;
+                  const isSelected = d.id === value;
+                  return (
+                    <li
+                      key={d.id}
+                      data-idx={i}
+                      role="option"
+                      aria-selected={isSelected}
+                      onMouseEnter={() => setActiveIdx(i)}
+                      onClick={() => {
+                        onChange(d.id);
+                        setOpen(false);
+                        setQuery('');
+                      }}
+                      className={
+                        'flex items-center justify-between gap-2 px-3 py-2 text-sm cursor-pointer ' +
+                        (isActive ? 'bg-brand-50 text-brand-900' : 'text-slate-700 hover:bg-slate-50')
+                      }
+                    >
+                      <span className="truncate">{d.name}</span>
+                      {isSelected && <Icon.Check className="h-4 w-4 text-brand-600 shrink-0" />}
+                    </li>
+                  );
+                })}
+                {allowCustom && query.trim().length >= 2 && !filtered.some(d => d.name.toLowerCase() === query.trim().toLowerCase()) && (
                   <li
-                    key={d.id}
-                    data-idx={i}
                     role="option"
-                    aria-selected={isSelected}
-                    onMouseEnter={() => setActiveIdx(i)}
+                    aria-selected={false}
                     onClick={() => {
-                      onChange(d.id);
+                      onChange(`__new__${query.trim()}`);
                       setOpen(false);
                       setQuery('');
                     }}
-                    className={
-                      'flex items-center justify-between gap-2 px-3 py-2 text-sm cursor-pointer ' +
-                      (isActive ? 'bg-brand-50 text-brand-900' : 'text-slate-700 hover:bg-slate-50')
-                    }
+                    className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer border-t border-slate-100 text-brand-700 hover:bg-brand-50"
                   >
-                    <span className="truncate">{d.name}</span>
-                    {isSelected && <Icon.Check className="h-4 w-4 text-brand-600 shrink-0" />}
+                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-bold shrink-0">+</span>
+                    Add &ldquo;<span className="font-semibold truncate">{query.trim()}</span>&rdquo;
                   </li>
-                );
-              })
+                )}
+              </>
             )}
           </ul>
 
           <div className="px-3 py-2 border-t border-slate-100 bg-slate-50/60 text-[11px] text-slate-500 flex items-center justify-between">
-            <span>{filtered.length} of {sorted.length} departments</span>
+            <span>{filtered.length} of {sorted.length}{allowCustom ? ' · type to add custom' : ''}</span>
             <span className="hidden sm:inline">↑↓ to navigate · Enter to select</span>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, MinLength } from 'class-validator';
 
 export class JoinQueueDto {
   @IsString()
@@ -28,6 +28,31 @@ export class JoinQueueDto {
   @IsOptional()
   @IsString()
   idempotencyKey?: string;
+
+  // Walk-in: insert near current_position + doctor.walkinGap instead of end of queue. Feature 1.
+  @IsOptional()
+  @IsBoolean()
+  walkin?: boolean;
+
+  // NEW (default) or FOLLOWUP — for follow-up slot reservation. Feature 6.
+  @IsOptional()
+  @IsIn(['NEW', 'FOLLOWUP'])
+  slotType?: 'NEW' | 'FOLLOWUP';
+
+  // Explicit queue position (1 = first). Overrides walk-in heuristics when set.
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  insertAtPosition?: number;
+
+  @IsOptional()
+  @IsString()
+  appointmentTime?: string;
+
+  /** Branch where the patient is being queued. */
+  @IsOptional()
+  @IsString()
+  locationId?: string;
 }
 
 export class PatientJoinQueueDto {
@@ -37,6 +62,15 @@ export class PatientJoinQueueDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsString()
+  appointmentTime?: string;
+
+  /** Branch shown in the patient portal listing (required when multiple branches allow self-booking). */
+  @IsOptional()
+  @IsString()
+  locationId?: string;
 }
 
 export class ReorderEntryDto {
@@ -45,4 +79,54 @@ export class ReorderEntryDto {
   @Min(0)
   @Max(100)
   priority!: number;
+}
+
+export class MoveToPositionDto {
+  @IsInt()
+  @Min(1)
+  position!: number;
+}
+
+export class ClearQueueDto {
+  @IsOptional()
+  @IsBoolean()
+  includeMissed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  serviceDay?: string;
+}
+
+export class CancelManyDto {
+  @IsString({ each: true })
+  entryIds!: string[];
+}
+
+// Feature 4: Doctor break with estimated duration.
+export class StartBreakDto {
+  @IsInt()
+  @Min(1)
+  @Max(480)
+  estimatedMinutes!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
+export class TransferPatientDto {
+  @IsString()
+  destinationDoctorId!: string;
+
+  @IsOptional()
+  @IsString()
+  transferReason?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  walkin?: boolean;
+
+  @IsOptional()
+  @IsIn(['NEW', 'FOLLOWUP'])
+  slotType?: 'NEW' | 'FOLLOWUP';
 }

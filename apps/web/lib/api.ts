@@ -1,4 +1,4 @@
-// Thin fetch wrapper. Centralizes base URL, auth header, and error normalization.
+// Thin fetch wrapper. Centralizes base URL, credentials, and error normalization.
 // Keep this dumb on purpose — no React, no state. Composes well with both server
 // and client components.
 
@@ -11,32 +11,49 @@ export class ApiError extends Error {
   }
 }
 
-function authHeader(): Record<string, string> {
-  if (typeof window === 'undefined') return {};
-  const t = window.localStorage.getItem('hq_token');
-  return t ? { Authorization: `Bearer ${t}` } : {};
-}
-
 export async function api<T>(
   path: string,
-  init: RequestInit & { body?: unknown } = {},
+  init: Omit<RequestInit, 'body'> & { body?: unknown } = {},
 ): Promise<T> {
   const isFormData = init.body instanceof FormData;
-  const res = await fetch(`${BASE_URL}/api${path}`, {
-    ...init,
-    headers: {
-      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-      ...authHeader(),
-      ...(init.headers as Record<string, string> | undefined),
-    },
-    body: init.body && !isFormData ? JSON.stringify(init.body) : (init.body as BodyInit),
-    cache: 'no-store',
-  });
+  // Auth is primarily a Bearer token from localStorage. We ALSO send cookies
+  // (`credentials: 'include'`), but the web app and API live on different
+  // domains in production, and browsers block SameSite cross-site cookies —
+  // so the Bearer header is the reliable channel. See lib/auth.ts (`hq_token`).
+  const token =
+    typeof window !== 'undefined' ? window.localStorage.getItem('hq_token') : null;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE_URL}/api${path}`, {
+      ...init,
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init.headers as Record<string, string> | undefined),
+      },
+      credentials: 'include',
+      body: init.body && !isFormData ? JSON.stringify(init.body) : (init.body as BodyInit),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new ApiError(0, `Cannot reach the API at ${BASE_URL}. Start the API server and check NEXT_PUBLIC_API_URL.`);
+  }
 
   const text = await res.text();
-  const payload = text ? JSON.parse(text) : null;
+  let payload: unknown = null;
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new ApiError(res.status, text.slice(0, 200) || `Request failed (${res.status})`);
+    }
+  }
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.localStorage.removeItem('hq_user');
+      window.localStorage.removeItem('hq_token');
+    }
     const msg = (payload as { message?: string | string[] })?.message;
     throw new ApiError(
       res.status,
@@ -58,6 +75,7 @@ export interface Clinic {
   id: string;
   name: string;
   address?: string | null;
+  businessType?: string | null;
   createdAt: string;
   doctors?: Doctor[];
   _count?: { users: number; doctors: number };
@@ -74,13 +92,15 @@ export interface InviteCode {
   createdAt: string;
 }
 
-export type Role = 'PATIENT' | 'RECEPTIONIST' | 'DOCTOR' | 'ADMIN';
+export type Role = 'PATIENT' | 'RECEPTIONIST' | 'CLINIC_ADMIN' | 'MANAGER' | 'DOCTOR' | 'ADMIN';
 export type EntryStatus =
   | 'WAITING'
   | 'IN_CONSULTATION'
   | 'COMPLETED'
   | 'SKIPPED'
-  | 'CANCELLED';
+  | 'CANCELLED'
+  | 'MISSED';
+export type SlotType = 'NEW' | 'FOLLOWUP';
 export type DoctorStatus = 'AVAILABLE' | 'BUSY' | 'PAUSED' | 'AWAY';
 
 export interface Department {
@@ -98,16 +118,24 @@ export interface Doctor {
   // patient history endpoints so dashboards can show clinic + doctor in
   // their headers without an extra fetch.
   clinicId?: string;
-  clinic?: { id: string; name: string; address?: string | null };
+  clinic?: { id: string; name: string; address?: string | null; businessType?: string | null };
   avgConsultMinutes: number;
   delayMinutes: number;
   status: DoctorStatus;
+  // Break handling (Feature 4)
+  breakUntil?: string | null;
+  breakNote?: string | null;
+  // Follow-up slots / insertion gaps (Features 1, 2, 6)
+  followUpEvery?: number;
+  walkinGap?: number;
+  missedGap?: number;
 }
 export interface QueueEntry {
   id: string;
   doctorId: string;
   patientId: string;
-  patient?: { id: string; name: string; phone?: string | null };
+  locationId?: string;
+  patient?: { id: string; name: string; phone?: string | null; customerPin?: string | null };
   serviceDay: string;
   tokenNumber: number;
   status: EntryStatus;
@@ -117,11 +145,79 @@ export interface QueueEntry {
   calledAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  // Sort position for walk-ins / rejoins (Feature 1 & 2)
+  sortOrder?: number | null;
+  walkin?: boolean;
+  // Slot type: NEW or FOLLOWUP (Feature 6)
+  slotType?: SlotType;
+  // ETA enrichment fields (Features 3, 5)
   peopleAhead?: number;
   etaMinutes?: number;
+  etaAbsolute?: string;
+  movingAvgMinutes?: number;
+  appointmentTime?: string | null;
+  appointmentSlot?: string | null;
 }
+export interface MissedEntry {
+  id: string;
+  locationId?: string;
+  tokenNumber: number;
+  patient: { id: string; name: string; phone?: string | null; customerPin?: string | null } | null;
+  completedAt: string | null;
+  missedCount: number;
+}
+
 export interface Snapshot {
   doctor: Doctor;
   entries: QueueEntry[];
   currentToken: number | null;
+  /** Today's MISSED entries for the receptionist missed-patients panel. Feature 2. */
+  missedEntries?: MissedEntry[];
+  /** Moving average minutes/patient used for ETA. null = no history yet. Feature 3. */
+  movingAvgMinutes?: number | null;
+  /** True if at least one entry has been called today (callNext fired). Used to suppress "queue not started" after all are done. */
+  hasStartedToday?: boolean;
+  settings?: any;
+}
+
+export type SignupRequestStatus = 'PENDING' | 'CONTACTED' | 'APPROVED' | 'REJECTED';
+
+export interface BusinessSignupRequest {
+  id: string;
+  businessName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  status: SignupRequestStatus;
+  notes?: string | null;
+  clinicId?: string | null;
+  clinic?: { id: string; name: string } | null;
+  reviewedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A single finished entry in the queue history log.
+ * Returned by GET /api/queue/history
+ */
+export interface HistoryEntry {
+  id: string;
+  tokenNumber: number;
+  status: 'COMPLETED' | 'SKIPPED' | 'CANCELLED' | 'MISSED';
+  slotType?: SlotType;
+  serviceDay: string;
+  priority: number;
+  notes: string | null;
+  joinedAt: string;
+  calledAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  /** calledAt − joinedAt in whole minutes; null when calledAt is missing */
+  waitMinutes: number | null;
+  /** completedAt − calledAt in whole minutes; null when timestamps are missing */
+  consultMinutes: number | null;
+  patient: { id: string; name: string; phone: string | null };
+  doctor: { id: string; name: string; department: string };
+  createdBy: { id: string; name: string } | null;
 }

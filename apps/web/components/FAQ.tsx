@@ -12,7 +12,7 @@ export function FAQ({ items }: { items: FAQItem[] }) {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <div className="divide-y divide-slate-200/70 rounded-2xl bg-white ring-1 ring-slate-200/70 shadow-sm overflow-hidden">
+    <div className="divide-y divide-slate-200/70 dark:divide-slate-700/70 rounded-2xl bg-white dark:bg-slate-800 ring-1 ring-slate-200/70 dark:ring-slate-700/70 shadow-sm overflow-hidden">
       {items.map((item, idx) => {
         const isOpen = open === idx;
         return (
@@ -20,10 +20,10 @@ export function FAQ({ items }: { items: FAQItem[] }) {
             <button
               type="button"
               onClick={() => setOpen(isOpen ? null : idx)}
-              className="w-full flex items-center justify-between gap-4 px-5 sm:px-6 py-5 text-left hover:bg-slate-50/60 transition-colors"
+              className="w-full flex items-center justify-between gap-4 px-5 sm:px-6 py-5 text-left hover:bg-slate-50/60 dark:hover:bg-slate-700/60 transition-colors"
               aria-expanded={isOpen}
             >
-              <span className="font-medium text-slate-900">{item.q}</span>
+              <span className="font-medium text-slate-900 dark:text-slate-100">{item.q}</span>
               <Icon.ChevronDown
                 className={
                   'h-5 w-5 text-slate-400 shrink-0 transition-transform duration-200 ' +
@@ -38,7 +38,7 @@ export function FAQ({ items }: { items: FAQItem[] }) {
               }
             >
               <div className="overflow-hidden">
-                <div className="px-5 sm:px-6 pb-5 text-slate-600 text-sm leading-relaxed">
+                <div className="px-5 sm:px-6 pb-5 text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
                   {item.a}
                 </div>
               </div>
