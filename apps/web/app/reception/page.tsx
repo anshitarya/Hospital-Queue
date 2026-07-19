@@ -1174,7 +1174,7 @@ export default function ReceptionPage() {
                 </div>
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Avg {L.service.toLowerCase()} time:</span>
-                  <input className="input flex-1" type="number" min={1} max={120} value={docAvg}
+                  <input className="input flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} max={120} value={docAvg}
                     onChange={(e) => setDocAvg(Number(e.target.value))} required />
                   <span className="text-xs text-slate-400 shrink-0">{L.perCustomer}</span>
                 </label>

@@ -933,7 +933,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
               )}
               <label className="flex items-center gap-2 text-sm">
                 <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Position:</span>
-                <input className="input flex-1" type="number" min={1} placeholder="Auto (end of queue)"
+                <input className="input flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} placeholder="Auto (end of queue)"
                   value={insertAtPosition}
                   onChange={(e) => setInsertAtPosition(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))} />
                 <span className="text-xs text-slate-400 shrink-0">optional</span>
@@ -1403,7 +1403,7 @@ const QueueRow = memo(function QueueRow({
           <input autoFocus type="number" min={1} placeholder="Position #" value={movingTo}
             onChange={(e) => setMovingTo(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))}
             onKeyDown={(e) => { if (e.key === 'Enter') submitMove(); if (e.key === 'Escape') setShowMove(false); }}
-            className="input-sm w-28" />
+            className="input-sm w-28 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
           <button type="button" onClick={submitMove} disabled={movingTo === ''} className="btn-primary !py-1.5 !px-3 text-xs">Move</button>
           <button type="button" onClick={() => setShowMove(false)} className="btn-ghost !py-1.5 !px-2 text-xs">Cancel</button>
         </div>

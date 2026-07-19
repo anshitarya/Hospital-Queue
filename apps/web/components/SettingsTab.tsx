@@ -201,13 +201,13 @@ export function SettingsTab({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label text-xs font-semibold text-slate-500 uppercase">Appointment Interval (Minutes)</label>
-                <input className="input mt-1 w-full" type="number" min={5} max={120} value={settings.appointmentInterval}
+                <input className="input mt-1 w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={5} max={120} value={settings.appointmentInterval}
                   onChange={(e) => setSettings({ ...settings, appointmentInterval: parseInt(e.target.value) || 15 })} />
               </div>
               {settings.queueMode === 'CAPACITY_TIME_SLOT' && (
                 <div>
                   <label className="label text-xs font-semibold text-slate-500 uppercase">Max Customers per Slot</label>
-                  <input className="input mt-1 w-full" type="number" min={1} max={50} value={settings.maxCustomersPerSlot}
+                  <input className="input mt-1 w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} max={50} value={settings.maxCustomersPerSlot}
                     onChange={(e) => setSettings({ ...settings, maxCustomersPerSlot: parseInt(e.target.value) || 1 })} />
                 </div>
               )}
@@ -251,7 +251,7 @@ export function SettingsTab({
             {settings.walkinJoinRule === 'AFTER_N_CUSTOMERS' && (
               <div>
                 <label className="label text-xs font-semibold text-slate-500 uppercase">Insert after N Waiting Patients</label>
-                <input className="input mt-1 w-full" type="number" min={0} max={20} value={settings.walkinJoinRuleParam}
+                <input className="input mt-1 w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={0} max={20} value={settings.walkinJoinRuleParam}
                   onChange={(e) => setSettings({ ...settings, walkinJoinRuleParam: parseInt(e.target.value) || 0 })} />
               </div>
             )}
@@ -267,7 +267,7 @@ export function SettingsTab({
             {settings.followupJoinRule === 'AFTER_N_CUSTOMERS' && (
               <div>
                 <label className="label text-xs font-semibold text-slate-500 uppercase">Insert after N Waiting Patients</label>
-                <input className="input mt-1 w-full" type="number" min={0} max={20} value={settings.followupJoinRuleParam}
+                <input className="input mt-1 w-full [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={0} max={20} value={settings.followupJoinRuleParam}
                   onChange={(e) => setSettings({ ...settings, followupJoinRuleParam: parseInt(e.target.value) || 0 })} />
               </div>
             )}
@@ -325,7 +325,7 @@ export function SettingsTab({
                   type="number"
                   min={0}
                   max={99}
-                  className="input w-20 !py-1.5 text-xs text-center"
+                  className="input w-20 !py-1.5 text-xs text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   value={settings.maxSelfBookingNoShowsPerMonth}
                   onChange={(e) =>
                     setSettings({
