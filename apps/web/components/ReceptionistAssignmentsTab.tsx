@@ -28,10 +28,12 @@ export function ReceptionistAssignmentsTab({
   businessType,
   setToast,
   locationId,
+  refreshKey = 0,
 }: {
   businessType?: BusinessType | string | null;
   setToast: (t: ToastMessage | null) => void;
   locationId?: string | null;
+  refreshKey?: number;
 }) {
   const L = getLabels(businessType);
   const [data, setData] = useState<AssignmentsResponse | null>(null);
@@ -60,7 +62,7 @@ export function ReceptionistAssignmentsTab({
 
   useEffect(() => {
     void load();
-  }, [load, locationId]);
+  }, [load, locationId, refreshKey]);
 
   function toggle(receptionistId: string, doctorId: string) {
     setDraft((prev) => {

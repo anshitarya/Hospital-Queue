@@ -288,6 +288,7 @@ export default function ReceptionPage() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [togglingDocId, setTogglingDocId] = useState<string | null>(null);
   const [manageAssignmentsMode, setManageAssignmentsMode] = useState(false);
+  const [assignmentsRefreshKey, setAssignmentsRefreshKey] = useState(0);
 
   // Add-receptionist form (business admin / clinic admin in staff tab)
   const [recName, setRecName] = useState('');
@@ -484,6 +485,7 @@ export default function ReceptionPage() {
       setToast({ type: 'ok', msg: `${name} removed.` });
       await loadDashboard(true);
       void loadStaffLists();
+      setAssignmentsRefreshKey((key) => key + 1);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove professional' });
     }
@@ -501,6 +503,7 @@ export default function ReceptionPage() {
       setToast({ type: 'ok', msg: `Updated branch assignment for ${doc.name}` });
       void loadStaffLists();
       await loadDashboard(true);
+      setAssignmentsRefreshKey((key) => key + 1);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update branch assignment' });
     } finally {
@@ -515,6 +518,7 @@ export default function ReceptionPage() {
       setToast({ type: 'ok', msg: `${name} removed.` });
       void loadStaffLists();
       await loadDashboard(true);
+      setAssignmentsRefreshKey((key) => key + 1);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to remove staff' });
     }
@@ -543,6 +547,7 @@ export default function ReceptionPage() {
 
       setToast({ type: 'ok', msg: `Updated branch assignment for ${staff.name}` });
       void loadStaffLists();
+      setAssignmentsRefreshKey((key) => key + 1);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update branch assignment' });
     }
@@ -629,6 +634,7 @@ export default function ReceptionPage() {
       });
       await loadDashboard(true);
       void loadStaffLists();
+      setAssignmentsRefreshKey((key) => key + 1);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add doctor' });
     } finally {
@@ -674,6 +680,7 @@ export default function ReceptionPage() {
       });
       await loadDashboard(true);
       void loadStaffLists();
+      setAssignmentsRefreshKey((key) => key + 1);
     } catch (err) {
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to add receptionist' });
     } finally {
@@ -991,6 +998,7 @@ export default function ReceptionPage() {
                 businessType={data?.clinic?.businessType}
                 setToast={setToast}
                 locationId={selectedLocationId}
+                refreshKey={assignmentsRefreshKey}
               />
             )}
 
