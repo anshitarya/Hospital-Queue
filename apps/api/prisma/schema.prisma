@@ -16,6 +16,12 @@ enum Role {
   MANAGER
 }
 
+enum StaffStatus {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
 enum DoctorStatus {
   AVAILABLE
   BUSY
@@ -163,7 +169,20 @@ model User {
   name         String
   phone        String? @unique
   email        String? @unique
+  loginId      String? @unique
   passwordHash String?
+
+  // ── Google OAuth fields ───────────────────────────────────────────────────
+  // googleId: Google's `sub` claim — links the user to their Google account.
+  // authProvider: "local" | "google" | "multi" (supports future providers).
+  // status: lifecycle state for staff accounts.
+  googleId     String?     @unique
+  authProvider String      @default("local") // local | google | multi
+  status       StaffStatus @default(ACTIVE)  // PENDING on create, ACTIVE after first Google login
+  activatedAt        DateTime?   // When PENDING → ACTIVE (first successful Google login)
+  lastLoginAt        DateTime?   // Updated on every successful login
+  passwordChangedAt  DateTime?   @default(now()) // Invalidates active JWT tokens issued before this time
+  createdById        String?     // Who created this account (Super Admin or Clinic Admin)
 
   // Verification flags. Phone is implicitly verified at signup (OTP for
   // patients, invite-code for staff). Email is always set to false on
@@ -200,6 +219,9 @@ model User {
 
   @@index([role])
   @@index([clinicId])
+  @@index([status])
+  @@index([googleId])
+  @@index([loginId])
 }
 
 // Departments are global labels (General Medicine, Pediatrics, etc.)

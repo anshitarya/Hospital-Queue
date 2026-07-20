@@ -23,9 +23,10 @@ import { useState } from 'react';
  * the wording in the header.
  */
 export interface DoctorCredentials {
-  /** "doctor" | "receptionist" | "clinic_admin" — drives header text only. Defaults to doctor. */
+  /** "doctor" | "receptionist" | "clinic_admin" | "manager" — drives header text only. Defaults to doctor. */
   role?: 'doctor' | 'receptionist' | 'clinic_admin' | 'manager';
   name: string;
+  loginId?: string | null;
   /** Whichever identifier the user will use to sign in — email or phone. */
   email: string | null;
   phone: string | null;
@@ -45,7 +46,7 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
 
   if (!credentials) return null;
 
-  const { name, email, phone, tempPassword, clinicName } = credentials;
+  const { name, email, phone, tempPassword, clinicName, loginId } = credentials;
   const role = credentials.role ?? 'doctor';
   const roleLabel =
     role === 'receptionist' ? 'Receptionist'
@@ -66,12 +67,13 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
   function copyAll() {
     const lines = [
       `${roleLabel}: ${name}`,
+      loginId ? `Login ID: ${loginId}` : null,
       email ? `Email: ${email}` : null,
       phone ? `Phone: ${phone}` : null,
       `Temporary password: ${tempPassword}`,
       clinicName ? `Clinic: ${clinicName}` : null,
       '',
-      'Use the password to sign in once, then change it from the profile page.',
+      'Use the Login ID/Email and password to sign in once, then change it from the profile page.',
     ]
       .filter(Boolean)
       .join('\n');
@@ -108,12 +110,20 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
         <div className="p-5 space-y-4">
           {/* Warning banner */}
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 ring-1 ring-amber-200 dark:ring-amber-700/50 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-            <strong>Save this now.</strong> The password is shown only once
+            <strong>Save this now.</strong> The credentials are shown only once
             and cannot be recovered.
           </div>
 
           {/* Name (read-only) — label adapts to the role. */}
           <Field label={`${roleLabel} name`} value={name} />
+
+          {/* Login ID */}
+          <Field
+            label="Login ID (Use to Sign In)"
+            value={loginId || '—'}
+            onCopy={loginId ? () => copy(loginId, 'Login ID') : undefined}
+            copied={copiedField === 'Login ID'}
+          />
 
           {/* Login identifier */}
           {email && (
@@ -164,7 +174,7 @@ export function DoctorCredentialsModal({ credentials, onClose }: Props) {
               </button>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              The doctor should change this from <em>Profile → Security</em>
+              The staff member should change this from <em>Profile → Security</em>
               {' '}after their first login.
             </p>
           </div>

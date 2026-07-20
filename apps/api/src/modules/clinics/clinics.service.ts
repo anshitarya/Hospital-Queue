@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DoctorStatus, EntryStatus, Prisma, Role } from '@prisma/client';
+import { DoctorStatus, EntryStatus, Prisma, Role, StaffStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -28,6 +28,7 @@ import {
 import { CLINIC_PORTAL_ROLES, isClinicPortalRole } from '../../common/constants/clinic-portal-roles';
 import { normalizeBusinessType } from '../../common/utils/business-type';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { FEATURES } from '../../common/features';
 
 @Injectable()
 export class ClinicsService {
@@ -310,7 +311,7 @@ export class ClinicsService {
 
     const doctors = await this.prisma.doctor.findMany({
       where: { clinicId },
-      include: { user: { select: { id: true, name: true, email: true, phone: true } }, department: true },
+      include: { user: { select: { id: true, name: true, email: true, phone: true, status: true, loginId: true } }, department: true },
       orderBy: { user: { name: 'asc' } },
     });
     if (caller && caller.role === Role.RECEPTIONIST && locationId) {
@@ -691,6 +692,8 @@ export class ClinicsService {
       { email: dto.email, phone: dto.phone, role: 'doctor' },
     );
 
+    const loginId = await this.generateLoginId(dto.name, 'DOCTOR');
+
     const dept = await this.prisma.department.findUnique({ where: { id: dto.departmentId } });
     if (!dept) throw new NotFoundException('Department not found');
 
@@ -702,9 +705,12 @@ export class ClinicsService {
           name: dto.name,
           email: dto.email ?? null,
           phone: dto.phone ?? null,
+          loginId,
           role: Role.DOCTOR,
-          passwordHash,
+          passwordHash: passwordHash ?? null,
           clinicId,
+          // New staff start as ACTIVE directly
+          status: StaffStatus.ACTIVE,
         },
       });
       const doctor = await tx.doctor.create({
@@ -761,6 +767,8 @@ export class ClinicsService {
       { email: dto.email, phone: dto.phone, role: 'receptionist' },
     );
 
+    const loginId = await this.generateLoginId(dto.name, 'RECEPTIONIST');
+
     const branchIds = await this.resolveStaffLocationIds(
       clinicId,
       dto.locationId ?? defaultLocationId,
@@ -771,14 +779,17 @@ export class ClinicsService {
         name: dto.name,
         email: dto.email ?? null,
         phone: dto.phone ?? null,
+        loginId,
         role: Role.RECEPTIONIST,
-        passwordHash,
+        passwordHash: passwordHash ?? null,
         clinicId,
+        // New staff start as ACTIVE directly
+        status: StaffStatus.ACTIVE,
         locations: {
           create: branchIds.map((locationId) => ({ locationId })),
         },
       },
-      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
+      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true, loginId: true },
     });
 
     return { user, tempPassword };
@@ -793,6 +804,8 @@ export class ClinicsService {
       { email: dto.email, phone: dto.phone, role: 'business admin' },
     );
 
+    const loginId = await this.generateLoginId(dto.name, 'CLINIC_ADMIN');
+
     const explicitLocation = dto.locationId ?? defaultLocationId;
     const branchIds = explicitLocation
       ? await this.resolveStaffLocationIds(clinicId, explicitLocation)
@@ -803,15 +816,18 @@ export class ClinicsService {
         name: dto.name,
         email: dto.email ?? null,
         phone: dto.phone ?? null,
+        loginId,
         role: Role.CLINIC_ADMIN,
-        passwordHash,
+        passwordHash: passwordHash ?? null,
         clinicId,
         emailVerified: dto.email ? true : undefined,
+        // New staff start as ACTIVE directly
+        status: StaffStatus.ACTIVE,
         ...(branchIds.length > 0
           ? { locations: { create: branchIds.map((locationId) => ({ locationId })) } }
           : {}),
       },
-      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
+      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true, loginId: true },
     });
 
     return { user, tempPassword };
@@ -827,6 +843,8 @@ export class ClinicsService {
         name: true,
         email: true,
         phone: true,
+        status: true,
+        loginId: true,
         createdAt: true,
       },
       orderBy: { name: 'asc' },
@@ -872,22 +890,24 @@ export class ClinicsService {
       throw new BadRequestException('Only clinic staff passwords can be reset here');
     }
 
-    const tempPassword = randomBytes(8).toString('hex');
+    const tempPassword = Math.floor(100000 + Math.random() * 900000).toString();
     const passwordHash = await argon2.hash(tempPassword);
-    await this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash },
+      data: { passwordHash, passwordChangedAt: new Date() },
+      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true, loginId: true, status: true },
     });
 
-    return { user, tempPassword };
+    return { user: updatedUser, tempPassword };
   }
 
-  /** Branch manager — reception-portal access scoped to assigned location(s). */
   async addManager(clinicId: string, dto: AddReceptionistDto, defaultLocationId?: string) {
     const { passwordHash, tempPassword } = await this.prepareStaffCreation(
       clinicId,
       { email: dto.email, phone: dto.phone, role: 'manager' },
     );
+
+    const loginId = await this.generateLoginId(dto.name, 'MANAGER');
 
     const branchIds = await this.resolveStaffLocationIds(
       clinicId,
@@ -899,6 +919,7 @@ export class ClinicsService {
         name: dto.name,
         email: dto.email ?? null,
         phone: dto.phone ?? null,
+        loginId,
         role: Role.MANAGER,
         passwordHash,
         clinicId,
@@ -907,7 +928,7 @@ export class ClinicsService {
           create: branchIds.map((locationId) => ({ locationId })),
         },
       },
-      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true },
+      select: { id: true, name: true, email: true, phone: true, role: true, clinicId: true, loginId: true },
     });
 
     return { user, tempPassword };
@@ -929,6 +950,8 @@ export class ClinicsService {
         name: true,
         email: true,
         phone: true,
+        status: true,
+        loginId: true,
         createdAt: true,
         locations: { select: { locationId: true, location: { select: { id: true, name: true } } } },
       },
@@ -956,6 +979,8 @@ export class ClinicsService {
         name: true,
         email: true,
         phone: true,
+        status: true,
+        loginId: true,
         createdAt: true,
         locations: { select: { locationId: true, location: { select: { id: true, name: true } } } },
       },
@@ -1198,12 +1223,6 @@ export class ClinicsService {
     clinicId: string,
     opts: { email?: string; phone?: string; role: 'doctor' | 'receptionist' | 'business admin' | 'manager' },
   ) {
-    if (!opts.email && !opts.phone) {
-      throw new BadRequestException(
-        `Provide either an email or a mobile number so the ${opts.role} can sign in.`,
-      );
-    }
-
     const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
     if (!clinic) throw new NotFoundException('Clinic not found');
 
@@ -1216,9 +1235,44 @@ export class ClinicsService {
       if (taken) throw new BadRequestException('That mobile number is already registered');
     }
 
-    const tempPassword = randomBytes(8).toString('hex');
+    // When Google auth is enabled, staff sign in via Google (no password needed).
+    // We still generate a temp password so the account can be activated via
+    // legacy password login during testing / dev mode.
+    if (FEATURES.ENABLE_GOOGLE_AUTH && !FEATURES.ENABLE_DEV_AUTH_BYPASS) {
+      // Pure Google mode — no temp password generated
+      return { passwordHash: null, tempPassword: null };
+    }
+
+    // Generate a simple, easy-to-remember 6-digit numeric password
+    const tempPassword = Math.floor(100000 + Math.random() * 900000).toString();
     const passwordHash = await argon2.hash(tempPassword);
     return { passwordHash, tempPassword };
+  }
+
+  /**
+   * Update the status of a staff member (ACTIVE / DISABLED).
+   * Super Admin can activate or disable any staff member.
+   * Disabling blocks login immediately — both password and Google.
+   */
+  async updateStaffStatus(clinicId: string, userId: string, status: 'ACTIVE' | 'DISABLED') {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.clinicId !== clinicId) throw new ForbiddenException('User not in this clinic');
+    if (user.role === Role.PATIENT || user.role === Role.ADMIN) {
+      throw new BadRequestException('Cannot change status of this account type');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        status: status as StaffStatus,
+        passwordChangedAt: new Date(), // Revokes existing JWT sessions immediately
+        ...(status === 'ACTIVE' && !user.activatedAt ? { activatedAt: new Date() } : {}),
+      },
+      select: { id: true, name: true, email: true, role: true, status: true, clinicId: true, loginId: true },
+    });
+
+    return updated;
   }
 
   async removeDoctor(clinicId: string, doctorId: string, caller?: AuthUser) {
@@ -2363,4 +2417,28 @@ export class ClinicsService {
     if (existing && existing.id !== userId) throw new BadRequestException('Email already in use');
     return this.prisma.user.update({ where: { id: userId }, data: { email } });
   }
+
+  private async generateLoginId(name: string, role: string): Promise<string> {
+    const prefixMap: Record<string, string> = {
+      DOCTOR: 'doc',
+      RECEPTIONIST: 'staff',
+      CLINIC_ADMIN: 'admin',
+      MANAGER: 'mgr',
+      ADMIN: 'super',
+    };
+    const prefix = prefixMap[role] || 'user';
+    const cleanName = name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
+    
+    // Generate code and guarantee uniqueness
+    for (let i = 0; i < 50; i++) {
+      const suffix = Math.floor(100 + Math.random() * 900).toString(); // 3-digit number
+      const candidate = `${prefix}_${cleanName}${suffix}`;
+      const existing = await this.prisma.user.findUnique({ where: { loginId: candidate } });
+      if (!existing) {
+        return candidate;
+      }
+    }
+    return `${prefix}_${cleanName}_${Date.now().toString().slice(-4)}`;
+  }
 }
+

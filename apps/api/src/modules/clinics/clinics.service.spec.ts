@@ -290,7 +290,7 @@ describe('ClinicsService.addDoctor', () => {
     expect(user.passwordHash).not.toBe(out.tempPassword);
     expect(user.passwordHash).toMatch(/^\$argon2/);
     // Round-trip: verify the returned plaintext against the stored hash.
-    expect(await argon2.verify(user.passwordHash!, out.tempPassword)).toBe(true);
+    expect(await argon2.verify(user.passwordHash!, out.tempPassword!)).toBe(true);
   });
 
   it('the doctor user is assigned to the requested clinic', async () => {

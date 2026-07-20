@@ -21,6 +21,8 @@ export function TimePicker({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const hourScrollRef = useRef<HTMLDivElement>(null);
+  const minuteScrollRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const parsed = parseTime(value);
   const [hour, setHour] = useState(parsed.hour);
@@ -31,6 +33,25 @@ export function TimePicker({
     setHour(p.hour);
     setMinute(p.minute);
   }, [value]);
+
+  // Auto-scroll columns to selected items when popover opens
+  useEffect(() => {
+    if (!open) return;
+    setTimeout(() => {
+      if (hourScrollRef.current) {
+        const activeHourElem = hourScrollRef.current.querySelector('[data-active="true"]');
+        if (activeHourElem) {
+          activeHourElem.scrollIntoView({ block: 'center', behavior: 'instant' as any });
+        }
+      }
+      if (minuteScrollRef.current) {
+        const activeMinuteElem = minuteScrollRef.current.querySelector('[data-active="true"]');
+        if (activeMinuteElem) {
+          activeMinuteElem.scrollIntoView({ block: 'center', behavior: 'instant' as any });
+        }
+      }
+    }, 50);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -61,37 +82,69 @@ export function TimePicker({
       {open && (
         <div
           id={panelId}
-          className="absolute left-0 top-[calc(100%+6px)] z-50 w-[15.5rem] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-200/80 dark:ring-slate-700/80 p-4 animate-slide-up"
+          className="absolute left-0 top-[calc(100%+6px)] z-50 w-[17rem] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-200/80 dark:ring-slate-700/80 p-4 animate-slide-up"
         >
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">Select time (IST)</p>
-          <div className="flex gap-2 items-center justify-center">
-            <select
-              aria-label="Hour"
-              value={hour}
-              onChange={(e) => setHour(e.target.value)}
-              className="input-sm !w-[4.5rem] text-center font-semibold appearance-none cursor-pointer"
-            >
-              {HOURS.map((h) => (
-                <option key={h} value={h}>{h}</option>
-              ))}
-            </select>
-            <span className="text-lg font-bold text-slate-300 dark:text-slate-600">:</span>
-            <select
-              aria-label="Minute"
-              value={minute}
-              onChange={(e) => setMinute(e.target.value)}
-              className="input-sm !w-[4.5rem] text-center font-semibold appearance-none cursor-pointer"
-            >
-              {MINUTES.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+          
+          <div className="flex gap-1.5 items-center justify-center bg-slate-50 dark:bg-slate-950/60 rounded-xl p-2 border border-slate-100 dark:border-slate-800">
+            {/* Hours Column */}
+            <div className="flex flex-col items-center flex-1">
+              <span className="text-[9px] font-semibold text-slate-400 uppercase mb-1">Hour</span>
+              <div 
+                ref={hourScrollRef}
+                className="h-32 w-full overflow-y-auto scrollbar-thin flex flex-col gap-1 pr-1"
+              >
+                {HOURS.map((h) => (
+                  <button
+                    key={h}
+                    type="button"
+                    data-active={hour === h}
+                    onClick={() => setHour(h)}
+                    className={`py-1 rounded-lg text-sm font-semibold transition-all ${
+                      hour === h
+                        ? 'bg-teal-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <span className="text-lg font-bold text-slate-300 dark:text-slate-600 self-center mt-3">:</span>
+
+            {/* Minutes Column */}
+            <div className="flex flex-col items-center flex-1">
+              <span className="text-[9px] font-semibold text-slate-400 uppercase mb-1">Min</span>
+              <div 
+                ref={minuteScrollRef}
+                className="h-32 w-full overflow-y-auto scrollbar-thin flex flex-col gap-1 pr-1"
+              >
+                {MINUTES.map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    data-active={minute === m}
+                    onClick={() => setMinute(m)}
+                    className={`py-1 rounded-lg text-sm font-semibold transition-all ${
+                      minute === m
+                        ? 'bg-teal-600 text-white shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
+
           <div className="flex gap-2 mt-4">
-            <button type="button" onClick={() => setOpen(false)} className="btn-secondary flex-1 !py-2 !text-xs">
+            <button type="button" onClick={() => setOpen(false)} className="btn-secondary flex-1 !py-2 !text-xs font-semibold">
               Cancel
             </button>
-            <button type="button" onClick={() => apply(hour, minute)} className="btn-primary flex-1 !py-2 !text-xs">
+            <button type="button" onClick={() => apply(hour, minute)} className="btn-primary flex-1 !py-2 !text-xs font-semibold">
               Done
             </button>
           </div>

@@ -61,4 +61,26 @@ export const FEATURES = {
    */
   FIFO_QUEUE_ORDERING: true,
 
+  // ── Authentication ────────────────────────────────────────────────────────
+  /**
+   * AUTH_MODE: Convenience alias ("development" | "production").
+   *
+   * ENABLE_GOOGLE_AUTH:
+   *   When ON  : POST /auth/staff/google endpoint is active.
+   *              Staff can log in via Google Sign-In (requires GOOGLE_CLIENT_ID).
+   *   When OFF : Google endpoint returns 400; password login is the only option.
+   *   Prod env : set ENABLE_GOOGLE_AUTH=true + GOOGLE_CLIENT_ID=<your-client-id>
+   *
+   * ENABLE_DEV_AUTH_BYPASS:
+   *   When ON  : email+password staff login (POST /auth/staff/login) is allowed.
+   *   When OFF : that endpoint returns 400 — forces all staff to use Google.
+   *   Prod env : set ENABLE_DEV_AUTH_BYPASS=false
+   */
+  AUTH_MODE: (process.env.AUTH_MODE ?? 'development') as 'development' | 'production',
+
+  ENABLE_GOOGLE_AUTH: process.env.ENABLE_GOOGLE_AUTH === 'true',
+
+  ENABLE_DEV_AUTH_BYPASS: process.env.ENABLE_DEV_AUTH_BYPASS !== 'false',
+
 } as const;
+

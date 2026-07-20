@@ -2,12 +2,13 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Role, User } from '@prisma/client';
+import { Role, StaffStatus, User } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
@@ -18,6 +19,8 @@ import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UsageEventService } from '../billing/usage-event.service';
+import { GoogleAuthService } from './google-auth.service';
+import { FEATURES } from '../../common/features';
 
 export interface AuthResult {
   token: string;
@@ -29,6 +32,8 @@ const PIN_LOCKOUT_SECONDS = 15 * 60; // 15 min
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -36,29 +41,139 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly redis: RedisService,
     private readonly usageEvents: UsageEventService,
+    private readonly googleAuth: GoogleAuthService,
   ) {}
 
   async staffLogin(identifier: string, password: string): Promise<AuthResult> {
-    const isEmail = identifier.includes('@');
-    const lookupKey = isEmail
-      ? identifier.toLowerCase()
-      : isValidIndianMobile(identifier)
-        ? normalizeIndianMobile(identifier).e164
-        : identifier;
+    if (!FEATURES.ENABLE_DEV_AUTH_BYPASS) {
+      throw new BadRequestException(
+        'Password login is disabled in production. Please sign in with Google.',
+      );
+    }
 
-    const user = isEmail
-      ? await this.prisma.user.findUnique({ where: { email: lookupKey } })
-      : await this.prisma.user.findUnique({ where: { phone: lookupKey } });
+    const lookupKey = identifier.trim();
+    const isEmail = lookupKey.includes('@');
+    const normalizedLookup = isEmail
+      ? lookupKey.toLowerCase()
+      : isValidIndianMobile(lookupKey)
+        ? normalizeIndianMobile(lookupKey).e164
+        : lookupKey;
+
+    // Search by loginId, email, or phone
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { loginId: { equals: lookupKey, mode: 'insensitive' } },
+          { email: { equals: normalizedLookup, mode: 'insensitive' } },
+          { phone: normalizedLookup },
+        ],
+      },
+    });
 
     if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
     if (user.role === Role.PATIENT) throw new UnauthorizedException('Use customer login');
+    if (user.status === StaffStatus.DISABLED) {
+      throw new UnauthorizedException('This account has been disabled. Contact your administrator.');
+    }
 
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
 
+    // Update last login timestamp
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
     const result = await this.sign(user);
     void this.triggerLoginEvents(user);
     return result;
+  }
+
+  /**
+   * Google OAuth login for staff users (CLINIC_ADMIN, MANAGER, RECEPTIONIST, DOCTOR).
+   *
+   * Flow:
+   * 1. Verify Google ID token server-side (never trust frontend).
+   * 2. Look up staff by the verified email — if not found, deny access.
+   * 3. Reject DISABLED accounts.
+   * 4. If PENDING (first login): activate the account, link googleId.
+   * 5. If ACTIVE: verify googleId matches (or link on first Google use).
+   * 6. Update lastLoginAt and issue our own JWT.
+   */
+  async staffGoogleLogin(idToken: string): Promise<AuthResult> {
+    if (!FEATURES.ENABLE_GOOGLE_AUTH) {
+      throw new BadRequestException(
+        'Google authentication is not enabled. Contact your administrator.',
+      );
+    }
+
+    // Step 1: Verify the Google ID token
+    const googlePayload = await this.googleAuth.verifyIdToken(idToken);
+    const { sub: googleId, email, name } = googlePayload;
+
+    // Step 2: Find staff by email
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      this.logger.warn(`Google login attempt for unregistered email: ${email}`);
+      throw new UnauthorizedException(
+        'Your Google account is not registered on this platform. Please contact your administrator.',
+      );
+    }
+
+    if (user.role === Role.PATIENT) {
+      throw new UnauthorizedException('Patients cannot use Google Sign-In for staff portal.');
+    }
+    if (user.role === Role.ADMIN) {
+      // Super admin uses password login; keep Google separate for security
+      throw new UnauthorizedException('Super admin must use password login.');
+    }
+
+    // Step 3: Reject disabled accounts
+    if (user.status === StaffStatus.DISABLED) {
+      this.logger.warn(`Disabled account Google login attempt: ${email}`);
+      throw new UnauthorizedException(
+        'Your account has been disabled. Please contact your administrator.',
+      );
+    }
+
+    const now = new Date();
+    const updateData: Record<string, unknown> = { lastLoginAt: now };
+
+    // Step 4 & 5: Handle PENDING activation or googleId verification
+    if (user.status === StaffStatus.PENDING) {
+      // First-ever login — activate the account
+      updateData.status = StaffStatus.ACTIVE;
+      updateData.activatedAt = now;
+      updateData.googleId = googleId;
+      updateData.authProvider = user.googleId ? 'multi' : 'google';
+      updateData.emailVerified = true;
+      this.logger.log(`Staff account activated via Google: ${email} (${user.role})`);
+    } else {
+      // Account is ACTIVE — verify or link googleId
+      if (!user.googleId) {
+        // First time using Google for an already-active account — link it
+        updateData.googleId = googleId;
+        updateData.authProvider = user.passwordHash ? 'multi' : 'google';
+        updateData.emailVerified = true;
+        this.logger.log(`Google account linked to existing staff: ${email}`);
+      } else if (user.googleId !== googleId) {
+        // googleId mismatch — someone else's Google account
+        this.logger.warn(`Google sub mismatch for ${email}: expected ${user.googleId}, got ${googleId}`);
+        throw new UnauthorizedException('Google account does not match the registered identity.');
+      }
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: updateData,
+    });
+
+    // Emit login event for analytics
+    void this.triggerLoginEvents(user);
+
+    return this.sign(user);
   }
 
   async registerReceptionist(dto: RegisterDto): Promise<AuthResult> {
@@ -262,7 +377,7 @@ export class AuthService {
     const newHash = await argon2.hash(dto.newPassword);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: newHash },
+      data: { passwordHash: newHash, passwordChangedAt: new Date() },
     });
     return { ok: true };
   }

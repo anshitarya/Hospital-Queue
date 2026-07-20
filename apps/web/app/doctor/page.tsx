@@ -194,6 +194,15 @@ export default function DoctorPage() {
     });
   }, [applyOptimistic, revertOptimistic]);
 
+  // Schedules and shift checking to conditionally disable Call Next button when outside hours
+  const [schedules, setSchedules] = useState<any[]>([]);
+  useEffect(() => {
+    if (!doctorId || !selectedLocationId) return;
+    api<any[]>(`/schedules/doctor/${doctorId}?locationId=${selectedLocationId}`)
+      .then(setSchedules)
+      .catch(() => setSchedules([]));
+  }, [doctorId, selectedLocationId]);
+
   // Derived state — must be before any early returns so hooks (useMemo) count stays constant.
   // Filter queue to selected branch when doctor works at multiple locations.
   const branchSnapshot = useMemo(() => {
@@ -218,9 +227,43 @@ export default function DoctorPage() {
   const breakActive = isPaused && breakUntil && breakUntil.getTime() > Date.now();
   const L = getLabels(branchSnapshot?.doctor?.clinic?.businessType);
 
+  // Check if current time falls within scheduled shift hours for active location (IST)
+  const isScheduled = useMemo(() => {
+    if (schedules.length === 0) return true; // Bypass validation if no schedule configured
+    
+    // Get current IST day of week (0-6) and minutes since midnight
+    const now = new Date();
+    const currentDow = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' });
+    const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dowNumber = weekdayMap[currentDow] ?? 0;
+
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now);
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+    const currentMinutes = hour * 60 + minute;
+
+    return schedules.some((s) => {
+      if (s.dayOfWeek !== dowNumber || s.isHoliday) return false;
+      const [sh, sm] = s.startTime.split(':').map(Number);
+      const [eh, em] = s.endTime.split(':').map(Number);
+      const startMinutes = sh * 60 + sm;
+      const endMinutes = eh * 60 + em;
+      return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    });
+  }, [schedules]);
+
   if (!ready) return <PageLoader label="Loading your panel…" />;
 
   const callNext = () => {
+    if (!isScheduled) {
+      setToast({ type: 'err', msg: 'Cannot call next patient outside of your scheduled shift hours.' });
+      return;
+    }
     callAction(
       () => api(`/queue/doctor/${doctorId}/call-next`, { method: 'POST' }),
       'Call next',
@@ -667,8 +710,9 @@ export default function DoctorPage() {
                       <button
                         type="button"
                         onClick={callNext}
-                        disabled={waiting.length === 0}
-                        className="btn-primary disabled:opacity-40 flex-1 sm:flex-none"
+                        disabled={waiting.length === 0 || !isScheduled}
+                        title={!isScheduled ? "Cannot call next patient outside of your scheduled shift hours for this location" : undefined}
+                        className={`btn-primary disabled:opacity-40 flex-1 sm:flex-none ${!isScheduled ? '!bg-slate-400 dark:!bg-slate-700 !text-slate-200 dark:!text-slate-400 !cursor-not-allowed' : ''}`}
                       >
                         Call next {L.customer.toLowerCase()}
                         {waiting.length > 0 && (
@@ -880,7 +924,7 @@ export default function DoctorPage() {
                     autoComplete="off"
                   />
                   <p className="text-[11px] text-slate-400 leading-relaxed">
-                    At least one of email or mobile is required.
+                    ID is required.
                   </p>
                   <button
                     type="submit"

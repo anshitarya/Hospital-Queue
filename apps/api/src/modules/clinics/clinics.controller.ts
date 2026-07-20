@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -667,4 +668,22 @@ export class ClinicsController {
   ) {
     return this.clinics.updateStaffEmail(clinicId, userId, email);
   }
+
+  /**
+   * Activate or disable a staff member.
+   * Super Admin only — this immediately blocks or unblocks login.
+   */
+  @Roles(Role.ADMIN)
+  @Patch(':id/staff/:userId/status')
+  updateStaffStatus(
+    @Param('id') clinicId: string,
+    @Param('userId') userId: string,
+    @Body('status') status: 'ACTIVE' | 'DISABLED',
+  ) {
+    if (!['ACTIVE', 'DISABLED'].includes(status)) {
+      throw new BadRequestException('status must be ACTIVE or DISABLED');
+    }
+    return this.clinics.updateStaffStatus(clinicId, userId, status);
+  }
 }
+

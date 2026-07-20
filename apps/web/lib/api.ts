@@ -111,7 +111,7 @@ export interface Department {
 export interface Doctor {
   id: string;
   userId: string;
-  user: { id: string; name: string; email?: string | null; phone?: string | null };
+  user: { id: string; name: string; email?: string | null; phone?: string | null; status?: 'PENDING' | 'ACTIVE' | 'DISABLED'; loginId?: string | null };
   departmentId: string;
   department?: { id: string; name: string };
   // The clinic the doctor belongs to. Populated by the queue snapshot /

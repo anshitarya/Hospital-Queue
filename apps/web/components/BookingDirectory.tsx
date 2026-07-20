@@ -239,7 +239,7 @@ export function BookingDirectory({
     }
 
     let futureCount = 0;
-    for (let dayOffset = 1; dayOffset <= 14 && futureCount < MAX_FUTURE; dayOffset++) {
+    for (let dayOffset = 1; dayOffset <= 60 && futureCount < MAX_FUTURE; dayOffset++) {
       const dateStr = addServiceDays(today, dayOffset);
       const dow = istDayOfWeekFromKey(dateStr);
       const dowShifts = doctorShifts

@@ -31,6 +31,8 @@ export default function AdminPage() {
     name: string;
     email: string | null;
     phone: string | null;
+    loginId?: string | null;
+    status?: 'PENDING' | 'ACTIVE' | 'DISABLED';
     createdAt: string;
   }
   const [clinicReceptionists, setClinicReceptionists] = useState<ReceptionistRow[]>([]);
@@ -461,17 +463,18 @@ export default function AdminPage() {
     name: string;
     email: string | null;
     phone: string | null;
+    loginId?: string | null;
     role: 'doctor' | 'receptionist' | 'clinic_admin' | 'manager';
   }) {
     if (!selectedClinic) return;
     const ok = window.confirm(
       `Reset password for ${opts.name}?\n\n` +
-      `Their current password will stop working immediately. You'll see the new ` +
-      `temporary password on screen — copy it before closing.`,
+      `Their current password will stop working immediately across all devices. You'll see the new ` +
+      `temporary password and Login ID on screen — copy it before closing.`,
     );
     if (!ok) return;
     try {
-      const result = await api<{ user: { id: string }; tempPassword: string }>(
+      const result = await api<{ user: { id: string; loginId?: string | null }; tempPassword: string }>(
         `/clinics/${selectedClinic.id}/staff/${opts.userId}/reset-password`,
         { method: 'POST' },
       );
@@ -480,6 +483,7 @@ export default function AdminPage() {
         name: opts.name,
         email: opts.email,
         phone: opts.phone,
+        loginId: result.user.loginId ?? opts.loginId ?? null,
         tempPassword: result.tempPassword,
         clinicName: selectedClinic.name,
       });
@@ -498,13 +502,6 @@ export default function AdminPage() {
   async function addReceptionist(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedClinic) return;
-    if (!recEmail && !recPhoneResult.ok) {
-      setToast({
-        type: 'err',
-        msg: 'Provide either an email or a valid mobile number for the receptionist.',
-      });
-      return;
-    }
     setRecBusy(true);
     try {
       const result = await api<{
@@ -529,6 +526,7 @@ export default function AdminPage() {
         name: result.user.name,
         email: result.user.email,
         phone: result.user.phone,
+        loginId: (result.user as any).loginId,
         tempPassword: result.tempPassword,
         clinicName: selectedClinic.name,
       });
@@ -551,17 +549,10 @@ export default function AdminPage() {
   async function addClinicAdmin(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedClinic) return;
-    if (!baEmail && !baPhoneResult.ok) {
-      setToast({
-        type: 'err',
-        msg: 'Provide either an email or a valid mobile number for the business admin.',
-      });
-      return;
-    }
     setBaBusy(true);
     try {
       const result = await api<{
-        user: { id: string; name: string; email: string | null; phone: string | null };
+        user: { id: string; name: string; email: string | null; phone: string | null; loginId: string | null };
         tempPassword: string;
       }>(`/clinics/${selectedClinic.id}/clinic-admins`, {
         method: 'POST',
@@ -581,6 +572,7 @@ export default function AdminPage() {
         name: result.user.name,
         email: result.user.email,
         phone: result.user.phone,
+        loginId: result.user.loginId,
         tempPassword: result.tempPassword,
         clinicName: selectedClinic.name,
       });
@@ -601,14 +593,10 @@ export default function AdminPage() {
   async function addManager(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedClinic) return;
-    if (!mgrEmail && !mgrPhoneResult.ok) {
-      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the branch manager.' });
-      return;
-    }
     setMgrBusy(true);
     try {
       const result = await api<{
-        user: { id: string; name: string; email: string | null; phone: string | null };
+        user: { id: string; name: string; email: string | null; phone: string | null; loginId: string | null };
         tempPassword: string;
       }>(`/clinics/${selectedClinic.id}/managers`, {
         method: 'POST',
@@ -627,6 +615,7 @@ export default function AdminPage() {
         name: result.user.name,
         email: result.user.email,
         phone: result.user.phone,
+        loginId: result.user.loginId,
         tempPassword: result.tempPassword,
         clinicName: selectedClinic.name,
       });
@@ -666,14 +655,6 @@ export default function AdminPage() {
   async function addDoctor(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedClinic) return;
-    if (!docEmail && !docPhoneResult.ok) {
-      setToast({
-        type: 'err',
-        msg: 'Provide either an email or a valid mobile number for the doctor.',
-      });
-      return;
-    }
-
     setDocBusy(true);
     try {
       let deptId = docDeptId;
@@ -715,6 +696,7 @@ export default function AdminPage() {
         name: result.doctor.user.name,
         email: result.doctor.user.email,
         phone: result.doctor.user.phone,
+        loginId: (result.doctor.user as any).loginId,
         tempPassword: result.tempPassword,
         clinicName: selectedClinic.name,
       });
@@ -840,6 +822,42 @@ export default function AdminPage() {
       setEditEmailBusy(false);
     }
   }
+
+  async function toggleStaffStatus(userId: string, currentStatus?: string) {
+    if (!selectedClinic) return;
+    const newStatus = currentStatus === 'DISABLED' ? 'ACTIVE' : 'DISABLED';
+    try {
+      await api(`/clinics/${selectedClinic.id}/staff/${userId}/status`, {
+        method: 'PATCH',
+        body: { status: newStatus },
+      });
+      setToast({ type: 'ok', msg: `Staff status changed to ${newStatus}.` });
+      await Promise.all([
+        loadClinicDoctors(selectedClinic.id),
+        loadClinicReceptionists(selectedClinic.id),
+        loadClinicAdmins(selectedClinic.id),
+        loadClinicManagers(selectedClinic.id),
+      ]);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update status' });
+    }
+  }
+
+  function renderStaffStatusBadge(status?: string) {
+    if (!status || status === 'ACTIVE' || status === 'PENDING') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20">
+          ● Active
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 ring-1 ring-rose-600/20">
+        🚫 Disabled
+      </span>
+    );
+  }
+
 
   async function createClinic(e: React.FormEvent) {
     e.preventDefault();
@@ -1325,10 +1343,7 @@ export default function AdminPage() {
                         New business admin
                       </h3>
                       <input className="input" placeholder="Full name" value={baName} onChange={(e) => setBaName(e.target.value)} required />
-                      <input className="input" type="email" placeholder="Email (for login)" value={baEmail} onChange={(e) => setBaEmail(e.target.value)} />
-                      <PhoneInput label={null} value={baPhone} onChange={(raw, result) => { setBaPhone(raw); setBaPhoneResult(result); }} autoComplete="off" />
-                      <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
-                      <button type="submit" className="btn-primary w-full" disabled={baBusy || (!baEmail && !baPhoneResult.ok)}>
+                      <button type="submit" className="btn-primary w-full" disabled={baBusy || !baName.trim()}>
                         {baBusy ? 'Adding…' : 'Add business admin'}
                       </button>
                     </form>
@@ -1350,9 +1365,13 @@ export default function AdminPage() {
                                   {a.phone && <span>{a.phone}</span>}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                {renderStaffStatusBadge(a.status)}
                                 <span className="text-xs text-slate-400 hidden sm:block">{formatDateIst(a.createdAt)}</span>
-                                <button type="button" onClick={() => resetPassword({ userId: a.id, name: a.name, email: a.email, phone: a.phone, role: 'clinic_admin' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                <button type="button" onClick={() => void toggleStaffStatus(a.id, a.status)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                  {a.status === 'DISABLED' ? 'Activate' : 'Disable'}
+                                </button>
+                                <button type="button" onClick={() => resetPassword({ userId: a.id, name: a.name, email: a.email, phone: a.phone, loginId: a.loginId, role: 'clinic_admin' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                   Reset pwd
                                 </button>
                                 <button type="button" onClick={() => handleDeleteClinicAdmin(a.id, a.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">
@@ -1391,10 +1410,7 @@ export default function AdminPage() {
                         New branch manager
                       </h3>
                       <input className="input" placeholder="Full name" value={mgrName} onChange={(e) => setMgrName(e.target.value)} required />
-                      <input className="input" type="email" placeholder="Email (for login)" value={mgrEmail} onChange={(e) => setMgrEmail(e.target.value)} />
-                      <PhoneInput label={null} value={mgrPhone} onChange={(raw, result) => { setMgrPhone(raw); setMgrPhoneResult(result); }} autoComplete="off" />
-                      <p className="text-[11px] text-slate-400">At least one of email / mobile is required. Assign branch from the business admin portal if needed.</p>
-                      <button type="submit" className="btn-primary w-full" disabled={mgrBusy || (!mgrEmail && !mgrPhoneResult.ok)}>
+                      <button type="submit" className="btn-primary w-full" disabled={mgrBusy || !mgrName.trim()}>
                         {mgrBusy ? 'Adding…' : 'Add branch manager'}
                       </button>
                     </form>
@@ -1433,8 +1449,12 @@ export default function AdminPage() {
                                   </>
                                 ) : (
                                   <>
+                                    {renderStaffStatusBadge(m.status)}
+                                    <button type="button" onClick={() => void toggleStaffStatus(m.id, m.status)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                      {m.status === 'DISABLED' ? 'Activate' : 'Disable'}
+                                    </button>
                                     <button type="button" onClick={() => startEditEmail(m.id, m.email)} className="btn-secondary !px-2.5 !py-1.5 text-xs">Edit email</button>
-                                    <button type="button" onClick={() => resetPassword({ userId: m.id, name: m.name, email: m.email, phone: m.phone, role: 'manager' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">Reset pwd</button>
+                                    <button type="button" onClick={() => resetPassword({ userId: m.id, name: m.name, email: m.email, phone: m.phone, loginId: m.loginId, role: 'manager' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">Reset pwd</button>
                                     <button type="button" onClick={() => handleDeleteManager(m.id, m.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">Remove</button>
                                   </>
                                 )}
@@ -1469,10 +1489,7 @@ export default function AdminPage() {
                           New {RL.staff.toLowerCase()}
                         </h3>
                         <input className="input" placeholder="Full name" value={recName} onChange={(e) => setRecName(e.target.value)} required />
-                        <input className="input" type="email" placeholder="Email (for login)" value={recEmail} onChange={(e) => setRecEmail(e.target.value)} />
-                        <PhoneInput label={null} value={recPhone} onChange={(raw, result) => { setRecPhone(raw); setRecPhoneResult(result); }} autoComplete="off" />
-                        <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
-                        <button type="submit" className="btn-primary w-full" disabled={recBusy || (!recEmail && !recPhoneResult.ok)}>
+                        <button type="submit" className="btn-primary w-full" disabled={recBusy || !recName.trim()}>
                           {recBusy ? 'Adding…' : `Add ${RL.staff.toLowerCase()}`}
                         </button>
                       </form>
@@ -1497,11 +1514,15 @@ export default function AdminPage() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                                    {renderStaffStatusBadge(r.status)}
                                     <span className="text-xs text-slate-400 hidden sm:block">{formatDateIst(r.createdAt)}</span>
+                                    <button type="button" onClick={() => void toggleStaffStatus(r.id, r.status)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                      {r.status === 'DISABLED' ? 'Activate' : 'Disable'}
+                                    </button>
                                     <button type="button" onClick={() => startEditEmail(r.id, r.email)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                       Edit email
                                     </button>
-                                    <button type="button" onClick={() => resetPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, role: 'receptionist' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                    <button type="button" onClick={() => resetPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, loginId: r.loginId, role: 'receptionist' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                       Reset pwd
                                     </button>
                                     <button type="button" onClick={() => handleDeleteReceptionist(r.id, r.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">
@@ -1557,9 +1578,6 @@ export default function AdminPage() {
                           New {SL.provider.toLowerCase()}
                         </h3>
                         <input className="input" placeholder="Full name" value={docName} onChange={(e) => setDocName(e.target.value)} required />
-                        <input className="input" type="email" placeholder="Email (for login)" value={docEmail} onChange={(e) => setDocEmail(e.target.value)} />
-                        <PhoneInput label={null} value={docPhone} onChange={(raw, result) => { setDocPhone(raw); setDocPhoneResult(result); }} autoComplete="off" />
-                        <p className="text-[11px] text-slate-400">At least one of email / mobile is required.</p>
                         <DepartmentPicker
                           options={departments}
                           value={docDeptId}
@@ -1574,7 +1592,7 @@ export default function AdminPage() {
                           <input className="input flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} max={120} value={docAvg} onChange={(e) => setDocAvg(Number(e.target.value))} required />
                           <span className="text-xs text-slate-400 shrink-0">{SL.perCustomer}</span>
                         </label>
-                        <button type="submit" className="btn-primary w-full" disabled={docBusy || (!docEmail && !docPhoneResult.ok)}>
+                        <button type="submit" className="btn-primary w-full" disabled={docBusy || !docName.trim() || !docDeptId}>
                           {docBusy ? 'Adding…' : `Add ${SL.provider.toLowerCase()}`}
                         </button>
                       </form>
@@ -1598,10 +1616,14 @@ export default function AdminPage() {
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                                    {renderStaffStatusBadge(d.user.status)}
+                                    <button type="button" onClick={() => void toggleStaffStatus(d.userId, d.user.status)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                      {d.user.status === 'DISABLED' ? 'Activate' : 'Disable'}
+                                    </button>
                                     <button type="button" onClick={() => startEditEmail(d.userId, d.user.email ?? null)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                       Edit email
                                     </button>
-                                    <button type="button" onClick={() => resetPassword({ userId: d.userId, name: d.user.name, email: d.user.email ?? null, phone: (d.user as { phone?: string | null }).phone ?? null, role: 'doctor' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
+                                    <button type="button" onClick={() => resetPassword({ userId: d.userId, name: d.user.name, email: d.user.email ?? null, phone: (d.user as { phone?: string | null }).phone ?? null, loginId: d.user.loginId, role: 'doctor' })} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                       Reset pwd
                                     </button>
                                     <button type="button" onClick={() => handleDeleteDoctor(d.id, d.user.name)} className="btn-secondary !px-2.5 !py-1.5 text-xs text-rose-600 hover:bg-rose-50 border-rose-200">

@@ -200,7 +200,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     }
 
     let futureCount = 0;
-    for (let dayOffset = 1; dayOffset <= 14 && futureCount < MAX_FUTURE; dayOffset++) {
+    for (let dayOffset = 1; dayOffset <= 60 && futureCount < MAX_FUTURE; dayOffset++) {
       const dateStr = addServiceDays(today, dayOffset);
       const dow = istDayOfWeekFromKey(dateStr);
       const isTomorrow = dayOffset === 1;
@@ -297,19 +297,32 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }, []);
   const avgDisplay = useMemo(() => resolveAvgMinutes(snapshot), [snapshot, avgTick]);
 
+  // Filter snapshot entries and missedEntries by selected locationId so only the active branch is visible
+  const filteredEntries = useMemo(() => {
+    if (!snapshot?.entries) return [];
+    if (!locationId) return snapshot.entries;
+    return snapshot.entries.filter((e) => !e.locationId || e.locationId === locationId);
+  }, [snapshot?.entries, locationId]);
+
+  const filteredMissedEntries = useMemo(() => {
+    if (!snapshot?.missedEntries) return [];
+    if (!locationId) return snapshot.missedEntries;
+    return snapshot.missedEntries.filter((e) => !e.locationId || e.locationId === locationId);
+  }, [snapshot?.missedEntries, locationId]);
+
   const callableWaitingCount = useMemo(() => {
     const now = Date.now();
     const today = serviceDay();
-    return (snapshot?.entries ?? []).filter((e) => {
+    return filteredEntries.filter((e) => {
       if (e.status !== 'WAITING') return false;
       if (!e.appointmentTime) return e.serviceDay <= today;
       return new Date(e.appointmentTime).getTime() <= now;
     }).length;
-  }, [snapshot?.entries]);
+  }, [filteredEntries]);
 
   const inConsultation = useMemo(
-    () => (snapshot?.entries ?? []).some((e) => e.status === 'IN_CONSULTATION'),
-    [snapshot?.entries],
+    () => filteredEntries.some((e) => e.status === 'IN_CONSULTATION'),
+    [filteredEntries],
   );
 
   const allDoctors = useMemo(
@@ -319,9 +332,9 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
   // 1-based position map for WAITING entries (server sort order)
   const orderMap = useMemo(() => {
-    const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
+    const waiting = filteredEntries.filter((e) => e.status === 'WAITING');
     return new Map(waiting.map((e, i) => [e.id, i + 1]));
-  }, [snapshot?.entries]);
+  }, [filteredEntries]);
 
   // ── Optimistic action helper ─────────────────────────────────────────────
   const callAction = useCallback((
@@ -351,7 +364,8 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     const capturedName  = name;
     const capturedWalkin = walkin;
     const capturedSlotType = slotType;
-    const idemKey = `${selectedDoctorId}:${e164}:${Date.now() >> 14}`;
+    // Generate a unique idempotency key using high-precision timestamp + random suffix to prevent stuck "Adding..." states
+    const idemKey = `${selectedDoctorId}:${e164}:${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const body = {
       doctorId: selectedDoctorId,
       patientName: capturedName,
@@ -1064,7 +1078,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
           {(() => {
             const sq       = queueSearch.toLowerCase().trim();
-            const entries  = snapshot?.entries ?? [];
+            const entries  = filteredEntries;
             const activeEntries = entries.filter(
               (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
             );
@@ -1211,7 +1225,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
       {/* Missed patients panel */}
       {(() => {
-        const allMissed     = snapshot?.missedEntries ?? [];
+        const allMissed     = filteredMissedEntries;
         if (allMissed.length === 0) return null;
         const mq            = missedSearch.toLowerCase().trim();
         const filteredMissed = mq

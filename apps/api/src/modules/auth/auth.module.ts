@@ -6,6 +6,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleAuthService } from './google-auth.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { BillingModule } from '../billing/billing.module';
 
@@ -23,7 +24,8 @@ import { BillingModule } from '../billing/billing.module';
     BillingModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, OtpService, JwtStrategy, RedisService],
+  providers: [AuthService, OtpService, JwtStrategy, RedisService, GoogleAuthService],
   exports: [AuthService, JwtStrategy, PassportModule, JwtModule],
 })
 export class AuthModule {}
+

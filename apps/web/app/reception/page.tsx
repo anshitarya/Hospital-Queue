@@ -37,12 +37,14 @@ interface StaffRow {
   name: string;
   email: string | null;
   phone: string | null;
+  loginId?: string | null;
   createdAt?: string;
   locations?: { locationId: string; location: { id: string; name: string } }[];
 }
 
 interface DashboardDoctor {
   id: string; userId: string; name: string; department: string;
+  loginId?: string | null;
   status: 'AVAILABLE' | 'PAUSED' | 'OFFLINE';
   waiting: number; inConsultation: number;
   completed: number; missed: number; skipped: number; cancelled: number;
@@ -53,6 +55,7 @@ interface BranchDoctorRef {
   id: string;
   userId: string;
   name: string;
+  loginId?: string | null;
   department: string;
   locationIds?: string[];
 }
@@ -292,16 +295,10 @@ export default function ReceptionPage() {
 
   // Add-receptionist form (business admin / clinic admin in staff tab)
   const [recName, setRecName] = useState('');
-  const [recEmail, setRecEmail] = useState('');
-  const [recPhone, setRecPhone] = useState('');
-  const [recPhoneResult, setRecPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [recBusy, setRecBusy] = useState(false);
 
   // Add branch manager form (business admin only)
   const [mgrName, setMgrName] = useState('');
-  const [mgrEmail, setMgrEmail] = useState('');
-  const [mgrPhone, setMgrPhone] = useState('');
-  const [mgrPhoneResult, setMgrPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [mgrBusy, setMgrBusy] = useState(false);
 
   const [editEmailUserId, setEditEmailUserId] = useState<string | null>(null);
@@ -338,11 +335,13 @@ export default function ReceptionPage() {
   }, [selectedLocationId, user?.clinicId]);
 
   const loadStaffLists = useCallback(async () => {
-    const qs = selectedLocationId ? `?locationId=${selectedLocationId}` : '';
+    // Managers are clinic-wide — don't filter by location so all managers created
+    // via the super-admin portal appear here regardless of the selected branch.
+    const recQs = selectedLocationId ? `?locationId=${selectedLocationId}` : '';
     try {
       const [mgrs, recs] = await Promise.all([
-        api<StaffRow[]>(`/clinics/my/managers${qs}`),
-        api<StaffRow[]>(`/clinics/my/receptionists${qs}`),
+        api<StaffRow[]>('/clinics/my/managers'),
+        api<StaffRow[]>(`/clinics/my/receptionists${recQs}`),
       ]);
       setManagers(mgrs);
       setReceptionists(recs);
@@ -455,14 +454,15 @@ export default function ReceptionPage() {
     name: string;
     email: string | null;
     phone: string | null;
+    loginId?: string | null;
     role: DoctorCredentials['role'];
   }) {
     const ok = window.confirm(
-      `Reset password for ${opts.name}?\n\nTheir current password will stop working immediately.`,
+      `Reset password for ${opts.name}?\n\nTheir current password will stop working immediately across all devices.`,
     );
     if (!ok) return;
     try {
-      const result = await api<{ user: { id: string }; tempPassword: string }>(
+      const result = await api<{ user: { id: string; loginId?: string | null }; tempPassword: string }>(
         `/clinics/my/staff/${opts.userId}/reset-password`,
         { method: 'POST' },
       );
@@ -471,6 +471,7 @@ export default function ReceptionPage() {
         name: opts.name,
         email: opts.email,
         phone: opts.phone,
+        loginId: result.user.loginId ?? opts.loginId ?? null,
         tempPassword: result.tempPassword,
       });
     } catch (err) {
@@ -644,12 +645,9 @@ export default function ReceptionPage() {
 
   async function addReceptionist(e: React.FormEvent) {
     e.preventDefault();
+    if (!recName.trim()) return;
     if ((data?.locations?.length ?? 0) > 1 && !selectedLocationId) {
       setToast({ type: 'err', msg: 'Select a branch before adding staff.' });
-      return;
-    }
-    if (!recEmail && !recPhoneResult.ok) {
-      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the receptionist.' });
       return;
     }
     setRecBusy(true);
@@ -658,24 +656,22 @@ export default function ReceptionPage() {
         ? `/clinics/my/receptionists?locationId=${selectedLocationId}`
         : '/clinics/my/receptionists';
       const result = await api<{
-        user: { id: string; name: string; email: string | null; phone: string | null };
+        user: { id: string; name: string; email: string | null; phone: string | null; loginId?: string | null };
         tempPassword: string;
       }>(recUrl, {
         method: 'POST',
         body: {
           name: recName,
-          email: recEmail || undefined,
-          phone: recPhoneResult.e164 || undefined,
           locationId: selectedLocationId || undefined,
         },
       });
-      setRecName(''); setRecEmail(''); setRecPhone('');
-      setRecPhoneResult({ ok: false });
+      setRecName('');
       setCreds({
         role: 'receptionist',
         name: result.user.name,
         email: result.user.email,
         phone: result.user.phone,
+        loginId: result.user.loginId ?? null,
         tempPassword: result.tempPassword,
       });
       await loadDashboard(true);
@@ -690,12 +686,9 @@ export default function ReceptionPage() {
 
   async function addManager(e: React.FormEvent) {
     e.preventDefault();
+    if (!mgrName.trim()) return;
     if ((data?.locations?.length ?? 0) > 1 && !selectedLocationId) {
       setToast({ type: 'err', msg: 'Select a branch before adding a manager.' });
-      return;
-    }
-    if (!mgrEmail && !mgrPhoneResult.ok) {
-      setToast({ type: 'err', msg: 'Provide either an email or a valid mobile number for the branch manager.' });
       return;
     }
     setMgrBusy(true);
@@ -704,24 +697,22 @@ export default function ReceptionPage() {
         ? `/clinics/my/managers?locationId=${selectedLocationId}`
         : '/clinics/my/managers';
       const result = await api<{
-        user: { id: string; name: string; email: string | null; phone: string | null };
+        user: { id: string; name: string; email: string | null; phone: string | null; loginId?: string | null };
         tempPassword: string;
       }>(mgrUrl, {
         method: 'POST',
         body: {
           name: mgrName,
-          email: mgrEmail || undefined,
-          phone: mgrPhoneResult.e164 || undefined,
           locationId: selectedLocationId || undefined,
         },
       });
-      setMgrName(''); setMgrEmail(''); setMgrPhone('');
-      setMgrPhoneResult({ ok: false });
+      setMgrName('');
       setCreds({
         role: 'manager',
         name: result.user.name,
         email: result.user.email,
         phone: result.user.phone,
+        loginId: result.user.loginId ?? null,
         tempPassword: result.tempPassword,
       });
       await loadDashboard(true);
@@ -1009,12 +1000,12 @@ export default function ReceptionPage() {
                   <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400 text-sm font-bold">+</span>
                   Add {L.staff.toLowerCase()}
                 </h2>
-                <form onSubmit={addReceptionist} className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-                  <input className="input sm:col-span-2" placeholder="Full name" value={recName} onChange={(e) => setRecName(e.target.value)} required />
-                  <input className="input" type="email" placeholder="Email (for login)" value={recEmail} onChange={(e) => setRecEmail(e.target.value)} />
-                  <PhoneInput label={null} value={recPhone} onChange={(raw, result) => { setRecPhone(raw); setRecPhoneResult(result); }} autoComplete="off" />
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 sm:col-span-2 -mt-1">At least one of email / mobile is required.</p>
-                  <button type="submit" className="btn-primary sm:col-span-2" disabled={recBusy || (!recEmail && !recPhoneResult.ok)}>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 max-w-xl">
+                  Enter their name — a unique Login ID and password will be generated automatically.
+                </p>
+                <form onSubmit={addReceptionist} className="flex gap-3 max-w-xl">
+                  <input className="input flex-1" placeholder="Full name" value={recName} onChange={(e) => setRecName(e.target.value)} required />
+                  <button type="submit" className="btn-primary" disabled={recBusy || !recName.trim()}>
                     {recBusy ? (
                       <span className="flex items-center gap-2">
                         <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
@@ -1036,16 +1027,14 @@ export default function ReceptionPage() {
                   Add branch manager
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 max-w-xl">
-                  Branch managers run day-to-day operations at the selected location — queue, staff, schedules, and settings. They cannot create new branches.
+                  Branch managers run day-to-day operations at the selected location. Enter their name — Login ID and password will be generated.
+                  {selectedLocationId && data?.locations?.find((l: { id: string }) => l.id === selectedLocationId) && (
+                    <> Assigned to <strong>{data.locations.find((l: { id: string }) => l.id === selectedLocationId)?.name}</strong>.</>
+                  )}
                 </p>
-                <form onSubmit={addManager} className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-                  <input className="input sm:col-span-2" placeholder="Full name" value={mgrName} onChange={(e) => setMgrName(e.target.value)} required />
-                  <input className="input" type="email" placeholder="Email (for login)" value={mgrEmail} onChange={(e) => setMgrEmail(e.target.value)} />
-                  <PhoneInput label={null} value={mgrPhone} onChange={(raw, result) => { setMgrPhone(raw); setMgrPhoneResult(result); }} autoComplete="off" />
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 sm:col-span-2 -mt-1">
-                    Assigned to {data?.locations?.find((l: { id: string }) => l.id === selectedLocationId)?.name ?? 'the selected branch'}.
-                  </p>
-                  <button type="submit" className="btn-primary sm:col-span-2" disabled={mgrBusy || (!mgrEmail && !mgrPhoneResult.ok)}>
+                <form onSubmit={addManager} className="flex gap-3 max-w-xl">
+                  <input className="input flex-1" placeholder="Full name" value={mgrName} onChange={(e) => setMgrName(e.target.value)} required />
+                  <button type="submit" className="btn-primary" disabled={mgrBusy || !mgrName.trim()}>
                     {mgrBusy ? 'Adding…' : 'Add branch manager'}
                   </button>
                 </form>
@@ -1091,7 +1080,7 @@ export default function ReceptionPage() {
                                 <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
                                   onClick={() => { setEditEmailUserId(m.id); setEditEmailValue(m.email ?? ''); }}>Edit email</button>
                                 <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
-                                  onClick={() => void resetStaffPassword({ userId: m.id, name: m.name, email: m.email, phone: m.phone, role: 'manager' })}>Reset pwd</button>
+                                  onClick={() => void resetStaffPassword({ userId: m.id, name: m.name, email: m.email, phone: m.phone, loginId: m.loginId, role: 'manager' })}>Reset pwd</button>
                                 <button type="button" className="btn-secondary !px-2 !py-1 text-xs text-rose-600 border-rose-200"
                                   onClick={() => void removeBranchManager(m.id, m.name)}>Remove</button>
                               </>
@@ -1144,7 +1133,7 @@ export default function ReceptionPage() {
                                 <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
                                   onClick={() => { setEditEmailUserId(r.id); setEditEmailValue(r.email ?? ''); }}>Edit email</button>
                                 <button type="button" className="btn-secondary !px-2 !py-1 text-xs"
-                                  onClick={() => void resetStaffPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, role: 'receptionist' })}>Reset pwd</button>
+                                  onClick={() => void resetStaffPassword({ userId: r.id, name: r.name, email: r.email, phone: r.phone, loginId: r.loginId, role: 'receptionist' })}>Reset pwd</button>
                                 <button type="button" className="btn-secondary !px-2 !py-1 text-xs text-rose-600 border-rose-200"
                                   onClick={() => void removeWorker(r.id, r.name)}>Remove</button>
                               </>
@@ -1346,7 +1335,7 @@ export default function ReceptionPage() {
                         {canManageStaff && (
                           <div className="flex flex-wrap gap-1.5 pt-1">
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1"
-                              onClick={() => void resetStaffPassword({ userId: doc.userId, name: doc.name, email: null, phone: null, role: 'doctor' })}>Reset pwd</button>
+                              onClick={() => void resetStaffPassword({ userId: doc.userId, name: doc.name, email: null, phone: null, loginId: doc.loginId, role: 'doctor' })}>Reset pwd</button>
                             <button
                               type="button"
                               className={`btn !px-2 !py-1 text-xs flex-1 font-bold ${isAssigned

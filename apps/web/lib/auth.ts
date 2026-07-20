@@ -1,12 +1,12 @@
 'use client';
 
 import { create } from 'zustand';
-import { api, AuthResult } from './api';
+import { api, ApiError, AuthResult } from './api';
 
 interface AuthState {
   user: AuthResult['user'] | null;
   loaded: boolean;
-  hydrate: () => void;
+  hydrate: () => Promise<void>;
   setSession: (r: AuthResult) => void;
   logout: () => Promise<void>;
 }
@@ -14,13 +14,42 @@ interface AuthState {
 export const useAuth = create<AuthState>((set) => ({
   user: null,
   loaded: false,
-  hydrate: () => {
+  hydrate: async () => {
     if (typeof window === 'undefined') return;
     const userRaw = window.localStorage.getItem('hq_user');
-    set({
-      user: userRaw ? JSON.parse(userRaw) : null,
-      loaded: true,
-    });
+    const token = window.localStorage.getItem('hq_token');
+
+    // Fast path: we have user data in localStorage — trust it and return immediately.
+    // The API will evict the session with a 401 on the next real request if the token
+    // is expired; api.ts clears localStorage when that happens.
+    if (userRaw) {
+      set({ user: JSON.parse(userRaw), loaded: true });
+      return;
+    }
+
+    // Slow path: no user in localStorage at all — try to restore session from the
+    // httpOnly cookie (happens after manual localStorage clear or cross-browser scenario).
+    // Only attempt this when there's also no token, to avoid an extra round-trip.
+    if (token) {
+      // Have a token but no user profile — shouldn't normally happen; just mark loaded
+      set({ loaded: true });
+      return;
+    }
+
+    try {
+      const me = await api<AuthResult['user']>('/auth/me');
+      // Server accepted the cookie — restore full session to localStorage
+      window.localStorage.setItem('hq_user', JSON.stringify(me));
+      set({ user: me, loaded: true });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        // Cookie is also expired/invalid — nothing to restore
+        set({ user: null, loaded: true });
+      } else {
+        // Network error or server down — nothing cached, show as logged out
+        set({ user: null, loaded: true });
+      }
+    }
   },
   setSession: (r: AuthResult) => {
     window.localStorage.setItem('hq_user', JSON.stringify(r.user));
@@ -40,6 +69,22 @@ export const useAuth = create<AuthState>((set) => ({
 
 export async function staffLogin(identifier: string, password: string) {
   return api<AuthResult>('/auth/staff/login', { method: 'POST', body: { identifier, password } });
+}
+
+/** Sign in via Google ID token. Backend verifies the token and issues our own session. */
+export async function staffGoogleLogin(idToken: string) {
+  return api<AuthResult>('/auth/staff/google', { method: 'POST', body: { idToken } });
+}
+
+export interface AuthStatus {
+  googleAuthEnabled: boolean;
+  devAuthEnabled: boolean;
+  authMode: 'development' | 'production';
+}
+
+/** Check which auth modes are enabled — used to conditionally show Google button vs password form. */
+export async function getAuthStatus(): Promise<AuthStatus> {
+  return api<AuthStatus>('/auth/staff/status');
 }
 
 export async function registerReceptionist(opts: {

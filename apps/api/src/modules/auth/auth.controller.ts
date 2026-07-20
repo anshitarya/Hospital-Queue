@@ -13,6 +13,7 @@ import { CustomerRegisterDto } from './dto/customer-register.dto';
 import { ChangePinDto } from './dto/change-pin.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
+import { FEATURES } from '../../common/features';
 
 class RequestEmailVerifyDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
@@ -25,6 +26,11 @@ class VerifyEmailDto {
   @Length(6, 6, { message: 'Verification code must be exactly 6 digits' })
   @Matches(/^\d{6}$/, { message: 'Verification code must be 6 digits' })
   code!: string;
+}
+
+class StaffGoogleLoginDto {
+  @IsString({ message: 'idToken must be a string' })
+  idToken!: string;
 }
 
 @Controller('auth')
@@ -54,6 +60,38 @@ export class AuthController {
     const result = await this.auth.staffLogin(dto.identifier, dto.password);
     this.setSessionCookie(res, result.token);
     return result;
+  }
+
+  /**
+   * Google OAuth login for staff.
+   * Accepts a Google ID token from the frontend (obtained via Google Sign-In),
+   * verifies it server-side, and issues our own JWT session cookie.
+   */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('staff/google')
+  async staffGoogleLogin(
+    @Body() dto: StaffGoogleLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.staffGoogleLogin(dto.idToken);
+    this.setSessionCookie(res, result.token);
+    return result;
+  }
+
+  /**
+   * Returns which auth modes are currently active.
+   * The frontend calls this on mount to conditionally render the Google button
+   * or the email/password form.
+   */
+  @Public()
+  @Get('staff/status')
+  authStatus() {
+    return {
+      googleAuthEnabled: FEATURES.ENABLE_GOOGLE_AUTH,
+      devAuthEnabled: FEATURES.ENABLE_DEV_AUTH_BYPASS,
+      authMode: FEATURES.AUTH_MODE,
+    };
   }
 
   @Public()
