@@ -90,7 +90,7 @@ export default function AdminPage() {
   // receptionist, reset passwords). "overview" is the read-only summary.
   // Persisted via `?tab=` so refresh / browser-back keep the user where they
   // were instead of bouncing them to the default.
-  const [tab, setTab] = useTabState<'overview' | 'manage' | 'requests'>('manage', ['overview', 'manage', 'requests']);
+  const [tab, setTab] = useTabState<'overview' | 'manage' | 'requests' | 'billing'>('manage', ['overview', 'manage', 'requests', 'billing']);
 
   const [signupRequests, setSignupRequests] = useState<BusinessSignupRequest[]>([]);
   const [pendingSignupCount, setPendingSignupCount] = useState(0);
@@ -98,6 +98,43 @@ export default function AdminPage() {
   const [requestFilter, setRequestFilter] = useState<SignupRequestStatus | 'ALL'>('PENDING');
 
   const [toast, setToast] = useState<ToastMessage | null>(null);
+
+  // Billing state variables
+  const [billingStats, setBillingStats] = useState<{ totals: { activeBusinesses: number; activePlans: number; totalOutstanding: number; monthlyRevenue: number; totalEvents30Days: number }; planDistribution: Record<string, number> } | null>(null);
+  const [billingBusinesses, setBillingBusinesses] = useState<any[]>([]);
+  const [billingPlans, setBillingPlans] = useState<any[]>([]);
+  const [loadingBilling, setLoadingBilling] = useState(false);
+
+  // Modals state
+  const [selectedBillingClinic, setSelectedBillingClinic] = useState<any | null>(null);
+  const [showPlanModal, setShowPlanModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showCreatePlanModal, setShowCreatePlanModal] = useState(false);
+  const [showInvoicesListModal, setShowInvoicesListModal] = useState(false);
+  const [invoicesListClinic, setInvoicesListClinic] = useState<any | null>(null);
+
+  // Plan management
+  const [targetPlanId, setTargetPlanId] = useState('');
+  const [customTokenPrice, setCustomTokenPrice] = useState('');
+
+  // Invoice management
+  const [invoiceStartDate, setInvoiceStartDate] = useState('');
+  const [invoiceEndDate, setInvoiceEndDate] = useState('');
+  const [invoiceDiscount, setInvoiceDiscount] = useState('0');
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+
+  // Create plan form
+  const [newPlanName, setNewPlanName] = useState('');
+  const [newPlanDescription, setNewPlanDescription] = useState('');
+  const [newPlanTokenPrice, setNewPlanTokenPrice] = useState('5');
+  const [newPlanFixedCost, setNewPlanFixedCost] = useState('0');
+  const [createPlanBusy, setCreatePlanBusy] = useState(false);
+  const [platformInvoices, setPlatformInvoices] = useState<any[]>([]);
+
+  // Filters
+  const [billingSearch, setBillingSearch] = useState('');
+  const [billingFilterPlan, setBillingFilterPlan] = useState('ALL');
+  const [billingFilterCycle, setBillingFilterCycle] = useState('ALL');
 
   // Inline edit state for clinics
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
@@ -110,6 +147,146 @@ export default function AdminPage() {
   const [editEmailUserId, setEditEmailUserId] = useState<string | null>(null);
   const [editEmailValue, setEditEmailValue] = useState('');
   const [editEmailBusy, setEditEmailBusy] = useState(false);
+
+  const loadBillingData = useCallback(async () => {
+    try {
+      setLoadingBilling(true);
+      const [statsData, businessesData, plansData, invoicesData] = await Promise.all([
+        api<any>('/billing/dashboard'),
+        api<any[]>('/billing/businesses'),
+        api<any[]>('/billing/plans'),
+        api<any[]>('/billing/invoices'),
+      ]);
+      setBillingStats(statsData);
+      setBillingBusinesses(businessesData);
+      setBillingPlans(plansData);
+      setPlatformInvoices(invoicesData);
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to load billing telemetry' });
+    } finally {
+      setLoadingBilling(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (ready && tab === 'billing') {
+      loadBillingData();
+    }
+  }, [ready, tab, loadBillingData]);
+
+  const handleAssignPlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBillingClinic) return;
+    try {
+      const customPricing = customTokenPrice.trim() ? { TOKEN_COMPLETED: parseFloat(customTokenPrice) } : undefined;
+      await api(`/billing/businesses/${selectedBillingClinic.id}/assign-plan`, {
+        method: 'POST',
+        body: { planId: targetPlanId, customPricing },
+      });
+      setToast({ type: 'ok', msg: `Billing plan updated for ${selectedBillingClinic.name}` });
+      setShowPlanModal(false);
+      setCustomTokenPrice('');
+      loadBillingData();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to assign plan' });
+    }
+  };
+
+  const handleGenerateInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBillingClinic || !invoiceStartDate || !invoiceEndDate) return;
+    try {
+      setInvoiceBusy(true);
+      const res = await api<any>(`/billing/businesses/${selectedBillingClinic.id}/generate-invoice`, {
+        method: 'POST',
+        body: {
+          startDate: new Date(invoiceStartDate).toISOString(),
+          endDate: new Date(invoiceEndDate).toISOString(),
+          discount: parseFloat(invoiceDiscount) || 0,
+        },
+      });
+      setToast({ type: 'ok', msg: `Invoice ${res.invoiceNumber} generated successfully!` });
+      setShowInvoiceModal(false);
+      loadBillingData();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to generate invoice' });
+    } finally {
+      setInvoiceBusy(false);
+    }
+  };
+
+  const handleCreatePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlanName.trim()) return;
+    try {
+      setCreatePlanBusy(true);
+      const rules = [
+        {
+          eventType: 'TOKEN_COMPLETED',
+          price: parseFloat(newPlanTokenPrice) || 0,
+          ruleType: 'PER_EVENT',
+        },
+      ];
+      const fixedCost = parseFloat(newPlanFixedCost);
+      if (fixedCost > 0) {
+        rules.push({
+          eventType: 'SYSTEM_ACCESS',
+          price: fixedCost,
+          ruleType: 'FLAT_RATE',
+        });
+      }
+
+      await api('/billing/plans', {
+        method: 'POST',
+        body: {
+          name: newPlanName,
+          description: newPlanDescription,
+          rules,
+        },
+      });
+      setToast({ type: 'ok', msg: `Billing plan "${newPlanName}" created successfully!` });
+      setNewPlanName('');
+      setNewPlanDescription('');
+      setNewPlanTokenPrice('5');
+      setNewPlanFixedCost('0');
+      setShowCreatePlanModal(false);
+      loadBillingData();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to create plan' });
+    } finally {
+      setCreatePlanBusy(false);
+    }
+  };
+
+  const handleDeletePlan = async (planId: string) => {
+    if (!confirm('Are you sure you want to delete this billing plan? This cannot be undone.')) {
+      return;
+    }
+    try {
+      await api(`/billing/plans/${planId}`, {
+        method: 'DELETE',
+      });
+      setToast({ type: 'ok', msg: 'Billing plan successfully deleted.' });
+      loadBillingData();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to delete plan' });
+    }
+  };
+
+  const handleVoidInvoice = async (invoiceId: string) => {
+    if (!confirm('Are you sure you want to delete (void) this unpaid invoice? This will reduce the clinic outstanding balance accordingly.')) {
+      return;
+    }
+    try {
+      await api(`/billing/invoices/${invoiceId}/void`, {
+        method: 'POST',
+      });
+      setToast({ type: 'ok', msg: 'Invoice successfully deleted / voided.' });
+      loadBillingData();
+    } catch (err) {
+      setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to void invoice' });
+    }
+  };
 
   const loadClinics = useCallback(async () => {
     try {
@@ -786,6 +963,13 @@ export default function AdminPage() {
           >
             Overview
           </button>
+          <button
+            type="button"
+            onClick={() => setTab('billing')}
+            className={'tab ' + (tab === 'billing' ? 'tab-active' : 'tab-inactive')}
+          >
+            Billing & Usage
+          </button>
         </div>
 
         {tab === 'requests' && (
@@ -1455,7 +1639,459 @@ export default function AdminPage() {
 
           </>
         )}
+
+        {tab === 'billing' && (
+          <>
+            {/* Billing Stats cards */}
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard
+                label="Monthly Revenue"
+                value={billingStats ? billingStats.totals.monthlyRevenue : undefined}
+                icon="💰"
+                accent="from-emerald-500 to-teal-600"
+              />
+              <StatCard
+                label="Outstanding Balance"
+                value={billingStats ? billingStats.totals.totalOutstanding : undefined}
+                icon="⌛"
+                accent="from-amber-500 to-orange-600"
+              />
+              <StatCard
+                label="Active Plans"
+                value={billingStats ? billingStats.totals.activePlans : undefined}
+                icon="📋"
+                accent="from-sky-500 to-sky-700"
+              />
+              <StatCard
+                label="Events (30d)"
+                value={billingStats ? billingStats.totals.totalEvents30Days : undefined}
+                icon="⚡"
+                accent="from-violet-500 to-purple-700"
+              />
+            </section>
+
+            {/* Billing Filter and Create Plan */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+              <div className="flex flex-wrap items-center gap-3">
+                <input
+                  type="text"
+                  placeholder="Search businesses..."
+                  className="input py-1.5 px-3 text-sm w-60"
+                  value={billingSearch}
+                  onChange={(e) => setBillingSearch(e.target.value)}
+                />
+                <select
+                  className="input py-1.5 px-3 text-sm w-44"
+                  value={billingFilterPlan}
+                  onChange={(e) => setBillingFilterPlan(e.target.value)}
+                >
+                  <option value="ALL">All Plans</option>
+                  {Array.from(new Set(billingBusinesses.map((b) => b.planName))).map((plan) => (
+                    <option key={plan} value={plan}>{plan}</option>
+                  ))}
+                </select>
+                <select
+                  className="input py-1.5 px-3 text-sm w-40"
+                  value={billingFilterCycle}
+                  onChange={(e) => setBillingFilterCycle(e.target.value)}
+                >
+                  <option value="ALL">All Cycles</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="ANNUALLY">Annually</option>
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreatePlanModal(true)}
+                className="btn-primary py-1.5 px-4 text-sm"
+              >
+                + Create Plan
+              </button>
+            </div>
+
+            {/* Businesses Billing Table */}
+            <section className="card overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <h2 className="section-title">Business Invoicing & Pricing</h2>
+                <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                  {billingBusinesses.length} Business(es)
+                </span>
+              </div>
+              
+              {loadingBilling ? (
+                <div className="py-12 text-center text-sm text-slate-450">Loading billing telemetry...</div>
+              ) : billingBusinesses.length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-400">No businesses found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100 bg-slate-50/55">
+                        <th className="px-5 py-2.5 font-medium">Business</th>
+                        <th className="px-5 py-2.5 font-medium">Plan / Price</th>
+                        <th className="px-5 py-2.5 font-medium">Cycle</th>
+                        <th className="px-5 py-2.5 font-medium text-center">Tokens (Completed)</th>
+                        <th className="px-5 py-2.5 font-medium text-center">Uninvoiced Cost</th>
+                        <th className="px-5 py-2.5 font-medium text-center">Outstanding Balance</th>
+                        <th className="px-5 py-2.5 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {billingBusinesses
+                        .filter((b) => {
+                          const matchesSearch = b.name.toLowerCase().includes(billingSearch.toLowerCase());
+                          const matchesPlan = billingFilterPlan === 'ALL' || b.planName === billingFilterPlan;
+                          const matchesCycle = billingFilterCycle === 'ALL' || b.billingCycle === billingFilterCycle;
+                          return matchesSearch && matchesPlan && matchesCycle;
+                        })
+                        .map((b, idx) => (
+                          <tr key={b.id} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50/40' : 'bg-slate-50/40 hover:bg-slate-50/60'}>
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setInvoicesListClinic(b);
+                                    setShowInvoicesListModal(true);
+                                  }}
+                                  className="text-slate-500 hover:text-brand-600 bg-slate-100 hover:bg-brand-50 h-7 w-7 rounded-lg flex items-center justify-center text-xs font-semibold border border-slate-200/60 transition-colors"
+                                  title="View Bills / Invoices"
+                                >
+                                  📄
+                                </button>
+                                <div>
+                                  <a href={`/admin/business/${b.id}`} className="font-semibold text-brand-600 hover:underline block">
+                                    {b.name}
+                                  </a>
+                                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                                    {b.locationCount} branch(es) · {b.professionalCount} provider(s)
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <span className="font-medium text-slate-800">{b.planName}</span>
+                              <span className="text-[10px] text-slate-500 block mt-0.5">₹{b.pricePerToken} per TOKEN_COMPLETED</span>
+                            </td>
+                            <td className="px-5 py-3.5 font-mono text-xs text-slate-600 uppercase">{b.billingCycle}</td>
+                            <td className="px-5 py-3.5 text-center font-mono tabular-nums text-slate-700">{b.tokenCompleted}</td>
+                            <td className="px-5 py-3.5 text-center font-mono tabular-nums text-slate-700 font-medium">₹{b.currentBill}</td>
+                            <td className="px-5 py-3.5 text-center font-mono tabular-nums font-semibold text-rose-600">₹{b.outstandingAmount}</td>
+                            <td className="px-5 py-3.5 text-right space-x-1.5 whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBillingClinic(b);
+                                  setTargetPlanId(billingPlans.find((p) => p.name === b.planName)?.id || '');
+                                  setShowPlanModal(true);
+                                }}
+                                className="btn-secondary !py-1 !px-2.5 text-xs"
+                              >
+                                Modify Plan
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedBillingClinic(b);
+                                  const end = new Date();
+                                  const start = new Date();
+                                  start.setDate(end.getDate() - 30);
+                                  setInvoiceStartDate(start.toISOString().slice(0, 10));
+                                  setInvoiceEndDate(end.toISOString().slice(0, 10));
+                                  setInvoiceDiscount('0');
+                                  setShowInvoiceModal(true);
+                                }}
+                                className="btn-primary !py-1 !px-2.5 text-xs"
+                              >
+                                Invoice
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            {/* Secondary billing panels */}
+            <div className="grid grid-cols-1 gap-6 mt-6">
+              {/* Card 1: Billing Plans Manager */}
+              <section className="card overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <h3 className="section-title">Billing Plans</h3>
+                </div>
+                {billingPlans.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-slate-400 italic">No plans created yet.</div>
+                ) : (
+                  <div className="divide-y divide-slate-100 max-h-[350px] overflow-y-auto">
+                    {billingPlans.map((plan) => {
+                      const tokenRule = plan.rules?.find((r: any) => r.eventType === 'TOKEN_COMPLETED');
+                      const flatRule = plan.rules?.find((r: any) => r.ruleType === 'FLAT_RATE');
+                      return (
+                        <div key={plan.id} className="p-4 flex items-center justify-between hover:bg-slate-50/50">
+                          <div className="min-w-0 pr-2">
+                            <span className="font-semibold text-slate-800 block text-xs truncate">{plan.name}</span>
+                            <span className="text-[10px] text-slate-400 block truncate" title={plan.description}>
+                              {plan.description || 'No description'}
+                            </span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              <span className="text-[9px] bg-slate-100 text-slate-600 px-1 py-0.5 rounded">
+                                ₹{tokenRule ? Number(tokenRule.price) : 0}/token
+                              </span>
+                              {flatRule && (
+                                <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1 py-0.5 rounded">
+                                  ₹{Number(flatRule.price)}/mo fixed
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePlan(plan.id)}
+                            className="text-xs text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-7 w-7 rounded-full flex items-center justify-center font-bold border border-transparent hover:border-rose-100"
+                            title="Delete Plan"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          </>
+        )}
       </main>
+
+      {/* Modal: Modify Plan */}
+      {showPlanModal && selectedBillingClinic && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-800">Assign Billing Plan — {selectedBillingClinic.name}</h3>
+              <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+            </div>
+            <form onSubmit={handleAssignPlan} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Select Pricing Plan</label>
+                <select
+                  className="input"
+                  value={targetPlanId}
+                  onChange={(e) => setTargetPlanId(e.target.value)}
+                  required
+                >
+                  <option value="">-- Choose Plan --</option>
+                  {billingPlans.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} ({p.billingCycle})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Custom Price override (Optional)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-slate-400">₹</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 4.50"
+                    className="input pl-7"
+                    value={customTokenPrice}
+                    onChange={(e) => setCustomTokenPrice(e.target.value)}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Leaves blank to use plan default price (₹5 per TOKEN_COMPLETED)</p>
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={() => setShowPlanModal(false)} className="btn-ghost">Cancel</button>
+                <button type="submit" className="btn-primary">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Generate Invoice */}
+      {showInvoiceModal && selectedBillingClinic && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-800">Generate Cycle Invoice</h3>
+              <button onClick={() => setShowInvoiceModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+            </div>
+            <form onSubmit={handleGenerateInvoice} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Start Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={invoiceStartDate}
+                    onChange={(e) => setInvoiceStartDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">End Date</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={invoiceEndDate}
+                    onChange={(e) => setInvoiceEndDate(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Flat Discount (₹)</label>
+                <input
+                  type="number"
+                  className="input"
+                  placeholder="e.g. 50"
+                  value={invoiceDiscount}
+                  onChange={(e) => setInvoiceDiscount(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={() => setShowInvoiceModal(false)} className="btn-ghost">Cancel</button>
+                <button type="submit" className="btn-primary" disabled={invoiceBusy}>
+                  {invoiceBusy ? 'Generating...' : 'Generate Invoice'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Modal: View Clinic Bills */}
+      {showInvoicesListModal && invoicesListClinic && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="font-bold text-slate-800">Invoices & Bills</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{invoicesListClinic.name}</p>
+              </div>
+              <button onClick={() => setShowInvoicesListModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+            </div>
+            <div className="p-6">
+              {platformInvoices.filter((inv) => inv.businessId === invoicesListClinic.id).length === 0 ? (
+                <div className="py-12 text-center text-sm text-slate-400 italic">No invoices generated for this clinic yet.</div>
+              ) : (
+                <div className="divide-y divide-slate-100 max-h-[350px] overflow-y-auto pr-2">
+                  {platformInvoices
+                    .filter((inv) => inv.businessId === invoicesListClinic.id)
+                    .map((inv) => (
+                      <div key={inv.id} className="py-3.5 flex items-center justify-between hover:bg-slate-50/30 text-xs">
+                        <div className="space-y-1">
+                          <span className="font-semibold text-slate-800 block">{inv.invoiceNumber}</span>
+                          <span className="text-[10px] text-slate-400 block">
+                            Period: {new Date(inv.startDate).toLocaleDateString()} — {new Date(inv.endDate).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-sm font-bold text-slate-700">₹{Number(inv.total)}</span>
+                          <span className={`pill text-[10px] uppercase font-bold ${
+                            inv.status === 'PAID' 
+                              ? 'bg-emerald-100 text-emerald-800 ring-emerald-200' 
+                              : inv.status === 'VOID'
+                              ? 'bg-slate-100 text-slate-500 ring-slate-200 line-through'
+                              : 'bg-rose-100 text-rose-800 ring-rose-200'
+                          }`}>
+                            {inv.status}
+                          </span>
+                          {inv.status === 'UNPAID' && (
+                            <button
+                              type="button"
+                              onClick={() => handleVoidInvoice(inv.id)}
+                              className="btn-secondary !py-1 !px-2.5 text-[10px] !text-rose-600 hover:!bg-rose-50"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+              <div className="flex justify-end pt-4 border-t border-slate-100 mt-4">
+                <button type="button" onClick={() => setShowInvoicesListModal(false)} className="btn-secondary">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Create Plan */}
+      {showCreatePlanModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="font-bold text-slate-800">Create New Billing Plan</h3>
+              <button onClick={() => setShowCreatePlanModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
+            </div>
+            <form onSubmit={handleCreatePlan} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Plan Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. Enterprise Plan"
+                  value={newPlanName}
+                  onChange={(e) => setNewPlanName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Description</label>
+                <textarea
+                  className="input h-20 resize-none"
+                  placeholder="Plan details..."
+                  value={newPlanDescription}
+                  onChange={(e) => setNewPlanDescription(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Price Per Completed Token (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  value={newPlanTokenPrice}
+                  onChange={(e) => setNewPlanTokenPrice(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Fixed Monthly Access Cost (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input"
+                  placeholder="e.g. 1000"
+                  value={newPlanFixedCost}
+                  onChange={(e) => setNewPlanFixedCost(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end pt-2">
+                <button type="button" onClick={() => setShowCreatePlanModal(false)} className="btn-ghost">Cancel</button>
+                <button type="submit" className="btn-primary" disabled={createPlanBusy}>
+                  {createPlanBusy ? 'Creating...' : 'Create Plan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <Toast message={toast} onDismiss={() => setToast(null)} />
 

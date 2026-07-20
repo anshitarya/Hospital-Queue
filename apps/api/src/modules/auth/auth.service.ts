@@ -17,6 +17,7 @@ import { OtpService } from './otp.service';
 import { RegisterDto } from './dto/register.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UsageEventService } from '../billing/usage-event.service';
 
 export interface AuthResult {
   token: string;
@@ -34,6 +35,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly config: ConfigService,
     private readonly redis: RedisService,
+    private readonly usageEvents: UsageEventService,
   ) {}
 
   async staffLogin(identifier: string, password: string): Promise<AuthResult> {
@@ -54,7 +56,9 @@ export class AuthService {
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
 
-    return this.sign(user);
+    const result = await this.sign(user);
+    void this.triggerLoginEvents(user);
+    return result;
   }
 
   async registerReceptionist(dto: RegisterDto): Promise<AuthResult> {
@@ -300,6 +304,14 @@ export class AuthService {
       },
     });
 
+    void this.usageEvents.triggerEvent('CUSTOMER_REGISTERED', {
+      businessId: 'PLATFORM',
+      locationId: 'PLATFORM',
+      customerId: user.id,
+      referenceId: `${user.id}_REGISTERED`,
+      metadata: { name: user.name, phone: user.phone },
+    });
+
     const authResult = await this.sign(user);
     return {
       ...authResult,
@@ -343,5 +355,40 @@ export class AuthService {
         clinicId: user.clinicId,
       },
     };
+  }
+
+  private async triggerLoginEvents(user: User) {
+    try {
+      if (user.role === Role.RECEPTIONIST) {
+        if (user.clinicId) {
+          const location = await this.prisma.location.findFirst({
+            where: { clinicId: user.clinicId, status: 'ACTIVE' },
+            select: { id: true },
+          });
+          const locationId = location?.id || 'SYSTEM';
+          void this.usageEvents.triggerEvent('RECEPTIONIST_LOGIN', {
+            businessId: user.clinicId,
+            locationId,
+            receptionistId: user.id,
+            metadata: { name: user.name, email: user.email, phone: user.phone },
+          });
+        }
+      } else if (user.role === Role.DOCTOR) {
+        const doctor = await this.prisma.doctor.findUnique({
+          where: { userId: user.id },
+          include: { locations: { select: { locationId: true } } },
+        });
+        if (doctor && doctor.clinicId) {
+          void this.usageEvents.triggerEvent('PROFESSIONAL_LOGIN', {
+            businessId: doctor.clinicId,
+            locationId: doctor.locations[0]?.locationId || 'SYSTEM',
+            professionalId: doctor.id,
+            metadata: { name: user.name, email: user.email, phone: user.phone },
+          });
+        }
+      }
+    } catch (e) {
+      // safe logger fallback
+    }
   }
 }

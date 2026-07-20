@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CustomerService } from '../patients/customer.service';
 import { CreateClinicDto } from './dto/create-clinic.dto';
+import { UsageEventService } from '../billing/usage-event.service';
 import { AddDoctorDto } from './dto/add-doctor.dto';
 import { defaultWeeklyShifts, normalizeShiftInput } from '../../common/utils/default-schedule';
 import { AddReceptionistDto } from './dto/add-receptionist.dto';
@@ -33,6 +34,7 @@ export class ClinicsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customers: CustomerService,
+    private readonly usageEvents: UsageEventService,
   ) {}
 
   // ── Admin ──────────────────────────────────────────────────────────────────
@@ -171,8 +173,63 @@ export class ClinicsService {
     }));
   }
 
-  create(dto: CreateClinicDto) {
-    return this.prisma.clinic.create({ data: dto });
+  async create(dto: CreateClinicDto) {
+    const clinic = await this.prisma.clinic.create({ data: dto });
+
+    // Automatically link business to default standard plan
+    try {
+      let plan = await this.prisma.billingPlan.findFirst({
+        where: { name: 'Standard Plan' },
+      });
+
+      if (!plan) {
+        plan = await this.prisma.billingPlan.create({
+          data: {
+            name: 'Standard Plan',
+            description: 'Standard per-completed token pricing plan',
+            billingCycle: 'MONTHLY',
+            status: 'ACTIVE',
+            rules: {
+              create: [
+                {
+                  eventType: 'TOKEN_COMPLETED',
+                  price: new Prisma.Decimal(5.00),
+                  ruleType: 'PER_EVENT',
+                },
+              ],
+            },
+          },
+        });
+      }
+
+      const now = new Date();
+      const end = new Date();
+      end.setMonth(now.getMonth() + 1);
+
+      await this.prisma.businessBilling.create({
+        data: {
+          businessId: clinic.id,
+          planId: plan.id,
+          billingCycleStart: now,
+          billingCycleEnd: end,
+          status: 'ACTIVE',
+          outstandingAmount: new Prisma.Decimal(0.00),
+        },
+      });
+
+      // Log BUSINESS_CREATED telemetry event
+      void this.usageEvents.triggerEvent('BUSINESS_CREATED', {
+        businessId: clinic.id,
+        locationId: 'SYSTEM',
+        referenceId: `${clinic.id}_CREATED`,
+        metadata: { name: clinic.name, businessType: clinic.businessType },
+      });
+    } catch (e) {
+      // Safe fallback: Log error but return created clinic
+      console.error('Failed to link default billing plan or log business creation event', e);
+    }
+
+    return clinic;
   }
 
   /**
@@ -1524,6 +1581,15 @@ export class ClinicsService {
         allowOnlineBooking: false,
       },
     });
+
+    // Log LOCATION_CREATED telemetry event
+    void this.usageEvents.triggerEvent('LOCATION_CREATED', {
+      businessId: clinicId,
+      locationId: loc.id,
+      referenceId: `${loc.id}_CREATED`,
+      metadata: { name: loc.name, city: loc.city, state: loc.state },
+    });
+
     return loc;
   }
 

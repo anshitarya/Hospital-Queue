@@ -22,6 +22,7 @@ import { LeaveManagementModule } from './modules/leave-management/leave-manageme
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
+import { BillingModule } from './modules/billing/billing.module';
 import configuration from './config/configuration';
 
 @Module({
@@ -45,6 +46,7 @@ import configuration from './config/configuration';
     AnalyticsModule,
     WorkflowModule,
     RatingsModule,
+    BillingModule,
   ],
   providers: [
     // Global request logger — runs around every HTTP handler.

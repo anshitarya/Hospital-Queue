@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { OtpService } from './otp.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RedisService } from '../../common/redis/redis.service';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { RedisService } from '../../common/redis/redis.service';
         signOptions: { expiresIn: c.get<string>('jwt.expiresIn') ?? '7d' },
       }),
     }),
+    BillingModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, OtpService, JwtStrategy, RedisService],

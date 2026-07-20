@@ -472,3 +472,130 @@ model WorkflowConfiguration {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model UsageEvent {
+  id              String      @id @default(cuid())
+  eventType       String      // e.g., TOKEN_CREATED, TOKEN_COMPLETED, etc.
+  businessId      String
+  locationId      String
+  professionalId  String?
+  receptionistId  String?
+  customerId      String?
+  appointmentId   String?
+  queueId         String?
+  visitId         String?
+  referenceId     String?     // For idempotency (e.g. entryId + eventType combo)
+  timestamp       DateTime    @default(now())
+  metadata        Json?
+  billingStatus   String      @default("UNPROCESSED") // UNPROCESSED, BILLED, NON_BILLABLE
+  createdAt       DateTime    @default(now())
+
+  @@unique([referenceId])
+  @@index([businessId])
+  @@index([eventType])
+  @@index([billingStatus])
+  @@index([timestamp])
+  @@index([businessId, timestamp])
+}
+
+model BillingPlan {
+  id              String            @id @default(cuid())
+  name            String
+  description     String?
+  billingCycle    String            @default("MONTHLY") // MONTHLY, ANNUALLY
+  status          String            @default("ACTIVE")  // ACTIVE, INACTIVE
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  
+  rules           BillingRule[]
+  businesses      BusinessBilling[]
+}
+
+model BillingRule {
+  id              String            @id @default(cuid())
+  planId          String
+  plan            BillingPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  eventType       String            // e.g. TOKEN_COMPLETED
+  price           Decimal           @db.Decimal(10, 2)
+  slabConfig      Json?             // Flexible configuration for tiering slabs
+  ruleType        String            @default("PER_EVENT") // PER_EVENT, FLAT_RATE, SUBSCRIPTION
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@unique([planId, eventType])
+}
+
+model BusinessBilling {
+  id                  String      @id @default(cuid())
+  businessId          String      @unique // Clinic.id
+  planId              String
+  plan                BillingPlan @relation(fields: [planId], references: [id])
+  customPricing       Json?       // EventType -> Price overrides (e.g. {"TOKEN_COMPLETED": 4.50})
+  billingCycleStart   DateTime?
+  billingCycleEnd     DateTime?
+  status              String      @default("ACTIVE") // ACTIVE, SUSPENDED
+  outstandingAmount   Decimal     @default(0.00) @db.Decimal(10, 2)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  invoiceNumber   String        @unique // INV-YYYYMM-XXXX
+  businessId      String
+  startDate       DateTime
+  endDate         DateTime
+  subtotal        Decimal       @db.Decimal(10, 2)
+  discount        Decimal       @default(0.00) @db.Decimal(10, 2)
+  tax             Decimal       @default(0.00) @db.Decimal(10, 2)
+  total           Decimal       @db.Decimal(10, 2)
+  status          String        @default("UNPAID") // UNPAID, PAID, VOID
+  generatedDate   DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  items           InvoiceItem[]
+  payments        Payment[]
+
+  @@index([businessId])
+  @@index([startDate, endDate])
+}
+
+model InvoiceItem {
+  id              String      @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  eventType       String
+  eventCount      Int
+  unitPrice       Decimal     @db.Decimal(10, 2)
+  totalPrice      Decimal     @db.Decimal(10, 2)
+  slabDetails     String?
+  createdAt       DateTime    @default(now())
+}
+
+model Payment {
+  id              String      @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount          Decimal     @db.Decimal(10, 2)
+  status          String      @default("COMPLETED") // COMPLETED, FAILED, REFUNDED
+  paymentMethod   String?
+  referenceId     String?
+  createdAt       DateTime    @default(now())
+}
+
+model UsageSummary {
+  id              String      @id @default(cuid())
+  businessId      String
+  locationId      String
+  professionalId  String      @default("SYSTEM")
+  date            DateTime    // YYYY-MM-DD
+  eventType       String
+  count           Int         @default(0)
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([businessId, locationId, professionalId, date, eventType])
+  @@index([businessId, date])
+  @@index([locationId, date])
+}
+

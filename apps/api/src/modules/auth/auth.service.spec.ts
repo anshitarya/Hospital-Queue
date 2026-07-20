@@ -26,7 +26,7 @@ function makeService() {
   const config = { get: jest.fn() } as unknown as ConfigService;
 
   return {
-    svc: new AuthService(prisma, jwt, otp, config, { client: { get: async () => null, set: async () => {}, del: async () => {} } } as any),
+    svc: new AuthService(prisma, jwt, otp, config, { client: { get: async () => null, set: async () => {}, del: async () => {} } } as any, { triggerEvent: jest.fn() } as any),
     findUnique,
   };
 }
@@ -138,7 +138,7 @@ describe('AuthService.loginCustomer', () => {
     const otp = { issue: jest.fn(), verify: jest.fn() } as unknown as OtpService;
     const config = { get: jest.fn() } as unknown as ConfigService;
     const redis = makeRedis();
-    const svc = new AuthService(prisma, jwt, otp, config, redis as any);
+    const svc = new AuthService(prisma, jwt, otp, config, redis as any, { triggerEvent: jest.fn() } as any);
     return { svc, findUnique, redis };
   }
 

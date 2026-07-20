@@ -17,6 +17,7 @@ import { QueueGateway } from './gateway/queue.gateway';
 import { clinicDefaults } from '../../config/clinic.config';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CustomerService, CUSTOMER_PUBLIC_SELECT } from '../patients/customer.service';
+import { UsageEventService } from '../billing/usage-event.service';
 import { FEATURES } from '../../common/features';
 import {
   effectivePosition,
@@ -118,6 +119,7 @@ export class QueueService {
     private readonly notifications: NotificationsService,
     private readonly customers: CustomerService,
     private readonly clinics: ClinicsService,
+    private readonly usageEvents: UsageEventService,
   ) {}
 
   // ---------- read paths ----------
@@ -581,7 +583,11 @@ export class QueueService {
     } else {
       serviceDay = todayKey();
     }
-    return this.prisma.$transaction(
+
+    let trackedClinicId = '';
+    let trackedLocationId = '';
+
+    const entry = await this.prisma.$transaction(
       async (tx) => {
         const doctor = await tx.doctor.findUnique({
           where: { id: input.doctorId },
@@ -599,6 +605,9 @@ export class QueueService {
             throw new BadRequestException('Professional is not assigned to the selected branch');
           }
         }
+
+        trackedClinicId = clinicId;
+        trackedLocationId = locationId;
 
         // Fetch settings or default
         let settings = await tx.businessSetting.findUnique({
@@ -741,6 +750,54 @@ export class QueueService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
     );
+
+    // Trigger usage tracking events asynchronously after successful transaction commit
+    if (entry && trackedClinicId && trackedLocationId) {
+      const isAppointment = entry.appointmentTime !== null;
+      
+      void this.usageEvents.triggerEvent('TOKEN_CREATED', {
+        businessId: trackedClinicId,
+        locationId: trackedLocationId,
+        professionalId: entry.doctorId,
+        receptionistId: entry.createdById || null,
+        customerId: entry.patientId,
+        appointmentId: isAppointment ? entry.id : null,
+        queueId: entry.doctorId,
+        visitId: entry.visitId || null,
+        referenceId: `${entry.id}_TOKEN_CREATED`,
+        metadata: { walkin: entry.walkin, slotType: entry.slotType, tokenNumber: entry.tokenNumber },
+      });
+
+      void this.usageEvents.triggerEvent('QUEUE_JOINED', {
+        businessId: trackedClinicId,
+        locationId: trackedLocationId,
+        professionalId: entry.doctorId,
+        receptionistId: entry.createdById || null,
+        customerId: entry.patientId,
+        appointmentId: isAppointment ? entry.id : null,
+        queueId: entry.doctorId,
+        visitId: entry.visitId || null,
+        referenceId: `${entry.id}_QUEUE_JOINED`,
+        metadata: { walkin: entry.walkin, tokenNumber: entry.tokenNumber },
+      });
+
+      if (isAppointment) {
+        void this.usageEvents.triggerEvent('APPOINTMENT_BOOKED', {
+          businessId: trackedClinicId,
+          locationId: trackedLocationId,
+          professionalId: entry.doctorId,
+          receptionistId: entry.createdById || null,
+          customerId: entry.patientId,
+          appointmentId: entry.id,
+          queueId: entry.doctorId,
+          visitId: entry.visitId || null,
+          referenceId: `${entry.id}_APPOINTMENT_BOOKED`,
+          metadata: { appointmentSlot: entry.appointmentSlot, appointmentTime: entry.appointmentTime },
+        });
+      }
+    }
+
+    return entry;
   }
 
   // ---------- transitions ----------
@@ -1133,6 +1190,36 @@ export class QueueService {
       entryId: result.newEntry.id,
       doctorId: dto.destinationDoctorId,
     });
+
+    // Trigger CUSTOMER_TRANSFERRED usage tracking event
+    try {
+      const location = await this.prisma.location.findUnique({
+        where: { id: result.currentEntry.locationId },
+        select: { clinicId: true },
+      });
+      const clinicId = location?.clinicId || '';
+      if (clinicId) {
+        void this.usageEvents.triggerEvent('CUSTOMER_TRANSFERRED', {
+          businessId: clinicId,
+          locationId: result.currentEntry.locationId,
+          professionalId: result.currentEntry.doctorId,
+          receptionistId: caller.id,
+          customerId: result.currentEntry.patientId,
+          appointmentId: result.currentEntry.appointmentTime ? result.currentEntry.id : null,
+          queueId: result.currentEntry.doctorId,
+          visitId: result.currentEntry.visitId || null,
+          referenceId: `${result.currentEntry.id}_TRANSFERRED_TO_${dto.destinationDoctorId}`,
+          metadata: {
+            fromDoctorId: result.currentEntry.doctorId,
+            toDoctorId: dto.destinationDoctorId,
+            transferReason: dto.transferReason,
+            newEntryId: result.newEntry.id,
+          },
+        });
+      }
+    } catch (e) {
+      this.logger.error('Failed to log transfer usage event', e);
+    }
 
     return result.newEntry;
   }
@@ -1640,6 +1727,81 @@ export class QueueService {
       from: entry.status,
       to: next,
     });
+
+    // Trigger usage tracking events asynchronously after transition
+    try {
+      const location = await this.prisma.location.findUnique({
+        where: { id: updated.locationId },
+        select: { clinicId: true },
+      });
+      const clinicId = location?.clinicId || '';
+      if (clinicId) {
+        const isAppointment = !updated.walkin;
+        const eventMeta = { from: entry.status, to: next, byUserId };
+
+        if (next === EntryStatus.COMPLETED) {
+          void this.usageEvents.triggerEvent('TOKEN_COMPLETED', {
+            businessId: clinicId,
+            locationId: updated.locationId,
+            professionalId: updated.doctorId,
+            receptionistId: byUserId || null,
+            customerId: updated.patientId,
+            appointmentId: isAppointment ? updated.id : null,
+            queueId: updated.doctorId,
+            visitId: updated.visitId || null,
+            referenceId: `${updated.id}_TOKEN_COMPLETED`,
+            metadata: eventMeta,
+          });
+        }
+
+        if (next === EntryStatus.COMPLETED || next === EntryStatus.CANCELLED || next === EntryStatus.MISSED) {
+          void this.usageEvents.triggerEvent('QUEUE_LEFT', {
+            businessId: clinicId,
+            locationId: updated.locationId,
+            professionalId: updated.doctorId,
+            receptionistId: byUserId || null,
+            customerId: updated.patientId,
+            appointmentId: isAppointment ? updated.id : null,
+            queueId: updated.doctorId,
+            visitId: updated.visitId || null,
+            referenceId: `${updated.id}_QUEUE_LEFT`,
+            metadata: eventMeta,
+          });
+        }
+
+        if (next === EntryStatus.CANCELLED && isAppointment) {
+          void this.usageEvents.triggerEvent('APPOINTMENT_CANCELLED', {
+            businessId: clinicId,
+            locationId: updated.locationId,
+            professionalId: updated.doctorId,
+            receptionistId: byUserId || null,
+            customerId: updated.patientId,
+            appointmentId: updated.id,
+            queueId: updated.doctorId,
+            visitId: updated.visitId || null,
+            referenceId: `${updated.id}_APPOINTMENT_CANCELLED`,
+            metadata: eventMeta,
+          });
+        }
+
+        if (next === EntryStatus.MISSED) {
+          void this.usageEvents.triggerEvent('NO_SHOW', {
+            businessId: clinicId,
+            locationId: updated.locationId,
+            professionalId: updated.doctorId,
+            receptionistId: byUserId || null,
+            customerId: updated.patientId,
+            appointmentId: isAppointment ? updated.id : null,
+            queueId: updated.doctorId,
+            visitId: updated.visitId || null,
+            referenceId: `${updated.id}_NO_SHOW`,
+            metadata: eventMeta,
+          });
+        }
+      }
+    } catch (e) {
+      this.logger.error('Failed to log transition usage events', e);
+    }
 
     return updated;
   }

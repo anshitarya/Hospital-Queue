@@ -14,7 +14,7 @@ function makeService() {
   } as unknown as PrismaService;
 
   return {
-    svc: new CustomerService(prisma),
+    svc: new CustomerService(prisma, { triggerEvent: jest.fn() } as any),
     findFirst,
     findUnique,
     create,

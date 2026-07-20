@@ -1,8 +1,22 @@
 import { Inject, Logger, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import * as cookie from 'cookie';
-const parseCookie = (cookie as any).parseCookie as (str: string) => Record<string, string>;
+function parseCookie(cookieHeader: string): Record<string, string> {
+  const list: Record<string, string> = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach((c) => {
+    const parts = c.split('=');
+    const name = parts.shift()?.trim();
+    if (name) {
+      try {
+        list[name] = decodeURIComponent(parts.join('='));
+      } catch {
+        list[name] = parts.join('=');
+      }
+    }
+  });
+  return list;
+}
 import {
   ConnectedSocket,
   MessageBody,

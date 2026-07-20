@@ -189,6 +189,99 @@ async function main() {
     cfg.doctors.forEach((d) => console.log(`      Doctor:    ${d.email} / password123`));
   }
 
+  // ── Seed default billing plans ───────────────────────────────────────────
+  console.log('Seeding default billing plans...');
+  const standardPlan = await prisma.billingPlan.upsert({
+    where: { id: 'plan-standard' },
+    update: { name: 'Standard Plan', description: 'Standard per-completed token pricing plan', billingCycle: 'MONTHLY', status: 'ACTIVE' },
+    create: {
+      id: 'plan-standard',
+      name: 'Standard Plan',
+      description: 'Standard per-completed token pricing plan',
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+    },
+  });
+
+  await prisma.billingRule.upsert({
+    where: { planId_eventType: { planId: standardPlan.id, eventType: 'TOKEN_COMPLETED' } },
+    update: { price: 5.00, ruleType: 'PER_EVENT' },
+    create: {
+      planId: standardPlan.id,
+      eventType: 'TOKEN_COMPLETED',
+      price: 5.00,
+      ruleType: 'PER_EVENT',
+    },
+  });
+
+  const growthPlan = await prisma.billingPlan.upsert({
+    where: { id: 'plan-growth' },
+    update: { name: 'Growth Plan', description: 'Growth plan with flat monthly rate and lower event fees', billingCycle: 'MONTHLY', status: 'ACTIVE' },
+    create: {
+      id: 'plan-growth',
+      name: 'Growth Plan',
+      description: 'Growth plan with flat monthly rate and lower event fees',
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+    },
+  });
+
+  await prisma.billingRule.upsert({
+    where: { planId_eventType: { planId: growthPlan.id, eventType: 'SYSTEM_ACCESS' } },
+    update: { price: 1000.00, ruleType: 'FLAT_RATE' },
+    create: {
+      planId: growthPlan.id,
+      eventType: 'SYSTEM_ACCESS',
+      price: 1000.00,
+      ruleType: 'FLAT_RATE',
+    },
+  });
+
+  await prisma.billingRule.upsert({
+    where: { planId_eventType: { planId: growthPlan.id, eventType: 'TOKEN_COMPLETED' } },
+    update: { price: 2.00, ruleType: 'PER_EVENT' },
+    create: {
+      planId: growthPlan.id,
+      eventType: 'TOKEN_COMPLETED',
+      price: 2.00,
+      ruleType: 'PER_EVENT',
+    },
+  });
+
+  const enterprisePlan = await prisma.billingPlan.upsert({
+    where: { id: 'plan-enterprise' },
+    update: { name: 'Enterprise Plan', description: 'Enterprise flat rate with lowest event fees', billingCycle: 'MONTHLY', status: 'ACTIVE' },
+    create: {
+      id: 'plan-enterprise',
+      name: 'Enterprise Plan',
+      description: 'Enterprise flat rate with lowest event fees',
+      billingCycle: 'MONTHLY',
+      status: 'ACTIVE',
+    },
+  });
+
+  await prisma.billingRule.upsert({
+    where: { planId_eventType: { planId: enterprisePlan.id, eventType: 'SYSTEM_ACCESS' } },
+    update: { price: 5000.00, ruleType: 'FLAT_RATE' },
+    create: {
+      planId: enterprisePlan.id,
+      eventType: 'SYSTEM_ACCESS',
+      price: 5000.00,
+      ruleType: 'FLAT_RATE',
+    },
+  });
+
+  await prisma.billingRule.upsert({
+    where: { planId_eventType: { planId: enterprisePlan.id, eventType: 'TOKEN_COMPLETED' } },
+    update: { price: 1.00, ruleType: 'PER_EVENT' },
+    create: {
+      planId: enterprisePlan.id,
+      eventType: 'TOKEN_COMPLETED',
+      price: 1.00,
+      ruleType: 'PER_EVENT',
+    },
+  });
+
   console.log('');
   console.log('Seed complete.');
   console.log(`  Departments: ${HOSPITAL_DEPARTMENTS.length} loaded`);
