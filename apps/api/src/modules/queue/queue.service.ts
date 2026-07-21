@@ -396,16 +396,22 @@ export class QueueService {
     return { locationId: enabled[0].locationId, settings: enabled[0] };
   }
 
-  /** Block self-booking when patient exceeded configured no-shows this IST month. */
+  /** Block self-booking when patient exceeded configured no-shows in the target appointment's month. */
   private async assertSelfBookingAllowed(
     patientId: string,
     doctorId: string,
     settings: { maxSelfBookingNoShowsPerMonth?: number } | null,
+    targetAppointmentTime?: string,
+    locationId?: string,
   ) {
     const limit = settings?.maxSelfBookingNoShowsPerMonth ?? 0;
     if (limit <= 0) return;
 
-    const monthKey = istMonthKey();
+    let monthKey = istMonthKey();
+    if (targetAppointmentTime && targetAppointmentTime.includes('-')) {
+      monthKey = targetAppointmentTime.slice(0, 7);
+    }
+
     const monthStart = new Date(`${monthKey}-01T00:00:00+05:30`);
     const monthEndAnchor = new Date(`${monthKey}-01T12:00:00+05:30`);
     monthEndAnchor.setMonth(monthEndAnchor.getMonth() + 1);
@@ -416,15 +422,15 @@ export class QueueService {
       where: {
         patientId,
         doctorId,
-        status: EntryStatus.MISSED,
-        createdById: null,
+        ...(locationId ? { locationId } : {}),
+        missedCount: { gte: 1 },
         completedAt: { gte: monthStart, lte: monthEnd },
       },
     });
 
     if (noShowCount >= limit) {
       throw new ForbiddenException(
-        `Self-booking with this professional is disabled after ${limit} no-show${limit === 1 ? '' : 's'} this month. Please contact the clinic.`,
+        `Self-booking with this professional at this location is disabled after ${limit} no-show${limit === 1 ? '' : 's'} in ${monthKey}. Please contact the clinic.`,
       );
     }
   }
@@ -444,33 +450,34 @@ export class QueueService {
         ? dto.appointmentTime.split('T')[0]
         : today;
 
-    // If the patient is in the MISSED panel for this service day, auto-rejoin.
-    const missedEntry = await this.prisma.queueEntry.findFirst({
-      where: { patientId: patient.id, doctorId: dto.doctorId, serviceDay: targetServiceDay, status: EntryStatus.MISSED },
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: dto.doctorId },
+      select: { locations: { select: { locationId: true } } },
     });
-    if (missedEntry) {
-      const rejoined = await this.rejoinQueue(missedEntry.id, caller);
-      if (dto.idempotencyKey) {
-        await this.redis.client.set(`idem:${dto.idempotencyKey}`, rejoined.id, 'EX', 600);
-      }
-      void this.broadcast(dto.doctorId, 'patient_joined', { entryId: rejoined.id });
-      return rejoined;
-    }
+    const locId = dto.locationId || doctor?.locations[0]?.locationId;
 
-    // Reject if patient already has an active entry for this doctor on the target service day.
-    const activeEntry = await this.prisma.queueEntry.findFirst({
+    // Reject if patient already has an active (or missed) entry for this doctor at this location.
+    const existingEntry = await this.prisma.queueEntry.findFirst({
       where: {
         patientId: patient.id,
         doctorId: dto.doctorId,
-        serviceDay: targetServiceDay,
-        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        ...(locId ? { locationId: locId } : {}),
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION, EntryStatus.MISSED] },
       },
+      orderBy: { joinedAt: 'desc' },
     });
-    if (activeEntry) {
+
+    if (existingEntry) {
+      if (existingEntry.status === EntryStatus.MISSED) {
+        const rejoined = await this.rejoinQueue(existingEntry.id, caller);
+        if (dto.idempotencyKey) {
+          await this.redis.client.set(`idem:${dto.idempotencyKey}`, rejoined.id, 'EX', 600);
+        }
+        void this.broadcast(dto.doctorId, 'patient_joined', { entryId: rejoined.id });
+        return rejoined;
+      }
       throw new ConflictException(
-        targetServiceDay === today
-          ? 'Patient is already in the queue for this doctor today'
-          : `Patient is already in the queue for this doctor on ${targetServiceDay}`,
+        `Patient (${dto.patientPhone}) already has an active entry in the queue for this professional at this branch.`,
       );
     }
 
@@ -516,18 +523,24 @@ export class QueueService {
       locationId,
     );
 
-    await this.assertSelfBookingAllowed(patientId, doctorId, settings);
+    await this.assertSelfBookingAllowed(patientId, doctorId, settings, appointmentTime);
 
     const activeEntry = await this.prisma.queueEntry.findFirst({
       where: {
         patientId,
         doctorId,
-        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        ...(bookingLocationId ? { locationId: bookingLocationId } : {}),
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION, EntryStatus.MISSED] },
       },
     });
     if (activeEntry) {
+      if (activeEntry.status === EntryStatus.MISSED) {
+        throw new ConflictException(
+          'You have a missed token with this professional. Please contact reception to rejoin or clear your status before booking.',
+        );
+      }
       throw new ConflictException(
-        'You already have an active booking with this professional. Cancel or complete it before booking again.',
+        'You already have an active booking with this professional at this branch.',
       );
     }
 
@@ -564,7 +577,7 @@ export class QueueService {
     notes?: string;
     walkin: boolean;
     slotType: SlotType;
-    sortOrder?: number;
+    sortOrder?: number | null;
     missedCount?: number;
     insertAtPosition?: number;
     visitId?: string;
@@ -637,6 +650,14 @@ export class QueueService {
 
         if (activeLeave && !input.fromWorkflow) {
           throw new BadRequestException('The professional is currently unavailable (on leave or break)');
+        }
+
+        // If the schedule is not saved for this doctor at this branch, don't allow adding patients
+        const shifts = await tx.professionalSchedule.findMany({
+          where: { doctorId: input.doctorId, locationId, isHoliday: false },
+        });
+        if (shifts.length === 0 && !input.fromWorkflow) {
+          throw new BadRequestException('Professional has no working schedule configured at this branch.');
         }
 
         // Slot allocation
@@ -802,8 +823,40 @@ export class QueueService {
 
   // ---------- transitions ----------
 
-  async callNext(doctorId: string, caller: AuthUser) {
+  async callNext(doctorId: string, caller: AuthUser, locationId?: string) {
     await this.clinics.assertCallerCanAccessDoctor(caller, doctorId);
+
+    // Resolve locationId if not provided (default to doctor's first location)
+    let resolvedLocationId = locationId;
+    if (!resolvedLocationId) {
+      const doctor = await this.prisma.doctor.findUnique({
+        where: { id: doctorId },
+        select: { locations: { select: { locationId: true } } },
+      });
+      resolvedLocationId = doctor?.locations[0]?.locationId;
+    }
+
+    if (resolvedLocationId) {
+      const now = new Date();
+      const shifts = await this.prisma.professionalSchedule.findMany({
+        where: { doctorId, locationId: resolvedLocationId, isHoliday: false },
+      });
+      if (shifts.length === 0) {
+        throw new BadRequestException('Professional has no working schedule configured at this branch.');
+      }
+      const checkDow = istDayOfWeek(now);
+      const checkMin = istMinutesOfDay(now);
+      const matches = shifts.some((s) => {
+        if (s.dayOfWeek !== checkDow) return false;
+        const startMin = parseHmToMinutes(s.startTime);
+        const endMin = parseHmToMinutes(s.endTime);
+        return checkMin >= startMin && checkMin <= endMin;
+      });
+      if (!matches) {
+        throw new BadRequestException('Cannot call next patient outside of scheduled shift hours.');
+      }
+    }
+
     const serviceDay = todayKey();
 
     // Fetch all three needed facts in parallel — skip missed/movingAvg (not needed here).
@@ -912,11 +965,54 @@ export class QueueService {
   /** Mark a patient as missed (called but didn't appear). Feature 2. */
   async markMissed(entryId: string, caller: AuthUser) {
     await this.verifyCallerCanAccessEntry(caller, entryId);
+    const entry = await this.prisma.queueEntry.findUnique({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Entry not found');
+    const today = todayKey();
+    if (entry.serviceDay > today) {
+      throw new BadRequestException('Cannot mark patients missed for future schedules.');
+    }
     await this.prisma.queueEntry.update({
       where: { id: entryId },
       data: { missedCount: { increment: 1 } },
     });
     return this.transition(entryId, EntryStatus.MISSED, caller.id, { completedAt: new Date() });
+  }
+
+  /** Remove a patient from the missed queue (confirmed no-show). */
+  async removeMissed(entryId: string, caller: AuthUser) {
+    await this.verifyCallerCanAccessEntry(caller, entryId);
+    const entry = await this.prisma.queueEntry.findUnique({ where: { id: entryId } });
+    if (!entry) throw new NotFoundException('Entry not found');
+    if (entry.status !== EntryStatus.MISSED) {
+      throw new BadRequestException('Only MISSED entries can be removed from missed queue');
+    }
+
+    const updated = await this.prisma.queueEntry.update({
+      where: { id: entryId },
+      data: {
+        status: EntryStatus.CANCELLED,
+        missedCount: entry.missedCount < 1 ? 1 : entry.missedCount,
+        completedAt: new Date(),
+        version: { increment: 1 },
+      },
+    });
+
+    void this.prisma.queueEvent.create({
+      data: {
+        doctorId: entry.doctorId,
+        entryId,
+        type: 'cancelled',
+        payload: { byUserId: caller.id, reason: 'removed_from_missed_noshow' },
+      },
+    }).catch(() => {});
+
+    void this.broadcast(entry.doctorId, 'queue_updated', { entryId });
+    this.gateway.emitToPatientRoom(entry.patientId, 'patient:queue:updated', {
+      eventType: 'cancelled',
+      entryId,
+      doctorId: entry.doctorId,
+    });
+    return updated;
   }
 
   /**
@@ -984,12 +1080,13 @@ export class QueueService {
       slotType: missed.slotType,
       sortOrder,
       missedCount: missed.missedCount,
+      locationId: locationId || undefined, // ← preserve original branch so rejoin stays in the same location
     });
 
-    // Remove the old MISSED entry from the panel by marking it CANCELLED.
+    // Remove the old MISSED entry from the panel by marking it CANCELLED (zeroing missedCount so attended visits aren't penalized).
     await this.prisma.queueEntry.update({
       where: { id: missedEntryId },
-      data: { status: EntryStatus.CANCELLED, completedAt: new Date() },
+      data: { status: EntryStatus.CANCELLED, missedCount: 0, completedAt: new Date() },
     });
 
     void this.broadcast(missed.doctorId, 'patient_rejoined', { entryId: entry.id, missedEntryId });
@@ -1037,6 +1134,10 @@ export class QueueService {
         throw new ForbiddenException('You do not have access to this patient entry');
       }
 
+      if (currentEntry.serviceDay > serviceDay) {
+        throw new BadRequestException('Cannot transfer patients in future schedules. Transfer is only allowed for the current ongoing schedule.');
+      }
+
       // 2. Ensure destination doctor exists and belongs to the same clinic
       const destinationDoctor = await tx.doctor.findUnique({
         where: { id: dto.destinationDoctorId },
@@ -1047,11 +1148,33 @@ export class QueueService {
         throw new BadRequestException('Destination doctor not found in this clinic');
       }
 
-      if (destinationDoctor.id === currentEntry.doctorId) {
-        throw new BadRequestException('Cannot transfer patient to the same doctor');
+      const locationId = currentEntry.locationId;
+
+      // Ensure destination doctor has an active working shift at current time at this location
+      const destShifts = await tx.professionalSchedule.findMany({
+        where: { doctorId: destinationDoctor.id, locationId, isHoliday: false },
+      });
+      if (destShifts.length === 0) {
+        throw new BadRequestException(
+          `Cannot transfer patient: ${destinationDoctor.user.name} has no working schedule configured at this branch.`,
+        );
       }
 
-      const locationId = currentEntry.locationId;
+      const now = new Date();
+      const checkDow = istDayOfWeek(now);
+      const checkMin = istMinutesOfDay(now);
+      const isShiftActiveNow = destShifts.some((s) => {
+        if (s.dayOfWeek !== checkDow) return false;
+        const startMin = parseHmToMinutes(s.startTime);
+        const endMin = parseHmToMinutes(s.endTime);
+        return checkMin >= startMin && checkMin <= endMin;
+      });
+
+      if (!isShiftActiveNow) {
+        throw new BadRequestException(
+          `Cannot transfer patient: ${destinationDoctor.user.name} is not on scheduled shift at this time.`,
+        );
+      }
 
       // 3. Find or create the active Visit for this patient today
       let visitId = currentEntry.visitId;
@@ -1285,6 +1408,9 @@ export class QueueService {
     if (entry.status !== EntryStatus.WAITING) {
       throw new BadRequestException('Can only move waiting entries');
     }
+    if (targetPosition < 1) {
+      throw new BadRequestException('Position number must be at least 1.');
+    }
 
     const today = todayKey();
     const peers = await this.prisma.queueEntry.findMany({
@@ -1302,6 +1428,17 @@ export class QueueService {
         appointmentSlot: true,
       },
     });
+
+    const dayWaitingPeers = peers.filter(
+      (e) => e.serviceDay === entry.serviceDay && e.status === EntryStatus.WAITING,
+    );
+    const maxAllowedPosition = dayWaitingPeers.length + 1; // Total waiting patients on that day
+
+    if (targetPosition > maxAllowedPosition) {
+      throw new BadRequestException(
+        `Position #${targetPosition} is invalid. Maximum position available in this schedule is #${maxAllowedPosition}.`,
+      );
+    }
 
     const move = computeManualMoveData(entry, peers, targetPosition);
 

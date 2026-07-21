@@ -125,9 +125,9 @@ export interface Doctor {
   // Break handling (Feature 4)
   breakUntil?: string | null;
   breakNote?: string | null;
-  // Follow-up slots / insertion gaps (Features 1, 2, 6)
-  followUpEvery?: number;
   walkinGap?: number;
+  followUpEvery?: number;
+  locations?: { locationId: string }[];
   missedGap?: number;
 }
 export interface QueueEntry {

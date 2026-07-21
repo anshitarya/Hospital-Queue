@@ -40,6 +40,9 @@ export function useRequireRole(allowed: Role[]) {
         user.role === 'PATIENT' ? '/patient' :
         user.role === 'DOCTOR' ? '/doctor' :
         user.role === 'ADMIN' ? '/admin' :
+        user.role === 'MANAGER' ? '/reception' :
+        user.role === 'CLINIC_ADMIN' ? '/reception' :
+        user.role === 'RECEPTIONIST' ? '/reception' :
         '/reception';
       router.replace(home);
     }
