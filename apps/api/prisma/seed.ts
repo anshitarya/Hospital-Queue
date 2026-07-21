@@ -1,7 +1,15 @@
 import { PrismaClient, Role, DoctorStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { HOSPITAL_DEPARTMENTS } from '../src/config/departments';
-import { SEED_CLINICS } from '../src/config/clinic.config';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const configDir = fs.existsSync(path.join(__dirname, '../src/config'))
+  ? path.join(__dirname, '../src/config')
+  : path.join(__dirname, '../dist/src/config');
+
+const { HOSPITAL_DEPARTMENTS } = require(path.join(configDir, 'departments'));
+const { SEED_CLINICS } = require(path.join(configDir, 'clinic.config'));
+
 
 const prisma = new PrismaClient();
 
@@ -186,7 +194,8 @@ async function main() {
 
     console.log(`  ✓ ${cfg.name} (${cfg.id})`);
     console.log(`      Reception: ${cfg.receptionist.email} / password123`);
-    cfg.doctors.forEach((d) => console.log(`      Doctor:    ${d.email} / password123`));
+    cfg.doctors.forEach((d: { email: string }) => console.log(`      Doctor:    ${d.email} / password123`));
+
   }
 
   // ── Seed default billing plans ───────────────────────────────────────────

@@ -30,8 +30,10 @@ RUN addgroup --system --gid 1001 appgroup \
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copy compiled app.
+# Copy compiled app and source (needed for ts-node seed script).
 COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+COPY --from=builder --chown=appuser:appgroup /app/src ./src
+
 
 # Copy node_modules (includes devDeps for ts-node + Prisma CLI needed by seed).
 # Trade-off: larger image; avoids cross-compiling native modules (argon2).
