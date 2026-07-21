@@ -708,25 +708,29 @@ export class QueueService {
 
         let visitId = input.visitId;
         if (!visitId) {
-          let visit = await tx.visit.findFirst({
-            where: {
-              locationId,
-              patientId: input.patientId,
-              serviceDay,
-              status: VisitStatus.ACTIVE,
-            },
-          });
-          if (!visit) {
-            visit = await tx.visit.create({
-              data: {
+          try {
+            let visit = await tx.visit.findFirst({
+              where: {
                 locationId,
                 patientId: input.patientId,
                 serviceDay,
                 status: VisitStatus.ACTIVE,
               },
             });
+            if (!visit) {
+              visit = await tx.visit.create({
+                data: {
+                  locationId,
+                  patientId: input.patientId,
+                  serviceDay,
+                  status: VisitStatus.ACTIVE,
+                },
+              });
+            }
+            visitId = visit.id;
+          } catch (visitErr) {
+            this.logger.warn(`Could not create/find Visit record: ${(visitErr as Error)?.message}`);
           }
-          visitId = visit.id;
         }
 
         const last = await tx.queueEntry.findFirst({

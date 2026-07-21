@@ -67,15 +67,15 @@ export function ProfileMenu() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-full pl-1 pr-3 py-1 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group"
+        className="flex items-center gap-1 sm:gap-2 rounded-full p-0.5 sm:pl-1 sm:pr-3 sm:py-1 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors group"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className={`h-8 w-8 rounded-full bg-gradient-to-br ${roleColor} text-white font-semibold text-sm flex items-center justify-center shadow-sm`}>
+        <span className={`h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-gradient-to-br ${roleColor} text-white font-semibold text-xs sm:text-sm flex items-center justify-center shadow-sm shrink-0`}>
           {initials}
         </span>
         <span className="hidden sm:block text-sm text-slate-700 font-medium">{user.name.split(' ')[0]}</span>
-        <Icon.ChevronDown className={'h-4 w-4 text-slate-400 transition-transform ' + (open ? 'rotate-180' : '')} />
+        <Icon.ChevronDown className={'hidden sm:block h-4 w-4 text-slate-400 transition-transform ' + (open ? 'rotate-180' : '')} />
       </button>
 
       {open && (

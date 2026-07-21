@@ -921,30 +921,30 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
       {/* ── Main Content Area ── */}
       <main className="flex-1 overflow-y-auto min-w-0">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0a0a0b]/90 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 px-4 sm:px-6 py-3 flex items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2 min-w-0">
+        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0a0a0b]/90 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden p-2 -ml-1 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 touch-target flex items-center justify-center"
+              className="md:hidden p-2 -ml-1 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 flex items-center justify-center z-20"
               aria-label="Open menu"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <div className="min-w-0">
-              <h1 className="text-sm sm:text-base font-semibold text-slate-800 dark:text-slate-100 tracking-tight truncate">{tabLabel[activeTab]}</h1>
-              <p className="text-[11px] sm:text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">{todayDate}</p>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xs sm:text-base font-semibold text-slate-800 dark:text-slate-100 tracking-tight truncate">{tabLabel[activeTab]}</h1>
+              <p className="hidden xs:block text-[10px] sm:text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">{todayDate}</p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {data?.locations && data.locations.length > 0 && (
               data.locations.length > 1 ? (
                 <select
                   value={selectedLocationId || ''}
                   onChange={(e) => selectLocation(e.target.value)}
-                  className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer max-w-[130px] sm:max-w-none truncate"
+                  className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer max-w-[95px] xs:max-w-[120px] sm:max-w-none truncate"
                 >
                   {data.locations.map((loc: any) => (
                     <option key={loc.id} value={loc.id}>
@@ -953,13 +953,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                   ))}
                 </select>
               ) : (
-                <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2 py-1.5 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750 truncate max-w-[110px] sm:max-w-none">
+                <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2 py-1 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750 truncate max-w-[90px] xs:max-w-[110px] sm:max-w-none">
                   {data.locations[0].name}
                 </span>
               )
             )}
             <button type="button" onClick={refresh} disabled={refreshing}
-              className={`btn-icon ${refreshing ? 'opacity-50' : ''}`} title="Refresh">
+              className={`btn-icon !p-1.5 ${refreshing ? 'opacity-50' : ''}`} title="Refresh">
               <RefreshIcon className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
             <DarkModeToggle />

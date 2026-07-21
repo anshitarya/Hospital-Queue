@@ -17,7 +17,7 @@ export function ReviewFormButton({ className = '', variant = 'light' }: { classN
       target="_blank"
       rel="noopener noreferrer"
       className={
-        'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ' +
+        'hidden sm:inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium ' +
         'ring-1 transition-colors shrink-0 ' +
         styles +
         ' ' +
