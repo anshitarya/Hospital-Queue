@@ -42,8 +42,6 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
           {actions}
-          <ReviewFormButton />
-          <DarkModeToggle />
           <ProfileMenu />
         </div>
       </div>
