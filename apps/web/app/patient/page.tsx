@@ -16,6 +16,7 @@ import { formatTimeIst, serviceDay, serviceDaysAgo, entryServiceDay, formatDateI
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
 import { Icon } from '@/components/Icons';
 import { BookingDirectory } from '@/components/BookingDirectory';
+import { FORMS } from '@/lib/config';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
@@ -1236,6 +1237,7 @@ function VisitRatingPanel({
   const [existing, setExisting] = useState<ProfessionalRating | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showGoogleModal, setShowGoogleModal] = useState<{ url: string; ratingNum: number; commentText: string } | null>(null);
 
   useEffect(() => {
     api<ProfessionalRating | null>(`/ratings/entry/${entryId}`)
@@ -1248,12 +1250,18 @@ function VisitRatingPanel({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api<ProfessionalRating>('/ratings', {
+      const res = await api<ProfessionalRating & { googleReviewUrl?: string | null }>('/ratings', {
         method: 'POST',
         body: { entryId, rating, comment: comment.trim() || undefined },
       });
       setExisting(res);
-      setTimeout(onDone, 2000);
+
+      const reviewUrl = res.googleReviewUrl || FORMS.reviewUrl;
+      if (rating >= 4 && reviewUrl) {
+        setShowGoogleModal({ url: reviewUrl, ratingNum: rating, commentText: comment.trim() });
+      } else {
+        setTimeout(onDone, 2000);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not submit rating');
     } finally {
@@ -1261,7 +1269,7 @@ function VisitRatingPanel({
     }
   }
 
-  if (existing) {
+  if (existing && !showGoogleModal) {
     return (
       <div className="mt-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 text-left animate-fade-in">
         <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Thank you for your rating!</div>
@@ -1273,48 +1281,100 @@ function VisitRatingPanel({
   }
 
   return (
-    <div className="mt-3 p-3 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-left animate-fade-in space-y-2">
-      <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-        Rate your consultation with {doctorName}
-      </p>
-      <div className="flex gap-1 justify-center" role="group" aria-label="Star rating">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => setRating(n)}
-            onMouseEnter={() => setHover(n)}
-            onMouseLeave={() => setHover(0)}
-            className="text-2xl transition-transform hover:scale-110 focus:outline-none"
-            aria-label={`${n} star${n !== 1 ? 's' : ''}`}
-          >
-            {(hover || rating) >= n ? '★' : '☆'}
+    <>
+      <div className="mt-3 p-3 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-left animate-fade-in space-y-2">
+        <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+          Rate your consultation with {doctorName}
+        </p>
+        <div className="flex gap-1 justify-center" role="group" aria-label="Star rating">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              onMouseEnter={() => setHover(n)}
+              onMouseLeave={() => setHover(0)}
+              className="text-2xl transition-transform hover:scale-110 focus:outline-none"
+              aria-label={`${n} star${n !== 1 ? 's' : ''}`}
+            >
+              {(hover || rating) >= n ? '★' : '☆'}
+            </button>
+          ))}
+        </div>
+        <textarea
+          className="w-full text-xs rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-2 placeholder:text-slate-400 text-slate-800 dark:text-slate-100 focus:outline-none"
+          rows={2}
+          placeholder="Any additional feedback..."
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          maxLength={500}
+        />
+        {error && <p className="text-[10px] text-rose-600">{error}</p>}
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onDone} className="text-[10px] text-slate-400 font-bold px-2 py-1">
+            Skip
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={rating < 1 || submitting}
+            className="rounded px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-bold disabled:opacity-50"
+          >
+            {submitting ? 'Sending…' : 'Send'}
+          </button>
+        </div>
       </div>
-      <textarea
-        className="w-full text-xs rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-2 placeholder:text-slate-400 text-slate-800 dark:text-slate-100 focus:outline-none"
-        rows={2}
-        placeholder="Any additional feedback..."
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        maxLength={500}
-      />
-      {error && <p className="text-[10px] text-rose-600">{error}</p>}
-      <div className="flex gap-2 justify-end">
-        <button type="button" onClick={onDone} className="text-[10px] text-slate-400 font-bold px-2 py-1">
-          Skip
-        </button>
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={rating < 1 || submitting}
-          className="rounded px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-bold disabled:opacity-50"
-        >
-          {submitting ? 'Sending…' : 'Send'}
-        </button>
-      </div>
-    </div>
+
+      {/* 4/5 Star Google Review Popup Modal */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="card max-w-sm w-full p-6 text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+            <div className="mx-auto h-12 w-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-2xl shadow-xs">
+              ⭐
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+                Thank you for the {showGoogleModal.ratingNum}-star review!
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                Would you mind sharing your feedback on Google as well? It helps other patients find us!
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <a
+                href={showGoogleModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  if (showGoogleModal.commentText) {
+                    navigator.clipboard?.writeText(showGoogleModal.commentText).catch(() => {});
+                  }
+                  setShowGoogleModal(null);
+                  onDone();
+                }}
+                className="btn bg-emerald-600 hover:bg-emerald-700 text-white w-full py-2.5 text-xs font-bold shadow-md flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.545,6.477,2.545,12s4.476,10,10,10c5.753,0,9.753-4.048,9.753-9.923c0-0.655-0.061-1.288-0.16-1.838H12.545z" />
+                </svg>
+                Post on Google Review
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGoogleModal(null);
+                  onDone();
+                }}
+                className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 w-full py-2 text-xs font-medium"
+              >
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

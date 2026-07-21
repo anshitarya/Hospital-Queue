@@ -85,6 +85,7 @@ model Location {
   postalCode            String
   contactNumber         String
   email                 String?
+  googleReviewUrl       String?
   timeZone              String                 @default("Asia/Kolkata")
   latitude              Float?
   longitude             Float?

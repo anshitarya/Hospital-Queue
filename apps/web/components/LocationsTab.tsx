@@ -15,6 +15,7 @@ interface LocationItem {
   postalCode: string;
   contactNumber: string;
   email: string | null;
+  googleReviewUrl?: string | null;
   timeZone?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -35,6 +36,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
   const [postalCode, setPostalCode] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [email, setEmail] = useState('');
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [status, setStatus] = useState('ACTIVE');
   const [submitting, setSubmitting] = useState(false);
 
@@ -63,6 +65,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setPostalCode('');
     setContactNumber('');
     setEmail('');
+    setGoogleReviewUrl('');
     setStatus('ACTIVE');
     setEditingLoc(null);
   };
@@ -77,13 +80,14 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setPostalCode(loc.postalCode);
     setContactNumber(loc.contactNumber);
     setEmail(loc.email ?? '');
+    setGoogleReviewUrl(loc.googleReviewUrl ?? '');
     setStatus(loc.status);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const body = { name, address, city, state, country, postalCode, contactNumber, email, status };
+    const body = { name, address, city, state, country, postalCode, contactNumber, email, googleReviewUrl, status };
     try {
       if (editingLoc) {
         await api(`/clinics/my/locations/${editingLoc.id}`, {
@@ -180,6 +184,10 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
               <input type="email" className="input mt-1 w-full py-1.5 text-xs" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="branch@clinic.local" required />
             </div>
             <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase">Google Review Link (Optional)</label>
+              <input type="url" className="input mt-1 w-full py-1.5 text-xs" value={googleReviewUrl} onChange={(e) => setGoogleReviewUrl(e.target.value)} placeholder="https://share.google/unmrc0wZcKNlLQLOj" />
+            </div>
+            <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Status</label>
               <select className="input mt-1 w-full py-1.5 text-xs cursor-pointer" value={status} onChange={(e) => setStatus(e.target.value)}>
                 <option value="ACTIVE">Active</option>
@@ -220,6 +228,14 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
                       <span>📞 {loc.contactNumber}</span>
                       <span>✉️ {loc.email}</span>
                     </div>
+                    {loc.googleReviewUrl && (
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <span>⭐ Google Review:</span>
+                        <a href={loc.googleReviewUrl} target="_blank" rel="noopener noreferrer" className="underline truncate max-w-[220px]">
+                          {loc.googleReviewUrl}
+                        </a>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => handleEdit(loc)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
