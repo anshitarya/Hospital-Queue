@@ -776,13 +776,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
 
       {/* ── Sidebar ── */}
-      <aside className="w-16 sm:w-60 flex-shrink-0 bg-slate-950 dark:bg-black flex flex-col border-r border-slate-800/60">
+      <aside className="w-16 sm:w-60 flex-shrink-0 bg-white dark:bg-slate-950 flex flex-col border-r border-slate-200/80 dark:border-slate-800/60">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-800/60">
-          <TurnosIcon className="w-8 h-8 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-200/80 dark:border-slate-800/60">
+          <TurnosIcon className="h-12 shrink-0" />
           <div className="hidden sm:block min-w-0">
-            <div className="font-semibold text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">
+            <div className="font-semibold text-slate-900 dark:text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
+            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
               {user?.role === 'CLINIC_ADMIN' ? 'Business Admin' : user?.role === 'MANAGER' ? 'Branch Manager' : user?.role === 'ADMIN' ? 'Admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Reception'}
             </div>
           </div>
@@ -793,17 +793,17 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
           {NAV.map(({ label, tab, icon: Icon }) => (
             <button key={tab} type="button" onClick={() => handleTabChange(tab)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === tab
-                ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
-                : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
+                ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-200/60 dark:bg-white/10 dark:text-white dark:ring-white/10'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/6 cursor-pointer'
                 }`}>
               <Icon className="w-4 h-4 shrink-0" />
               <span className="hidden sm:block">{label}</span>
-              {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
+              {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-500" />}
             </button>
           ))}
 
-          <div className="pt-2 mt-2 border-t border-slate-800/60 space-y-0.5">
-            <div className="px-3 py-1 text-[9px] font-semibold text-slate-500 uppercase tracking-wider hidden sm:block">Configuration</div>
+          <div className="pt-2 mt-2 border-t border-slate-200/80 dark:border-slate-800/60 space-y-0.5">
+            <div className="px-3 py-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider hidden sm:block">Configuration</div>
             {[
               { label: 'Settings', tab: 'settings', icon: GearIcon },
               ...(user?.role !== 'MANAGER' ? [{ label: 'Locations', tab: 'locations', icon: MapPinIcon }] : []),
@@ -814,25 +814,25 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
             ].map(({ label, tab, icon: Icon }) => (
               <button key={tab} type="button" onClick={() => handleTabChange(tab as Tab)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === tab
-                  ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/6 cursor-pointer'
+                  ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-200/60 dark:bg-white/10 dark:text-white dark:ring-white/10'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/6 cursor-pointer'
                   }`}>
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="hidden sm:block text-xs">{label}</span>
-                {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-400" />}
+                {activeTab === tab && <span className="hidden sm:block ml-auto w-1.5 h-1.5 rounded-full bg-brand-500" />}
               </button>
             ))}
           </div>
         </nav>
 
         {/* User footer */}
-        <div className="p-3 border-t border-slate-800/60">
-          <div className="hidden sm:flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors group">
+        <div className="p-3 border-t border-slate-200/80 dark:border-slate-800/60">
+          <div className="hidden sm:flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-white/5 transition-colors group">
             <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
               {(user?.name ?? 'U').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-slate-300 truncate">{user?.name ?? 'User'}</div>
+              <div className="text-xs font-medium text-slate-800 dark:text-slate-300 truncate">{user?.name ?? 'User'}</div>
               <div className="text-[10px] text-slate-500 truncate">{user?.email ?? user?.phone ?? ''}</div>
             </div>
           </div>

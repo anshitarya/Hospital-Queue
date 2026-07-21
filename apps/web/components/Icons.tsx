@@ -49,24 +49,32 @@ export const Icon = {
   ClipboardList: make(<><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01" /></>),
 };
 
-/** Turnos official logo image — rounded curved edges and seamless background integration. */
-export function TurnosIcon({ className = 'h-8' }: { className?: string }) {
+/**
+ * Turnos official dual-mode brand logo component.
+ * - Renders logo-light.png (1st image with dark text) in Light mode.
+ * - Renders logo-dark.png (2nd image with white text) in Dark mode.
+ * - Styled with smooth curved corners (rounded-2xl) and enlarged dimensions.
+ */
+export function TurnosIcon({ className = 'h-12 sm:h-14' }: { className?: string }) {
   return (
-    <img
-      src="/logo.png"
-      alt="Turnos Logo"
-      className={`object-contain rounded-xl mix-blend-multiply dark:mix-blend-normal dark:bg-white/95 dark:p-0.5 dark:ring-1 dark:ring-slate-700/50 ${className}`}
-    />
+    <div className={`relative inline-flex items-center shrink-0 rounded-2xl overflow-hidden ${className}`}>
+      {/* Light mode logo (1st image) */}
+      <img
+        src="/logo-light.png"
+        alt="Turnos Logo"
+        className="h-full w-auto object-contain dark:hidden rounded-2xl"
+      />
+      {/* Dark mode logo (2nd image) */}
+      <img
+        src="/logo-dark.png"
+        alt="Turnos Logo"
+        className="h-full w-auto object-contain hidden dark:block rounded-2xl"
+      />
+    </div>
   );
 }
 
-/** Turnos official full logo image with brand tagline. */
+/** Turnos official full logo image. */
 export function TurnosFullLogo({ className = 'h-12' }: { className?: string }) {
-  return (
-    <img
-      src="/logo.png"
-      alt="Turnos - Smart Queue. Better Care."
-      className={`object-contain ${className}`}
-    />
-  );
+  return <TurnosIcon className={className} />;
 }
