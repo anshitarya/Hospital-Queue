@@ -151,21 +151,23 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
   // ── Doctor shifts fetch effect ──
   useEffect(() => {
-    if (selectedDoctorId && locationId) {
-      api<any[]>(`/schedules/doctor/${selectedDoctorId}?locationId=${locationId}`)
-        .then((data) => {
-          const active = (data || []).filter((s) => !s.isHoliday);
-          setDoctorShifts(active);
-          setSelectedShiftTime('');
-        })
-        .catch(() => {
-          setDoctorShifts([]);
-          setSelectedShiftTime('');
-        });
-    } else {
+    if (!selectedDoctorId) {
       setDoctorShifts([]);
       setSelectedShiftTime('');
+      return;
     }
+    // Always fetch shifts; pass locationId when available for proper filtering
+    const qs = locationId ? `?locationId=${locationId}` : '';
+    api<any[]>(`/schedules/doctor/${selectedDoctorId}${qs}`)
+      .then((data) => {
+        const active = (data || []).filter((s) => !s.isHoliday);
+        setDoctorShifts(active);
+        setSelectedShiftTime('');
+      })
+      .catch(() => {
+        setDoctorShifts([]);
+        setSelectedShiftTime('');
+      });
   }, [selectedDoctorId, locationId]);
 
   // Upcoming shift blocks — always list every remaining shift today, then future days.
@@ -200,7 +202,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     }
 
     let futureCount = 0;
-    for (let dayOffset = 1; dayOffset <= 14 && futureCount < MAX_FUTURE; dayOffset++) {
+    for (let dayOffset = 1; dayOffset <= 60 && futureCount < MAX_FUTURE; dayOffset++) {
       const dateStr = addServiceDays(today, dayOffset);
       const dow = istDayOfWeekFromKey(dateStr);
       const isTomorrow = dayOffset === 1;
@@ -227,6 +229,36 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
       if (s.startTime && s.endTime) map.set(s.startTime, s.endTime);
     }
     return map;
+  }, [doctorShifts]);
+
+  // Check if current time falls within scheduled shift hours for active location (IST)
+  const isScheduled = useMemo(() => {
+    if (doctorShifts.length === 0) return false; // If no schedule configured, it is false (grey out / restrict)
+    
+    // Get current IST day of week (0-6) and minutes since midnight
+    const now = new Date();
+    const currentDow = now.toLocaleDateString('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' });
+    const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dowNumber = weekdayMap[currentDow] ?? 0;
+
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now);
+    const hour = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+    const minute = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+    const currentMinutes = hour * 60 + minute;
+
+    return doctorShifts.some((s) => {
+      if (s.dayOfWeek !== dowNumber || s.isHoliday) return false;
+      const [sh, sm] = s.startTime.split(':').map(Number);
+      const [eh, em] = s.endTime.split(':').map(Number);
+      const startMinutes = sh * 60 + sm;
+      const endMinutes = eh * 60 + em;
+      return currentMinutes >= startMinutes && currentMinutes <= endMinutes;
+    });
   }, [doctorShifts]);
 
   const entrySlotKey = useCallback((e: { appointmentSlot?: string | null; appointmentTime?: string | null }) => {
@@ -297,19 +329,39 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }, []);
   const avgDisplay = useMemo(() => resolveAvgMinutes(snapshot), [snapshot, avgTick]);
 
+  const filteredEntries = useMemo(() => {
+    if (!snapshot?.entries) return [];
+    if (!locationId) return snapshot.entries;
+    const defaultLocId = snapshot.doctor?.locations?.[0]?.locationId;
+    return snapshot.entries.filter((e) => 
+      e.locationId === locationId || 
+      (!e.locationId && locationId === defaultLocId)
+    );
+  }, [snapshot?.entries, locationId, snapshot?.doctor?.locations]);
+
+  const filteredMissedEntries = useMemo(() => {
+    if (!snapshot?.missedEntries) return [];
+    if (!locationId) return snapshot.missedEntries;
+    const defaultLocId = snapshot.doctor?.locations?.[0]?.locationId;
+    return snapshot.missedEntries.filter((e) => 
+      e.locationId === locationId || 
+      (!e.locationId && locationId === defaultLocId)
+    );
+  }, [snapshot?.missedEntries, locationId, snapshot?.doctor?.locations]);
+
   const callableWaitingCount = useMemo(() => {
     const now = Date.now();
     const today = serviceDay();
-    return (snapshot?.entries ?? []).filter((e) => {
+    return filteredEntries.filter((e) => {
       if (e.status !== 'WAITING') return false;
       if (!e.appointmentTime) return e.serviceDay <= today;
       return new Date(e.appointmentTime).getTime() <= now;
     }).length;
-  }, [snapshot?.entries]);
+  }, [filteredEntries]);
 
   const inConsultation = useMemo(
-    () => (snapshot?.entries ?? []).some((e) => e.status === 'IN_CONSULTATION'),
-    [snapshot?.entries],
+    () => filteredEntries.some((e) => e.status === 'IN_CONSULTATION'),
+    [filteredEntries],
   );
 
   const allDoctors = useMemo(
@@ -317,11 +369,20 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     [clinic],
   );
 
-  // 1-based position map for WAITING entries (server sort order)
+  // 1-based position map for WAITING entries, restarting at 1 for each schedule day block
   const orderMap = useMemo(() => {
-    const waiting = (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
-    return new Map(waiting.map((e, i) => [e.id, i + 1]));
-  }, [snapshot?.entries]);
+    const waiting = filteredEntries.filter((e) => e.status === 'WAITING');
+    const map = new Map<string, number>();
+    const countsPerDay = new Map<string, number>();
+    
+    for (const e of waiting) {
+      const key = e.serviceDay;
+      const currentCount = (countsPerDay.get(key) ?? 0) + 1;
+      countsPerDay.set(key, currentCount);
+      map.set(e.id, currentCount);
+    }
+    return map;
+  }, [filteredEntries]);
 
   // ── Optimistic action helper ─────────────────────────────────────────────
   const callAction = useCallback((
@@ -338,7 +399,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
       const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : String(err));
       setToast({ type: 'err', msg: `${label} failed: ${msg}` });
       revertOptimistic();
-      throw err;
     });
   }, [applyOptimistic, revertOptimistic]);
 
@@ -351,7 +411,8 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     const capturedName  = name;
     const capturedWalkin = walkin;
     const capturedSlotType = slotType;
-    const idemKey = `${selectedDoctorId}:${e164}:${Date.now() >> 14}`;
+    // Generate a unique idempotency key using high-precision timestamp + random suffix to prevent stuck "Adding..." states
+    const idemKey = `${selectedDoctorId}:${e164}:${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const body = {
       doctorId: selectedDoctorId,
       patientName: capturedName,
@@ -407,9 +468,13 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }
 
   // ── Doctor controls ──────────────────────────────────────────────────────
-  const callNext = () =>
+  const callNext = () => {
+    if (!isScheduled) {
+      setToast({ type: 'err', msg: 'Cannot call next patient outside of scheduled shift hours.' });
+      return;
+    }
     callAction(
-      () => api(`/queue/doctor/${selectedDoctorId}/call-next`, { method: 'POST' }),
+      () => api(`/queue/doctor/${selectedDoctorId}/call-next?locationId=${locationId || ''}`, { method: 'POST' }),
       'Call next',
       (s) => {
         const first = s.entries.find((e) => e.status === 'WAITING');
@@ -423,6 +488,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
         };
       },
     );
+  };
 
   const controlDoctor = (action: 'pause' | 'resume') =>
     callAction(
@@ -607,6 +673,24 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
         }
         return s;
       },
+    ).finally(() => {
+      setActionInFlight((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    });
+  }, [callAction]);
+
+  const removeMissedEntry = useCallback((id: string) => {
+    setActionInFlight((prev) => new Set(prev).add(id));
+    return callAction(
+      () => api(`/queue/entry/${id}/remove-missed`, { method: 'POST' }),
+      'Remove missed',
+      (s) => ({
+        ...s,
+        missedEntries: (s.missedEntries ?? []).filter((e) => e.id !== id),
+      }),
     ).finally(() => {
       setActionInFlight((prev) => {
         const next = new Set(prev);
@@ -963,13 +1047,15 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   <button
                     type="button"
                     onClick={callNext}
-                    disabled={!!doctorActionInFlight || callableWaitingCount === 0 || inConsultation}
+                    disabled={!!doctorActionInFlight || !isScheduled || callableWaitingCount === 0 || inConsultation}
                     title={
                       inConsultation
                         ? 'Finish the current consultation first'
-                        : callableWaitingCount === 0
-                          ? 'No patients due for their slot yet'
-                          : undefined
+                        : !isScheduled
+                          ? 'Cannot call next patient outside of scheduled shift hours'
+                          : callableWaitingCount === 0
+                            ? 'No patients due for their slot yet'
+                            : undefined
                     }
                     className="btn-primary flex-1 !py-2 text-xs min-w-[100px] disabled:opacity-50"
                   >
@@ -1064,7 +1150,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
           {(() => {
             const sq       = queueSearch.toLowerCase().trim();
-            const entries  = snapshot?.entries ?? [];
+            const entries  = filteredEntries;
             const activeEntries = entries.filter(
               (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
             );
@@ -1211,7 +1297,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
       {/* Missed patients panel */}
       {(() => {
-        const allMissed     = snapshot?.missedEntries ?? [];
+        const allMissed     = filteredMissedEntries;
         if (allMissed.length === 0) return null;
         const mq            = missedSearch.toLowerCase().trim();
         const filteredMissed = mq
@@ -1253,17 +1339,24 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                       {e.patient?.phone && <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{e.patient.phone}</div>}
                     </div>
                   </div>
-                  <button type="button" onClick={() => rejoinEntry(e.id)} disabled={actionInFlight.has(e.id)}
-                    className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50 dark:hover:bg-brand-950/30 shrink-0 disabled:opacity-50 flex items-center gap-1.5">
-                    {actionInFlight.has(e.id) ? (
-                      <>
-                        <Spinner className="h-3 w-3" />
-                        <span>Rejoining…</span>
-                      </>
-                    ) : (
-                      'Rejoin queue'
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => rejoinEntry(e.id)} disabled={actionInFlight.has(e.id)}
+                      className="btn-secondary !py-1.5 !px-3 text-xs text-brand-700 dark:text-brand-400 border-brand-200 dark:border-brand-800 hover:bg-brand-50 dark:hover:bg-brand-950/30 disabled:opacity-50 flex items-center gap-1.5">
+                      {actionInFlight.has(e.id) ? (
+                        <>
+                          <Spinner className="h-3 w-3" />
+                          <span>Rejoining…</span>
+                        </>
+                      ) : (
+                        'Rejoin queue'
+                      )}
+                    </button>
+                    <button type="button" onClick={() => removeMissedEntry(e.id)} disabled={actionInFlight.has(e.id)}
+                      className="btn-secondary !py-1.5 !px-3 text-xs text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-800/60 hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-50 flex items-center gap-1.5"
+                      title="Remove from missed list — mark confirmed no-show">
+                      Remove
+                    </button>
+                  </div>
                 </div>
               )) : (
                 <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
@@ -1502,22 +1595,28 @@ const QueueRow = memo(function QueueRow({
         )}
         {isWaiting && (
           <>
-            <button type="button" onClick={() => onMoveBack(entry.id)} disabled={actionInFlight}
-              className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50"
-              title="Move one position back in queue">
-              ↩ Back
-            </button>
-            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} disabled={actionInFlight}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50">
-              Transfer
-            </button>
+            {entry.serviceDay <= serviceDay() && (
+              <>
+                <button type="button" onClick={() => onMoveBack(entry.id)} disabled={actionInFlight}
+                  className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50"
+                  title="Move one position back in queue">
+                  ↩ Back
+                </button>
+                <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} disabled={actionInFlight}
+                  className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50">
+                  Transfer
+                </button>
+              </>
+            )}
             <button type="button" onClick={() => { setShowMove((v) => !v); setShowTransfer(false); }} disabled={actionInFlight}
               title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50">↕ Move</button>
             <button type="button" onClick={() => onEmergency(entry.id)} disabled={actionInFlight}
               title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs disabled:opacity-50">🚨</button>
-            <button type="button" onClick={() => onMiss(entry.id)} disabled={actionInFlight}
-              className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800 disabled:opacity-50"
-              title="Patient didn't appear — add to missed queue">Missed</button>
+            {entry.serviceDay <= serviceDay() && (
+              <button type="button" onClick={() => onMiss(entry.id)} disabled={actionInFlight}
+                className="btn-secondary !px-3 !py-1.5 text-xs text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 border-rose-200 dark:border-rose-800 disabled:opacity-50"
+                title="Patient didn't appear — add to missed queue">Missed</button>
+            )}
             <button type="button" onClick={() => onCancel(entry.id)} disabled={actionInFlight}
               className="btn-secondary !px-3 !py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
               title="Remove patient from queue">Cancel</button>

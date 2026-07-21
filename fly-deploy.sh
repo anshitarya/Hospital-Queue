@@ -17,7 +17,7 @@ PREFIX=${1:-""}
 API_APP="${PREFIX:+${PREFIX}-}hq-api"
 WEB_APP="${PREFIX:+${PREFIX}-}hq-web"
 DB_APP="${PREFIX:+${PREFIX}-}hq-db"
-REGION="bom"
+REGION="sin"
 
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 

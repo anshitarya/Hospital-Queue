@@ -42,7 +42,7 @@ export interface IdentifierInputProps {
 export function IdentifierInput({
   value,
   onChange,
-  label = 'Email or mobile',
+  label = 'ID',
   autoFocus,
   required,
 }: IdentifierInputProps) {
@@ -76,9 +76,11 @@ export function IdentifierInput({
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
+      {label && (
+        <label htmlFor={id} className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+          {label}
+        </label>
+      )}
 
       <div className="relative flex">
         {/* +91 badge — only visible in phone mode, uses absolute positioning
@@ -99,7 +101,7 @@ export function IdentifierInput({
           className={`input flex-1 ${mode === 'phone' ? '!rounded-l-none' : ''}`}
           type={mode === 'email' ? 'email' : 'text'}
           inputMode={mode === 'phone' ? 'numeric' : 'text'}
-          placeholder="you@clinic.com or 9876543210"
+          placeholder="Your-login-ID"
           autoComplete="username"
           value={value}
           onChange={handleChange}
@@ -121,7 +123,7 @@ export function IdentifierInput({
       )}
       {mode === 'neutral' && !value && (
         <p className="text-[11px] text-slate-400 mt-1">
-          Use your registered email or 10-digit Indian mobile number.
+          Use the ID provided to login
         </p>
       )}
     </div>

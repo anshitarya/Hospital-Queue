@@ -42,13 +42,18 @@ interface FakeEntry {
   completedAt: Date | null;
 }
 
-function entryMatchesWhere(e: FakeEntry, where: Record<string, unknown>): boolean {
+function entryMatchesWhere(e: FakeEntry, where: Record<string, any>): boolean {
   if (where.id && e.id !== where.id) return false;
   if (where.doctorId && e.doctorId !== where.doctorId) return false;
   if (where.patientId && e.patientId !== where.patientId) return false;
   if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
-  const status = where.status as { in?: EntryStatus[] } | undefined;
-  if (status?.in && !status.in.includes(e.status)) return false;
+  if (where.status) {
+    if (typeof where.status === 'object' && 'in' in where.status) {
+      if (!where.status.in.includes(e.status)) return false;
+    } else {
+      if (e.status !== where.status) return false;
+    }
+  }
   return true;
 }
 
@@ -84,13 +89,16 @@ function makeFakePrisma() {
     locations: [{ locationId: 'loc-1' }],
   };
 
-  return {
+  const fakePrisma: any = {
     doctor: {
       findUnique: jest.fn(async () => doctor),
       update: jest.fn(async ({ data }: { data: { status: DoctorStatus } }) => {
         doctor.status = data.status;
         return doctor;
       }),
+    },
+    professionalSchedule: {
+      findMany: jest.fn().mockResolvedValue([]),
     },
     user: {
       upsert: jest.fn(async ({ where, update, create }: any) => {
@@ -120,6 +128,9 @@ function makeFakePrisma() {
         })),
       ),
     },
+    location: {
+      findUnique: jest.fn(async () => ({ id: 'loc-1', clinicId: 'c-1' })),
+    },
     queueEntry: {
       count: jest.fn(async () => 0),
       findFirst: jest.fn(async ({ where, orderBy }: any) => {
@@ -133,20 +144,28 @@ function makeFakePrisma() {
         return list[0] ?? null;
       }),
       findUnique: jest.fn(async ({ where }: { where: { id: string } }) => {
-        // Return a COPY so the caller can hold a pre-update snapshot — production
-        // prisma returns a fresh object on every call, and the service relies
-        // on that to read the "from" status during a state transition.
         const e = entries.find((x) => x.id === where.id);
-        return e ? { ...e } : null;
+        if (!e) return null;
+        return {
+          ...e,
+          doctor: { id: e.doctorId || 'doc-1', clinicId: 'c-1' },
+          patient: users.get(e.patientId) || null,
+        };
       }),
       findMany: jest.fn(async ({ where }: any) => {
         return entries
-          .filter(
-            (e) =>
-              e.doctorId === where.doctorId &&
-              e.serviceDay === where.serviceDay &&
-              where.status.in.includes(e.status),
-          )
+          .filter((e) => {
+            if (where.doctorId && e.doctorId !== where.doctorId) return false;
+            if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
+            if (where.status) {
+              if (typeof where.status === 'object' && 'in' in where.status) {
+                if (!where.status.in.includes(e.status)) return false;
+              } else {
+                if (e.status !== where.status) return false;
+              }
+            }
+            return true;
+          })
           .map((e) => ({ ...e, patient: users.get(e.patientId) }));
       }),
       create: jest.fn(async ({ data }: any) => {
@@ -180,6 +199,19 @@ function makeFakePrisma() {
         if (data.completedAt) e.completedAt = data.completedAt;
         return { ...e, patient: users.get(e.patientId) };
       }),
+      updateMany: jest.fn(async ({ where, data }: any) => {
+        const matching = entries.filter((e) => {
+          if (where.id && e.id !== where.id) return false;
+          if (where.version && e.version !== where.version) return false;
+          return true;
+        });
+        matching.forEach((e) => {
+          if (data.status) e.status = data.status;
+          if (data.version?.increment) e.version += data.version.increment;
+          if (data.priority !== undefined) e.priority = data.priority;
+        });
+        return { count: matching.length };
+      }),
     },
     queueEvent: {
       create: jest.fn(async ({ data }: any) => {
@@ -187,48 +219,29 @@ function makeFakePrisma() {
         return data;
       }),
     },
+    staffLeave: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
+    visit: {
+      findFirst: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'visit-1', ...data })),
+    },
+    transferLog: {
+      create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'transfer-1', ...data })),
+    },
+    workflowConfiguration: {
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) => {
-      // Pass the same fake prisma in as tx — good enough for tests.
-      return fn({
-        queueEntry: {
-          findFirst: jest.fn(async ({ where, orderBy }: any) => {
-            const list = entries
-              .filter((e) => entryMatchesWhere(e, where))
-              .sort((a, b) =>
-                orderBy?.tokenNumber === 'desc'
-                  ? b.tokenNumber - a.tokenNumber
-                  : a.tokenNumber - b.tokenNumber,
-              );
-            return list[0] ?? null;
-          }),
-          create: async ({ data }: any) => {
-            const e: FakeEntry = {
-              id: `e-${entries.length + 1}`,
-              createdById: data.createdById ?? null,
-              notes: data.notes ?? null,
-              priority: data.priority ?? 0,
-              tokenNumber: data.tokenNumber,
-              serviceDay: data.serviceDay,
-              doctorId: data.doctorId,
-              patientId: data.patientId,
-              status: data.status,
-              version: 1,
-              joinedAt: new Date(),
-              calledAt: null,
-              startedAt: null,
-              completedAt: null,
-            };
-            entries.push(e);
-            return { ...e, patient: users.get(e.patientId) };
-          },
-        },
-      });
+      return fn(fakePrisma);
     }),
     _entries: entries,
     _users: users,
     _events: events,
     _doctor: doctor,
   };
+
+  return fakePrisma;
 }
 
 function makeFakeRedis() {
@@ -293,6 +306,7 @@ function makeService() {
     notifications,
     customers,
     clinics,
+    { triggerEvent: jest.fn() } as any,
   );
   return { svc, prisma, gateway, redis };
 }
@@ -309,6 +323,9 @@ describe('QueueService — reception join → patient sync', () => {
       },
       staffUser('recp-1'),
     );
+
+    // Allow background promises to resolve
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(entry.tokenNumber).toBe(1);
     expect(prisma._entries).toHaveLength(1);
@@ -342,7 +359,7 @@ describe('QueueService — reception join → patient sync', () => {
       staffUser('recp-1'),
     );
     await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'Alice K', patientPhone: '+919876543210' },
+      { doctorId: 'doc-2', patientName: 'Alice K', patientPhone: '+919876543210' },
       staffUser('recp-1'),
     );
 
@@ -565,6 +582,8 @@ describe('QueueService — pause / resume', () => {
   it('pauseDoctor sets status PAUSED and broadcasts to doctor room', async () => {
     const { svc, prisma, gateway } = makeService();
     await svc.pauseDoctor('doc-1', staffUser('r-1'));
+    // Allow background promises to resolve
+    await new Promise((resolve) => setTimeout(resolve, 10));
     expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
     expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
       'doc-1',

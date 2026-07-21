@@ -111,7 +111,7 @@ export interface Department {
 export interface Doctor {
   id: string;
   userId: string;
-  user: { id: string; name: string; email?: string | null; phone?: string | null };
+  user: { id: string; name: string; email?: string | null; phone?: string | null; status?: 'PENDING' | 'ACTIVE' | 'DISABLED'; loginId?: string | null };
   departmentId: string;
   department?: { id: string; name: string };
   // The clinic the doctor belongs to. Populated by the queue snapshot /
@@ -125,9 +125,9 @@ export interface Doctor {
   // Break handling (Feature 4)
   breakUntil?: string | null;
   breakNote?: string | null;
-  // Follow-up slots / insertion gaps (Features 1, 2, 6)
-  followUpEvery?: number;
   walkinGap?: number;
+  followUpEvery?: number;
+  locations?: { locationId: string }[];
   missedGap?: number;
 }
 export interface QueueEntry {

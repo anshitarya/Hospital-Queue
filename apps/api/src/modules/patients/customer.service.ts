@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { Role, User } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { UsageEventService } from '../billing/usage-event.service';
 
 const PIN_MIN = 1000;
 const PIN_MAX = 9999;
@@ -16,7 +17,10 @@ export const CUSTOMER_PUBLIC_SELECT = {
 
 @Injectable()
 export class CustomerService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly usageEvents: UsageEventService,
+  ) {}
 
   /**
    * Generate a unique 4-digit Customer PIN (1000–9999).
@@ -58,7 +62,7 @@ export class CustomerService {
     }
 
     const customerPin = await this.generateUniquePin();
-    return this.prisma.user.create({
+    const user = await this.prisma.user.create({
       data: {
         role: Role.PATIENT,
         name,
@@ -67,6 +71,16 @@ export class CustomerService {
         phoneVerified: true,
       },
     });
+
+    void this.usageEvents.triggerEvent('CUSTOMER_REGISTERED', {
+      businessId: 'PLATFORM',
+      locationId: 'PLATFORM',
+      customerId: user.id,
+      referenceId: `${user.id}_REGISTERED`,
+      metadata: { name: user.name, phone: user.phone },
+    });
+
+    return user;
   }
 
   /** Backfill a PIN for legacy customers that somehow lack one (should not happen post-migration). */

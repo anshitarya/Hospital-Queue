@@ -164,9 +164,11 @@ function makeService() {
       professionalSchedule: prisma.professionalSchedule,
     }),
   );
-  return { svc: new ClinicsService(prisma as unknown as PrismaService, {
-    ensurePin: jest.fn(async (u: { id: string }) => '1234'),
-  } as any), prisma };
+  return { svc: new ClinicsService(
+    prisma as unknown as PrismaService,
+    { ensurePin: jest.fn(async (u: { id: string }) => '1234') } as any,
+    { triggerEvent: jest.fn() } as any,
+  ), prisma };
 }
 
 describe('ClinicsService.addDoctor', () => {
@@ -288,7 +290,7 @@ describe('ClinicsService.addDoctor', () => {
     expect(user.passwordHash).not.toBe(out.tempPassword);
     expect(user.passwordHash).toMatch(/^\$argon2/);
     // Round-trip: verify the returned plaintext against the stored hash.
-    expect(await argon2.verify(user.passwordHash!, out.tempPassword)).toBe(true);
+    expect(await argon2.verify(user.passwordHash!, out.tempPassword!)).toBe(true);
   });
 
   it('the doctor user is assigned to the requested clinic', async () => {
@@ -471,7 +473,7 @@ describe('ClinicsService.resetStaffPassword', () => {
     });
 
     await expect(svc.resetStaffPassword('c-1', 'p-1')).rejects.toThrow(
-      /doctor or receptionist/i,
+      /clinic staff/i,
     );
   });
 
@@ -494,6 +496,7 @@ describe('ClinicsService.getOverviewStats', () => {
     (prisma as any).clinic.count = jest.fn(async () => 1);
     (prisma as any).doctor.count = jest.fn(async () => 2);
     (prisma as any).user.count = jest.fn(async ({ where }: any) => {
+      if (where?.role && typeof where.role === 'object' && 'in' in where.role) return 3;
       if (where?.role === 'RECEPTIONIST') return 3;
       if (where?.role === 'PATIENT') return 50;
       return 0;

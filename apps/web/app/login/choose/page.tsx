@@ -29,7 +29,7 @@ const CHOICES: Choice[] = [
     title: 'Staff',
     subtitle: 'Business staff',
     description:
-      'Use your registered email or mobile and password to access the reception or provider dashboard.',
+      'Use your registered ID and password to access the reception or provider dashboard.',
     href: '/login',
     accent: 'from-brand-500 to-brand-700',
   },
@@ -45,9 +45,9 @@ export default function LoginChoosePage() {
 
       <div className="w-full max-w-2xl">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2.5 mb-6">
-            <TurnosIcon className="h-11 w-11 shadow-md" />
-            <span className="text-xl font-semibold tracking-tight">Turnos</span>
+          <div className="inline-flex items-center gap-3 mb-6">
+            <TurnosIcon className="h-12 w-12" />
+            <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">

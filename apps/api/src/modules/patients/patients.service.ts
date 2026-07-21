@@ -32,10 +32,11 @@ export class PatientsService {
     return this.prisma.queueEntry.findMany({
       where: { patientId },
       orderBy: { joinedAt: 'desc' },
-      // Clinic is included so the patient app can show "Clinic name" above
+      // Clinic and location are included so the patient app can show "Clinic name" and "Location" above
       // "Doctor name" on each active queue card.
       include: {
         doctor: { include: { user: true, department: true, clinic: true } },
+        location: true,
       },
       take: 50,
     });

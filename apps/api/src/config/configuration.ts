@@ -39,4 +39,8 @@ export default () => ({
     tmplDoctorDelayed: process.env.META_WA_TMPL_DOCTOR_DELAYED,
     tmplQueueCleared:  process.env.META_WA_TMPL_QUEUE_CLEARED,
   },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+  },
 });
+

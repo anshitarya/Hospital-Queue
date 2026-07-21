@@ -73,8 +73,12 @@ export class QueueController {
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Post('doctor/:doctorId/call-next')
-  callNext(@Param('doctorId') doctorId: string, @CurrentUser() user: AuthUser) {
-    return this.queue.callNext(doctorId, user);
+  callNext(
+    @Param('doctorId') doctorId: string,
+    @CurrentUser() user: AuthUser,
+    @Query('locationId') locationId?: string,
+  ) {
+    return this.queue.callNext(doctorId, user, locationId);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
@@ -113,13 +117,13 @@ export class QueueController {
   }
 
   /** Rejoin a previously-missed patient near the current position. Feature 2. */
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Post('entry/:id/rejoin')
   rejoin(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.queue.rejoinQueue(id, user);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Post('entry/:id/reorder')
   reorder(
     @Param('id') id: string,
@@ -129,7 +133,7 @@ export class QueueController {
     return this.queue.reorder(id, dto, user);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Post('entry/:id/move')
   moveToPosition(
     @Param('id') id: string,
@@ -139,10 +143,16 @@ export class QueueController {
     return this.queue.moveToPosition(id, dto.position, user);
   }
 
-  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
   @Post('entry/:id/move-back')
   moveBackInQueue(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.queue.moveBackInQueue(id, user);
+  }
+
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Post('entry/:id/remove-missed')
+  removeMissed(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.queue.removeMissed(id, user);
   }
 
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)

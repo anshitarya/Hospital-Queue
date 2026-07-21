@@ -7,13 +7,10 @@ primary_region = "sin"   # Singapore
 [env]
   PORT                        = "4000"
   NODE_ENV                    = "production"
-  OTP_DEV_MODE                = "true"
+  OTP_DEV_MODE                = "false"
   DEFAULT_AVG_CONSULT_MINUTES = "7"
   JWT_EXPIRES_IN              = "30d"
   OTP_TTL_SECONDS             = "300"
-  WALKIN_GAP                  = "4"
-  MISSED_GAP                  = "4"
-  FOLLOWUP_EVERY              = "0"
   CORS_ORIGIN                 = "https://turnos.fly.dev,https://turnos-hq.fly.dev"
   # Single API machine — skip Socket.IO Redis pub/sub (saves Upstash commands).
   # Set to "true" only when min_machines_running > 1.
@@ -31,7 +28,12 @@ primary_region = "sin"   # Singapore
 # Migrations only — seed is idempotent but not compiled to dist/; run manually if needed:
 #   flyctl ssh console -a turnos-api-hq -C "npx ts-node prisma/seed.ts"
 [deploy]
-  release_command = "npx prisma migrate deploy"
+  release_command = "node prisma/fix-and-deploy.js"
+
+
+
+
+
 
 [http_service]
   internal_port       = 4000

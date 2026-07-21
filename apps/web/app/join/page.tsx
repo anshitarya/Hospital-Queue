@@ -33,6 +33,7 @@ function JoinPageContent() {
   const router = useRouter();
   const { user, loaded: ready, setSession } = useAuth();
   const doctorId = params.get('d');
+  const locationId = params.get('l') ?? params.get('locationId') ?? undefined;
 
   const [info, setInfo] = useState<JoinInfo | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
@@ -49,11 +50,12 @@ function JoinPageContent() {
   // Fetch public join info (no auth required)
   useEffect(() => {
     if (!doctorId) { setLoadingInfo(false); return; }
-    api<JoinInfo>(`/queue/public/join-info/${doctorId}`)
+    const qs = locationId ? `?locationId=${locationId}` : '';
+    api<JoinInfo>(`/queue/public/join-info/${doctorId}${qs}`)
       .then(setInfo)
       .catch(() => setInfo({ allowOnlineBooking: false, error: 'Could not load clinic info', queueLength: 0, etaMinutes: 0 }))
       .finally(() => setLoadingInfo(false));
-  }, [doctorId]);
+  }, [doctorId, locationId]);
 
   const handleJoin = async () => {
     if (!doctorId || !user) return;
@@ -62,7 +64,7 @@ function JoinPageContent() {
     try {
       const res = await api<{ id: string }>('/queue/patient/join', {
         method: 'POST',
-        body: { doctorId },
+        body: { doctorId, ...(locationId ? { locationId } : {}) },
       });
       setJoined(true);
       setEntryId(res.id);
@@ -88,7 +90,7 @@ function JoinPageContent() {
       // 3. Immediately join the queue
       const joinRes = await api<{ id: string }>('/queue/patient/join', {
         method: 'POST',
-        body: { doctorId },
+        body: { doctorId, ...(locationId ? { locationId } : {}) },
         headers: {
           Authorization: `Bearer ${regRes.token}`
         }

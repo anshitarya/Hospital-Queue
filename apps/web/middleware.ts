@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { FEATURES } from '@/lib/features';
 
 export function middleware(request: NextRequest) {
-  if (!FEATURES.SUPER_ADMIN_LOCKED) return NextResponse.next();
+  const session = request.cookies.get('hq_session');
+  const { pathname } = request.nextUrl;
 
-  const host = request.headers.get('host') ?? '';
-  if (host !== FEATURES.SUPER_ADMIN_HOST) {
-    return NextResponse.redirect(new URL('/', request.url));
+  // Protect dashboard routes
+  const protectedRoutes = ['/reception', '/doctor', '/patient', '/admin', '/profile'];
+  const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
+
+  if (isProtected && !session) {
+    // Redirect to patient or staff login
+    const loginUrl = pathname.startsWith('/patient') ? '/login/patient' : '/login';
+    return NextResponse.redirect(new URL(loginUrl, request.url));
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/admin', '/admin/:path*'],
+  matcher: [
+    '/reception/:path*',
+    '/doctor/:path*',
+    '/patient/:path*',
+    '/admin/:path*',
+    '/profile/:path*',
+  ],
 };

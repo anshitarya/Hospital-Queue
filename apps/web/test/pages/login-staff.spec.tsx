@@ -24,6 +24,8 @@ vi.mock('@/lib/auth', async () => {
   return {
     ...actual,
     staffLogin: (...args: unknown[]) => staffLoginMock(...args),
+    // Always return dev auth enabled so the password form renders in tests
+    getAuthStatus: () => Promise.resolve({ googleAuthEnabled: false, devAuthEnabled: true, authMode: 'development' }),
   };
 });
 
@@ -46,8 +48,9 @@ describe('<StaffLoginPage />', () => {
     const user = userEvent.setup();
     render(<StaffLoginPage />);
 
-    await user.type(screen.getByLabelText(/email or mobile/i), 'doc@x.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'hunter22');
+    // findByLabelText waits for the form to appear (after getAuthStatus resolves)
+    await user.type(await screen.findByLabelText(/login id/i), 'doc@x.com');
+    await user.type(await screen.findByLabelText(/^password$/i), 'hunter22');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
@@ -63,8 +66,8 @@ describe('<StaffLoginPage />', () => {
     });
     const user = userEvent.setup();
     render(<StaffLoginPage />);
-    await user.type(screen.getByLabelText(/email or mobile/i), 'admin@x.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'hunter22');
+    await user.type(await screen.findByLabelText(/login id/i), 'admin@x.com');
+    await user.type(await screen.findByLabelText(/^password$/i), 'hunter22');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
@@ -79,8 +82,8 @@ describe('<StaffLoginPage />', () => {
     });
     const user = userEvent.setup();
     render(<StaffLoginPage />);
-    await user.type(screen.getByLabelText(/email or mobile/i), 'r@x.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'hunter22');
+    await user.type(await screen.findByLabelText(/login id/i), 'r@x.com');
+    await user.type(await screen.findByLabelText(/^password$/i), 'hunter22');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     await waitFor(() => {
@@ -94,8 +97,8 @@ describe('<StaffLoginPage />', () => {
 
     const user = userEvent.setup();
     render(<StaffLoginPage />);
-    await user.type(screen.getByLabelText(/email or mobile/i), 'doc@x.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'wrong'.repeat(2));
+    await user.type(await screen.findByLabelText(/login id/i), 'doc@x.com');
+    await user.type(await screen.findByLabelText(/^password$/i), 'wrong'.repeat(2));
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
@@ -108,8 +111,8 @@ describe('<StaffLoginPage />', () => {
 
     const user = userEvent.setup();
     render(<StaffLoginPage />);
-    await user.type(screen.getByLabelText(/email or mobile/i), 'doc@x.com');
-    await user.type(screen.getByLabelText(/^password$/i), 'hunter22');
+    await user.type(await screen.findByLabelText(/login id/i), 'doc@x.com');
+    await user.type(await screen.findByLabelText(/^password$/i), 'hunter22');
     await user.click(screen.getByRole('button', { name: /sign in/i }));
 
     expect(screen.getByRole('button', { name: /signing in/i })).toBeDisabled();

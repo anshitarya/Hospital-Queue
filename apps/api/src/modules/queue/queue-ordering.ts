@@ -48,7 +48,9 @@ export function computeManualMoveData(
   peers: MovableEntry[],
   targetPosition: number,
 ): { sortOrder: number; serviceDay: string; appointmentTime: Date | null; appointmentSlot: string | null } {
-  const waitingSorted = [...peers.filter((e) => e.status === EntryStatus.WAITING), entry].sort(
+  // Restrict move scope to the entry's serviceDay so order moves stay within that day's schedule
+  const dayPeers = peers.filter((e) => e.serviceDay === entry.serviceDay);
+  const waitingSorted = [...dayPeers.filter((e) => e.status === EntryStatus.WAITING), entry].sort(
     compareActiveEntries,
   );
   const without = waitingSorted.filter((e) => e.id !== entry.id);
@@ -70,9 +72,9 @@ export function computeManualMoveData(
 
   return {
     sortOrder,
-    serviceDay: slotSource.serviceDay,
-    appointmentTime: slotSource.appointmentTime,
-    appointmentSlot: slotSource.appointmentSlot,
+    serviceDay: entry.serviceDay,
+    appointmentTime: slotSource.serviceDay === entry.serviceDay ? slotSource.appointmentTime : entry.appointmentTime,
+    appointmentSlot: slotSource.serviceDay === entry.serviceDay ? slotSource.appointmentSlot : entry.appointmentSlot,
   };
 }
 
@@ -82,7 +84,7 @@ export interface OrderingInput {
   walkin:           boolean;
   slotType:         SlotType;
   insertAtPosition?: number;
-  sortOrder?:       number;
+  sortOrder?:       number | null;
 }
 
 export async function calculateSortOrder(
@@ -110,32 +112,8 @@ export async function calculateSortOrder(
     return null;
   }
 
-  // Walk-in rule
-  if (input.walkin) {
-    if (settings.walkinJoinRule === 'END_OF_QUEUE') {
-      return null;
-    }
-    if (settings.walkinJoinRule === 'AFTER_N_CUSTOMERS') {
-      return insertAfterNCustomers(input.doctorId, settings.walkinJoinRuleParam ?? 4, tx, serviceDay);
-    }
-    if (settings.walkinJoinRule === 'PRIORITY_QUEUE') {
-      return emergencyFront(input.doctorId, tx, serviceDay);
-    }
-  }
-
-  // Follow-up rule
-  if (input.slotType === SlotType.FOLLOWUP) {
-    if (settings.followupJoinRule === 'IMMEDIATE') {
-      return insertAfterNCustomers(input.doctorId, 0, tx, serviceDay);
-    }
-    if (settings.followupJoinRule === 'AFTER_N_CUSTOMERS') {
-      return insertAfterNCustomers(input.doctorId, settings.followupJoinRuleParam ?? 4, tx, serviceDay);
-    }
-    if (settings.followupJoinRule === 'END_OF_QUEUE') {
-      return null;
-    }
-  }
-
+  // Walk-in and Follow-up rules are bypassed to always add patients to the end of the queue
+  // (unless an explicit position or emergency priority is specified)
   return null;
 }
 
@@ -143,30 +121,9 @@ export function calculateRejoinSortOrder(
   activePositions: number[],
   settings: any,
   lastMissedInQueue: { sortOrder: number } | null,
-): number {
-  const gap = settings.gracePeriod || settings.noShowTimeout || 4; // Use grace/timeout or default 4
-  
-  // Rejoin joins end of queue if FIFO is set, else slots in near current + gap
-  if (settings.queueMode === 'TIME_SLOT' || settings.queueMode === 'CAPACITY_TIME_SLOT') {
-    return activePositions.length > 0 ? activePositions[activePositions.length - 1] + 1 : 1;
-  }
-
-  let basePos: number;
-  if (lastMissedInQueue) {
-    basePos = lastMissedInQueue.sortOrder + (gap - 1);
-  } else if (activePositions.length >= gap) {
-    basePos = activePositions[gap - 1];
-  } else {
-    basePos = activePositions.length > 0
-      ? activePositions[activePositions.length - 1] + 1
-      : gap;
-  }
-
-  const before = activePositions.filter((p) => p < basePos).pop();
-  const after  = activePositions.find((p)   => p >= basePos);
-  return before !== undefined && after !== undefined
-    ? (before + after) / 2
-    : basePos;
+): number | null {
+  // Always return null to rejoin at the end of the queue (FIFO ordering)
+  return null;
 }
 
 // ─── Sub-routines ──────────────────────────────────────────────────────
@@ -195,7 +152,7 @@ async function insertAtPositionOrder(
     where: {
       doctorId,
       serviceDay,
-      status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+      status: EntryStatus.WAITING, // Only count waiting patients to align with UI positions
     },
     select: { sortOrder: true, tokenNumber: true },
   });

@@ -12,12 +12,12 @@ function Controlled({ initial = '' }: { initial?: string }) {
 describe('<IdentifierInput />', () => {
   it('renders the default label', () => {
     render(<Controlled />);
-    expect(screen.getByText('Email or mobile')).toBeInTheDocument();
+    expect(screen.getByText('ID')).toBeInTheDocument();
   });
 
   it('renders the neutral hint when empty', () => {
     render(<Controlled />);
-    expect(screen.getByText(/registered email or 10-digit Indian mobile/i)).toBeInTheDocument();
+    expect(screen.getByText(/Use the ID provided to login/i)).toBeInTheDocument();
   });
 
   it('hides the +91 badge in neutral / email mode', () => {

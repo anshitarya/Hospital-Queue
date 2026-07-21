@@ -76,6 +76,9 @@ DO $$ BEGIN
     FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Ensure MANAGER exists in Role enum
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'MANAGER';
+
 -- Backfill staff location links
 INSERT INTO "UserLocation" ("id", "userId", "locationId")
 SELECT gen_random_uuid()::text, u."id", l."id"
@@ -86,9 +89,10 @@ JOIN LATERAL (
   ORDER BY l2."createdAt" ASC LIMIT 1
 ) l ON true
 WHERE u."clinicId" IS NOT NULL
-  AND u."role" IN ('RECEPTIONIST', 'CLINIC_ADMIN', 'MANAGER')
+  AND u."role"::text IN ('RECEPTIONIST', 'CLINIC_ADMIN', 'MANAGER')
   AND NOT EXISTS (SELECT 1 FROM "UserLocation" ul WHERE ul."userId" = u."id")
 ON CONFLICT DO NOTHING;
+
 
 INSERT INTO "DoctorLocation" ("id", "doctorId", "locationId")
 SELECT gen_random_uuid()::text, d."id", l."id"
@@ -110,14 +114,13 @@ DO $$ BEGIN
   ) THEN
     ALTER TABLE "ReceptionistAssignment" ADD COLUMN IF NOT EXISTS "locationId" TEXT;
 
-    UPDATE "ReceptionistAssignment" ra
-    SET "locationId" = l."id"
-    FROM LATERAL (
+    UPDATE "ReceptionistAssignment"
+    SET "locationId" = (
       SELECT l2."id" FROM "Location" l2
-      WHERE l2."clinicId" = ra."clinicId"
+      WHERE l2."clinicId" = "ReceptionistAssignment"."clinicId"
       ORDER BY l2."createdAt" ASC LIMIT 1
-    ) l
-    WHERE ra."locationId" IS NULL;
+    )
+    WHERE "locationId" IS NULL;
 
     ALTER TABLE "ReceptionistAssignment" DROP CONSTRAINT IF EXISTS "ReceptionistAssignment_clinicId_fkey";
     DROP INDEX IF EXISTS "ReceptionistAssignment_clinicId_idx";
@@ -162,20 +165,19 @@ END $$;
 -- QueueEntry.locationId backfill
 ALTER TABLE "QueueEntry" ADD COLUMN IF NOT EXISTS "locationId" TEXT;
 
-UPDATE "QueueEntry" qe
+UPDATE "QueueEntry"
 SET "locationId" = dl."locationId"
 FROM "DoctorLocation" dl
-WHERE qe."doctorId" = dl."doctorId" AND qe."locationId" IS NULL;
+WHERE "QueueEntry"."doctorId" = dl."doctorId" AND "QueueEntry"."locationId" IS NULL;
 
-UPDATE "QueueEntry" qe
-SET "locationId" = l."id"
-FROM "Doctor" d
-JOIN LATERAL (
+UPDATE "QueueEntry"
+SET "locationId" = (
   SELECT l2."id" FROM "Location" l2
+  JOIN "Doctor" d ON d."id" = "QueueEntry"."doctorId"
   WHERE l2."clinicId" = d."clinicId"
   ORDER BY l2."createdAt" ASC LIMIT 1
-) l ON true
-WHERE qe."doctorId" = d."id" AND qe."locationId" IS NULL;
+)
+WHERE "locationId" IS NULL;
 
 DO $$ BEGIN
   ALTER TABLE "QueueEntry" ALTER COLUMN "locationId" SET NOT NULL;
@@ -196,10 +198,15 @@ DO $$ BEGIN
     WHERE table_name = 'InviteCode' AND column_name = 'clinicId'
   ) THEN
     ALTER TABLE "InviteCode" ADD COLUMN IF NOT EXISTS "locationId" TEXT;
-    UPDATE "InviteCode" ic SET "locationId" = l."id"
-    FROM LATERAL (
-      SELECT l2."id" FROM "Location" l2 WHERE l2."clinicId" = ic."clinicId" ORDER BY l2."createdAt" ASC LIMIT 1
-    ) l WHERE ic."locationId" IS NULL;
+
+    UPDATE "InviteCode"
+    SET "locationId" = (
+      SELECT l2."id" FROM "Location" l2
+      WHERE l2."clinicId" = "InviteCode"."clinicId"
+      ORDER BY l2."createdAt" ASC LIMIT 1
+    )
+    WHERE "locationId" IS NULL;
+
     ALTER TABLE "InviteCode" DROP CONSTRAINT IF EXISTS "InviteCode_clinicId_fkey";
     DROP INDEX IF EXISTS "InviteCode_clinicId_idx";
     ALTER TABLE "InviteCode" DROP COLUMN IF EXISTS "clinicId";
@@ -208,6 +215,7 @@ DO $$ BEGIN
       FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 END $$;
+
 
 -- Location optional email + geo columns on existing tables
 ALTER TABLE "Location" ADD COLUMN IF NOT EXISTS "timeZone" TEXT NOT NULL DEFAULT 'Asia/Kolkata';

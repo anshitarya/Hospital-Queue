@@ -49,26 +49,32 @@ export const Icon = {
   ClipboardList: make(<><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01" /></>),
 };
 
-/** Turnos brand logo — a ticket shape with a vertical divider line. */
-export function TurnosIcon({ className }: { className?: string }) {
+/**
+ * Turnos official dual-mode brand logo component.
+ * - Renders logo-light.png (1st image with dark text) in Light mode.
+ * - Renders logo-dark.png (2nd image with white text) in Dark mode.
+ * - Styled with smooth curved corners (rounded-2xl) and enlarged dimensions.
+ */
+export function TurnosIcon({ className = 'h-12 sm:h-14' }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="36" height="36" rx="9" fill="url(#tg)" />
-      {/* ticket notches */}
-      <path d="M10 13a3 3 0 0 0 0 10V13z" fill="white" fillOpacity=".25"/>
-      <path d="M26 13a3 3 0 0 1 0 10V13z" fill="white" fillOpacity=".25"/>
-      {/* ticket body */}
-      <rect x="10" y="13" width="16" height="10" rx="1" fill="white" fillOpacity=".15" stroke="white" strokeOpacity=".5" strokeWidth="1"/>
-      {/* centre divider */}
-      <line x1="19" y1="14" x2="19" y2="22" stroke="white" strokeOpacity=".6" strokeWidth="1" strokeDasharray="2 1.5"/>
-      {/* T letter */}
-      <text x="12" y="21.5" fontFamily="system-ui,sans-serif" fontWeight="700" fontSize="8" fill="white">T</text>
-      <defs>
-        <linearGradient id="tg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#16a34a"/>
-          <stop offset="1" stopColor="#0d9488"/>
-        </linearGradient>
-      </defs>
-    </svg>
+    <div className={`relative inline-flex items-center shrink-0 rounded-2xl overflow-hidden ${className}`}>
+      {/* Light mode logo (1st image) */}
+      <img
+        src="/logo-light.png"
+        alt="Turnos Logo"
+        className="h-full w-auto object-contain dark:hidden rounded-2xl"
+      />
+      {/* Dark mode logo (2nd image) */}
+      <img
+        src="/logo-dark.png"
+        alt="Turnos Logo"
+        className="h-full w-auto object-contain hidden dark:block rounded-2xl"
+      />
+    </div>
   );
+}
+
+/** Turnos official full logo image. */
+export function TurnosFullLogo({ className = 'h-12' }: { className?: string }) {
+  return <TurnosIcon className={className} />;
 }

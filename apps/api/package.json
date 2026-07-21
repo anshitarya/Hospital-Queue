@@ -10,14 +10,14 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
-    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed": "node dist/prisma/seed.js",
     "lint": "eslint \"{src,test,prisma}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch"
   },
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+    "seed": "node dist/prisma/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.0",
@@ -36,6 +36,7 @@
     "class-validator": "^0.14.1",
     "cookie": "^2.0.0",
     "cookie-parser": "^1.4.7",
+    "google-auth-library": "^10.9.0",
     "helmet": "^7.1.0",
     "ioredis": "^5.3.2",
     "nanoid": "3.3.7",

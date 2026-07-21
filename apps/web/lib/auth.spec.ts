@@ -26,21 +26,24 @@ describe('useAuth store', () => {
     expect(s.loaded).toBe(false);
   });
 
-  it('hydrate() reads user from localStorage', () => {
+  it('hydrate() reads user from localStorage', async () => {
     window.localStorage.setItem(
       'hq_user',
       JSON.stringify({ id: 'u1', role: 'PATIENT', name: 'Alice' }),
     );
+    // Also set the token so hydrate takes the fast path (no API call)
+    window.localStorage.setItem('hq_token', 'test-token');
 
-    useAuth.getState().hydrate();
+    await useAuth.getState().hydrate();
 
     const s = useAuth.getState();
     expect(s.user?.name).toBe('Alice');
     expect(s.loaded).toBe(true);
   });
 
-  it('hydrate() leaves user=null when localStorage is empty', () => {
-    useAuth.getState().hydrate();
+  it('hydrate() leaves user=null when localStorage is empty', async () => {
+    // No user, no token → slow path calls /auth/me which fails → user null
+    await useAuth.getState().hydrate();
     const s = useAuth.getState();
     expect(s.user).toBeNull();
     expect(s.loaded).toBe(true);

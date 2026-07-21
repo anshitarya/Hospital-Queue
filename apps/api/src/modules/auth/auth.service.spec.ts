@@ -14,8 +14,9 @@ import { PrismaService } from '../../common/prisma/prisma.service';
  */
 function makeService() {
   const findUnique = jest.fn();
+  const update = jest.fn().mockResolvedValue({});
   const prisma = {
-    user: { findUnique },
+    user: { findUnique, update },
   } as unknown as PrismaService;
 
   const jwt = {
@@ -24,10 +25,20 @@ function makeService() {
 
   const otp = { issue: jest.fn(), verify: jest.fn() } as unknown as OtpService;
   const config = { get: jest.fn() } as unknown as ConfigService;
+  const googleAuth = { verifyIdToken: jest.fn() };
 
   return {
-    svc: new AuthService(prisma, jwt, otp, config, { client: { get: async () => null, set: async () => {}, del: async () => {} } } as any),
+    svc: new AuthService(
+      prisma,
+      jwt,
+      otp,
+      config,
+      { client: { get: async () => null, set: async () => {}, del: async () => {} } } as any,
+      { triggerEvent: jest.fn() } as any,
+      googleAuth as any,
+    ),
     findUnique,
+    update,
   };
 }
 
@@ -43,6 +54,7 @@ describe('AuthService.staffLogin', () => {
       phone: null,
       clinicId: 'c-1',
       passwordHash,
+      status: 'ACTIVE',
     });
 
     const out = await svc.staffLogin('a@clinic.com', 'hunter2');
@@ -62,6 +74,7 @@ describe('AuthService.staffLogin', () => {
       phone: '+919876543210',
       clinicId: 'c-1',
       passwordHash,
+      status: 'ACTIVE',
     });
 
     await svc.staffLogin('9876543210', 'hunter2');
@@ -110,7 +123,7 @@ describe('AuthService.staffLogin', () => {
     const { svc, findUnique } = makeService();
     const passwordHash = await argon2.hash('correct');
     findUnique.mockResolvedValueOnce({
-      id: 'u', role: Role.DOCTOR, passwordHash, name: 'X',
+      id: 'u', role: Role.DOCTOR, passwordHash, name: 'X', status: 'ACTIVE',
     });
 
     await expect(svc.staffLogin('a@b.com', 'wrong')).rejects.toBeInstanceOf(
@@ -133,12 +146,14 @@ describe('AuthService.loginCustomer', () => {
 
   function makeCustomerService() {
     const findUnique = jest.fn();
-    const prisma = { user: { findUnique } } as unknown as PrismaService;
+    const update = jest.fn().mockResolvedValue({});
+    const prisma = { user: { findUnique, update } } as unknown as PrismaService;
     const jwt = { signAsync: jest.fn().mockResolvedValue('customer-token') } as unknown as JwtService;
     const otp = { issue: jest.fn(), verify: jest.fn() } as unknown as OtpService;
     const config = { get: jest.fn() } as unknown as ConfigService;
     const redis = makeRedis();
-    const svc = new AuthService(prisma, jwt, otp, config, redis as any);
+    const googleAuth = { verifyIdToken: jest.fn() };
+    const svc = new AuthService(prisma, jwt, otp, config, redis as any, { triggerEvent: jest.fn() } as any, googleAuth as any);
     return { svc, findUnique, redis };
   }
 

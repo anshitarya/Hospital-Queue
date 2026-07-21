@@ -833,6 +833,12 @@ export default function PatientPage() {
                                     </div>
                                     <p className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
                                       <span>{entry.doctor.department?.name || 'General'}</span>
+                                      {(entry as any).location?.name && (
+                                        <>
+                                          <span>·</span>
+                                          <span className="font-semibold text-teal-600 dark:text-teal-400">{(entry as any).location.name}</span>
+                                        </>
+                                      )}
                                       <span>·</span>
                                       <span>
                                         {isUpc && entry.appointmentTime
@@ -1050,7 +1056,15 @@ function ActiveAppointmentCard({
       <div className="flex items-center justify-between">
         <div>
           <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">{entry.doctor.user.name}</h4>
-          <p className="text-[10px] text-slate-400 mt-0.5">{entry.doctor.department?.name || 'General'}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+            <span>{entry.doctor.department?.name || 'General'}</span>
+            {(entry as any).location?.name && (
+              <>
+                <span>·</span>
+                <span className="font-semibold text-teal-600 dark:text-teal-400">{(entry as any).location.name}</span>
+              </>
+            )}
+          </p>
         </div>
         <div className="flex items-center gap-1.5">
           <LiveIndicator connected={connected} />

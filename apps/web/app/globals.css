@@ -239,6 +239,28 @@
   /* ── bg-white/8 utility (sidebar hover) ─────────────────────────────────── */
   .bg-white\/8 { background-color: rgba(255,255,255,0.08); }
   .hover\:bg-white\/8:hover { background-color: rgba(255,255,255,0.08); }
+
+  /* ── Mobile Drawer & Responsive Utilities ─────────────────────────────── */
+  .animate-drawer-in {
+    animation: drawer-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes drawer-in {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 /* ── Live / Offline indicator dot ────────────────────────────────────────── */

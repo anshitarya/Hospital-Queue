@@ -27,21 +27,25 @@ export class WorkflowService {
   }
 
   async getWorkflow(locationId: string) {
-    const config = await this.prisma.workflowConfiguration.findUnique({
-      where: { locationId },
-    });
-    if (!config) {
+    try {
+      const config = await this.prisma.workflowConfiguration.findUnique({
+        where: { locationId },
+      });
+      if (!config) {
+        return { locationId, steps: [] };
+      }
+      let steps = config.steps;
+      while (typeof steps === 'string') {
+        try {
+          steps = JSON.parse(steps);
+        } catch {
+          break;
+        }
+      }
+      return { ...config, steps };
+    } catch {
       return { locationId, steps: [] };
     }
-    let steps = config.steps;
-    while (typeof steps === 'string') {
-      try {
-        steps = JSON.parse(steps);
-      } catch {
-        break;
-      }
-    }
-    return { ...config, steps };
   }
 
   async setWorkflow(locationId: string, steps: any[]) {
