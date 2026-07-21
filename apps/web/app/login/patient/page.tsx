@@ -56,11 +56,8 @@ export default function PatientLoginPage() {
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-6">
-          <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white font-bold shadow-md">
-            <TurnosIcon className="h-7 w-7" />
-            </span>
-            <span className="text-lg font-semibold">Turnos</span>
+          <Link href="/login/choose" className="inline-flex items-center group">
+            <TurnosIcon className="h-10" />
           </Link>
         </div>
 

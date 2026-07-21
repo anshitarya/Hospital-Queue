@@ -49,26 +49,24 @@ export const Icon = {
   ClipboardList: make(<><rect x="8" y="2" width="8" height="4" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4M12 16h4M8 11h.01M8 16h.01" /></>),
 };
 
-/** Turnos brand logo — a ticket shape with a vertical divider line. */
-export function TurnosIcon({ className }: { className?: string }) {
+/** Turnos official logo image — rounded curved edges and seamless background integration. */
+export function TurnosIcon({ className = 'h-8' }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <rect width="36" height="36" rx="9" fill="url(#tg)" />
-      {/* ticket notches */}
-      <path d="M10 13a3 3 0 0 0 0 10V13z" fill="white" fillOpacity=".25"/>
-      <path d="M26 13a3 3 0 0 1 0 10V13z" fill="white" fillOpacity=".25"/>
-      {/* ticket body */}
-      <rect x="10" y="13" width="16" height="10" rx="1" fill="white" fillOpacity=".15" stroke="white" strokeOpacity=".5" strokeWidth="1"/>
-      {/* centre divider */}
-      <line x1="19" y1="14" x2="19" y2="22" stroke="white" strokeOpacity=".6" strokeWidth="1" strokeDasharray="2 1.5"/>
-      {/* T letter */}
-      <text x="12" y="21.5" fontFamily="system-ui,sans-serif" fontWeight="700" fontSize="8" fill="white">T</text>
-      <defs>
-        <linearGradient id="tg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#16a34a"/>
-          <stop offset="1" stopColor="#0d9488"/>
-        </linearGradient>
-      </defs>
-    </svg>
+    <img
+      src="/logo.png"
+      alt="Turnos Logo"
+      className={`object-contain rounded-xl mix-blend-multiply dark:mix-blend-normal dark:bg-white/95 dark:p-0.5 dark:ring-1 dark:ring-slate-700/50 ${className}`}
+    />
+  );
+}
+
+/** Turnos official full logo image with brand tagline. */
+export function TurnosFullLogo({ className = 'h-12' }: { className?: string }) {
+  return (
+    <img
+      src="/logo.png"
+      alt="Turnos - Smart Queue. Better Care."
+      className={`object-contain ${className}`}
+    />
   );
 }

@@ -27,17 +27,17 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
       <div className="mx-auto max-w-7xl flex items-center justify-between px-4 sm:px-6 py-3 gap-3">
         {/* Logo + title */}
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-sm shrink-0 select-none">
-            <TurnosIcon className="h-6 w-6" />
-          </span>
-          <div className="min-w-0">
-            <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 tracking-tight truncate block leading-tight">
-              {title}
-            </span>
-            {subtitle && (
-              <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate block leading-tight">{subtitle}</span>
-            )}
-          </div>
+          <TurnosIcon className="h-8 rounded-xl shrink-0 select-none" />
+          {title !== 'Turnos' && (
+            <div className="min-w-0">
+              <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 tracking-tight truncate block leading-tight">
+                {title}
+              </span>
+              {subtitle && (
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate block leading-tight">{subtitle}</span>
+              )}
+            </div>
+          )}
         </div>
         {/* Actions */}
         <div className="flex items-center gap-1">

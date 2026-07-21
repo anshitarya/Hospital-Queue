@@ -45,9 +45,8 @@ export default function LoginChoosePage() {
 
       <div className="w-full max-w-2xl">
         <div className="text-center mb-10">
-          <div className="inline-flex items-center gap-2.5 mb-6">
-            <TurnosIcon className="h-11 w-11 shadow-md" />
-            <span className="text-xl font-semibold tracking-tight">Turnos</span>
+          <div className="inline-flex items-center mb-6">
+            <TurnosIcon className="h-14" />
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
