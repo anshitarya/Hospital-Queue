@@ -3,12 +3,18 @@ import * as argon2 from 'argon2';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const configDir = fs.existsSync(path.join(__dirname, '../src/config'))
-  ? path.join(__dirname, '../src/config')
-  : path.join(__dirname, '../dist/src/config');
+// Locate config directory relative to current file location (__dirname)
+const candidateDirs = [
+  path.join(__dirname, '../src/config'),
+  path.join(__dirname, '../dist/src/config'),
+  path.join(__dirname, '../../dist/src/config'),
+];
+
+const configDir = candidateDirs.find((dir) => fs.existsSync(dir)) || path.join(__dirname, '../src/config');
 
 const { HOSPITAL_DEPARTMENTS } = require(path.join(configDir, 'departments'));
 const { SEED_CLINICS } = require(path.join(configDir, 'clinic.config'));
+
 
 
 const prisma = new PrismaClient();
