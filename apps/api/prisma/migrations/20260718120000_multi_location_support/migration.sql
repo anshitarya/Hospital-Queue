@@ -76,6 +76,9 @@ DO $$ BEGIN
     FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Ensure MANAGER exists in Role enum
+ALTER TYPE "Role" ADD VALUE IF NOT EXISTS 'MANAGER';
+
 -- Backfill staff location links
 INSERT INTO "UserLocation" ("id", "userId", "locationId")
 SELECT gen_random_uuid()::text, u."id", l."id"
@@ -86,9 +89,10 @@ JOIN LATERAL (
   ORDER BY l2."createdAt" ASC LIMIT 1
 ) l ON true
 WHERE u."clinicId" IS NOT NULL
-  AND u."role" IN ('RECEPTIONIST', 'CLINIC_ADMIN', 'MANAGER')
+  AND u."role"::text IN ('RECEPTIONIST', 'CLINIC_ADMIN', 'MANAGER')
   AND NOT EXISTS (SELECT 1 FROM "UserLocation" ul WHERE ul."userId" = u."id")
 ON CONFLICT DO NOTHING;
+
 
 INSERT INTO "DoctorLocation" ("id", "doctorId", "locationId")
 SELECT gen_random_uuid()::text, d."id", l."id"
