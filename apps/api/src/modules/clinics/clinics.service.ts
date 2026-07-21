@@ -346,15 +346,42 @@ export class ClinicsService {
       select: { clinicId: true },
     });
     if (user?.clinicId) {
-      const firstLoc = await this.prisma.location.findFirst({
+      let firstLoc = await this.prisma.location.findFirst({
         where: { clinicId: user.clinicId, status: 'ACTIVE' },
         orderBy: { createdAt: 'asc' },
         select: { id: true },
       });
-      if (firstLoc) return firstLoc.id;
+      if (!firstLoc) {
+        const clinic = await this.prisma.clinic.findUnique({ where: { id: user.clinicId } });
+        if (clinic) {
+          const created = await this.prisma.location.create({
+            data: {
+              clinicId: clinic.id,
+              name: 'Demo Branch',
+              address: 'Demo branch (You can rename or delete this branch and set up your own)',
+              city: 'Bengaluru',
+              state: 'Karnataka',
+              country: 'India',
+              postalCode: '560001',
+              contactNumber: '+919999999999',
+              status: 'ACTIVE',
+            },
+          });
+          firstLoc = { id: created.id };
+        }
+      }
+      if (firstLoc) {
+        await this.prisma.userLocation.upsert({
+          where: { userId_locationId: { userId, locationId: firstLoc.id } },
+          update: {},
+          create: { userId, locationId: firstLoc.id },
+        }).catch(() => null);
+        return firstLoc.id;
+      }
     }
     throw new BadRequestException('User has no assigned locations');
   }
+
 
   /** Ensures legacy staff created before multi-location have branch links. */
   async backfillStaffLocationLinks(clinicId: string): Promise<void> {
@@ -1601,11 +1628,47 @@ export class ClinicsService {
     } else if (caller?.role === Role.DOCTOR) {
       where.doctors = { some: { doctor: { userId: caller.id } } };
     }
-    return this.prisma.location.findMany({
+    let locs = await this.prisma.location.findMany({
       where,
       orderBy: { name: 'asc' },
     });
+
+    if (locs.length === 0) {
+      const clinic = await this.prisma.clinic.findUnique({
+        where: { id: clinicId },
+        include: { locations: true },
+      });
+      if (clinic) {
+        let defaultLoc = clinic.locations.find((l) => l.status === 'ACTIVE');
+        if (!defaultLoc) {
+          defaultLoc = await this.prisma.location.create({
+            data: {
+              clinicId: clinic.id,
+              name: 'Demo Branch',
+              address: 'Demo branch (You can rename or delete this branch and set up your own)',
+              city: 'Bengaluru',
+              state: 'Karnataka',
+              country: 'India',
+              postalCode: '560001',
+              contactNumber: '+919999999999',
+              status: 'ACTIVE',
+            },
+          });
+        }
+        if (caller?.id) {
+          await this.prisma.userLocation.upsert({
+            where: { userId_locationId: { userId: caller.id, locationId: defaultLoc.id } },
+            update: {},
+            create: { userId: caller.id, locationId: defaultLoc.id },
+          }).catch(() => null);
+        }
+        locs = [defaultLoc];
+      }
+    }
+
+    return locs;
   }
+
 
   async createLocation(clinicId: string, dto: any) {
     const loc = await this.prisma.location.create({
