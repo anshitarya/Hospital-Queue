@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { api, ApiError } from '../lib/api';
 import { SectionLoader, Spinner } from './PageLoader';
+import { DoctorGridSkeleton } from './Skeleton';
 import { serviceDay, istDayOfWeekFromKey, addServiceDays, formatDateIst, istNowHHMM } from '../lib/datetime';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -331,7 +332,7 @@ export function BookingDirectory({
 
       {/* Content */}
       {loading ? (
-        <SectionLoader label="Loading available clinics and branches…" />
+        <DoctorGridSkeleton count={4} />
       ) : businesses.length === 0 ? (
         <div className="card p-12 text-center">
           <div className="mx-auto h-16 w-16 rounded-2xl bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/40 flex items-center justify-center text-3xl mb-4 shadow-inner">

@@ -150,7 +150,26 @@
 
   /* ── Skeleton loading ────────────────────────────────────────────────────── */
   .skeleton {
-    @apply bg-slate-200 dark:bg-slate-700 rounded-lg animate-skeleton;
+    @apply relative overflow-hidden bg-slate-200/80 dark:bg-slate-800/60 rounded-lg;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 100%
+    );
+    animation: skeleton-shimmer 1.5s infinite ease-in-out;
+  }
+  .dark .skeleton::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.07) 50%,
+      transparent 100%
+    );
   }
 
   /* ── Dividers ────────────────────────────────────────────────────────────── */

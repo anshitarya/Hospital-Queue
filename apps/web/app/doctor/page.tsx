@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { api } from '@/lib/api';
-import { PageLoader } from '@/components/PageLoader';
+import { DoctorPageSkeleton } from '@/components/Skeleton';
 
 const LOCATION_STORAGE_KEY = 'turnos_doctor_location';
 
@@ -51,5 +51,5 @@ export default function DoctorRedirect() {
     );
   }
 
-  return <PageLoader label="Loading doctor panel..." />;
+  return <DoctorPageSkeleton />;
 }

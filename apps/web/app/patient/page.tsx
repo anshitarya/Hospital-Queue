@@ -7,6 +7,7 @@ import { useDoctorQueue, usePatientStream } from '@/lib/socket';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
 import { PageLoader, Spinner } from '@/components/PageLoader';
+import { PatientPageSkeleton } from '@/components/Skeleton';
 import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
@@ -383,7 +384,7 @@ export default function PatientPage() {
     [history],
   );
 
-  if (!ready) return <PageLoader label="Loading your queue…" />;
+  if (!ready) return <PatientPageSkeleton />;
 
   // Group listings and status counts
   const liveEntries = history.filter(isActive);

@@ -9,6 +9,7 @@ import { getLabels, departmentPresetsFor, normalizeBusinessType, type BusinessTy
 import { HOSPITAL_DEPARTMENTS, FORMS } from '@/lib/config';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { PageLoader } from '@/components/PageLoader';
+import { ReceptionPageSkeleton } from '@/components/Skeleton';
 import { QueueManager } from '@/components/QueueManager';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { DepartmentPicker, type DepartmentOption } from '@/components/DepartmentPicker';
@@ -738,7 +739,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
     [data?.allDoctors, data?.doctors],
   );
 
-  if (!ready || loading) return <PageLoader label="Loading…" />;
+  if (!ready || loading) return <ReceptionPageSkeleton />;
 
   const L = getLabels(data?.clinic?.businessType);
 

@@ -6,6 +6,7 @@ import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
+import { AdminPageSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { DepartmentPicker, type DepartmentOption } from '@/components/DepartmentPicker';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
@@ -351,7 +352,7 @@ export default function AdminPage() {
     void loadSignupRequests(requestFilter);
   }, [ready, tab, requestFilter, loadSignupRequests]);
 
-  if (!ready) return <PageLoader label="Loading admin…" />;
+  if (!ready) return <AdminPageSkeleton />;
 
   async function loadInviteCodes(clinicId: string) {
     try {

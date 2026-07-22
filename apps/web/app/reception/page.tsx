@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { api } from '@/lib/api';
-import { PageLoader } from '@/components/PageLoader';
+import { ReceptionPageSkeleton } from '@/components/Skeleton';
 
 const LOCATION_STORAGE_KEY = 'turnos_reception_location';
 
@@ -51,5 +51,5 @@ export default function ReceptionRedirect() {
     );
   }
 
-  return <PageLoader label="Loading locations..." />;
+  return <ReceptionPageSkeleton />;
 }

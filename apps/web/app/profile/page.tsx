@@ -18,6 +18,7 @@ import { formatDateIst } from '@/lib/datetime';
 import { formatIndianMobile } from '@/lib/phone';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
+import { ProfileSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { Icon } from '@/components/Icons';
 import { useWebPush } from '@/lib/useWebPush';
@@ -52,7 +53,7 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [ready]);
 
-  if (!ready || loading || !profile) return <PageLoader />;
+  if (!ready || loading || !profile) return <ProfileSkeleton />;
 
   // Keep the global auth store in sync whenever the profile changes —
   // ensures the header avatar and name update everywhere.

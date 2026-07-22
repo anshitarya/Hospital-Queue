@@ -10,6 +10,7 @@ import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
+import { DoctorPageSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { QueueHistoryTable } from '@/components/QueueHistoryTable';
 import { LeavesTab } from '@/components/LeavesTab';
@@ -273,7 +274,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
     });
   }, [schedules]);
 
-  if (!ready) return <PageLoader label="Loading your panel…" />;
+  if (!ready) return <DoctorPageSkeleton />;
 
   const callNext = () => {
     if (!isScheduled) {
