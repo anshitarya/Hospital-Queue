@@ -105,6 +105,7 @@ export class ProfessionalScheduleService {
             startTime: shift.startTime,
             endTime: shift.endTime,
             isHoliday: shift.isHoliday,
+            maxCapacity: shift.maxCapacity ?? null,
           },
         });
         created.push(item);

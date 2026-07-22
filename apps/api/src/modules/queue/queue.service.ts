@@ -560,6 +560,7 @@ export class QueueService {
       entryId: entry.id,
       doctorId,
     });
+    void this.notifyStaffSelfBookingAsync(doctorId, patientId, entry.tokenNumber);
     return entry;
   }
 
@@ -658,6 +659,31 @@ export class QueueService {
         });
         if (shifts.length === 0 && !input.fromWorkflow) {
           throw new BadRequestException('Professional has no working schedule configured at this branch.');
+        }
+
+        // Check schedule capacity limit for this particular doctor at this location
+        const targetDate = input.appointmentTime && input.appointmentTime.includes('T')
+          ? new Date(input.appointmentTime)
+          : istAppointmentDate(serviceDay, '12:00');
+        const currentDow = istDayOfWeek(targetDate);
+        const dayShifts = shifts.filter((s: { dayOfWeek: number; maxCapacity?: number | null }) => s.dayOfWeek === currentDow);
+        const activeShiftWithLimit = dayShifts.find((s: { maxCapacity?: number | null }) => s.maxCapacity != null && s.maxCapacity > 0)
+          || shifts.find((s: { maxCapacity?: number | null }) => s.maxCapacity != null && s.maxCapacity > 0);
+
+        if (activeShiftWithLimit && activeShiftWithLimit.maxCapacity && activeShiftWithLimit.maxCapacity > 0) {
+          const activeCount = await tx.queueEntry.count({
+            where: {
+              doctorId: input.doctorId,
+              locationId,
+              serviceDay,
+              status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+            },
+          });
+          if (activeCount >= activeShiftWithLimit.maxCapacity) {
+            throw new BadRequestException(
+              `Schedule capacity limit reached for this session (max ${activeShiftWithLimit.maxCapacity} patients).`,
+            );
+          }
         }
 
         // Slot allocation
@@ -1545,27 +1571,37 @@ export class QueueService {
 
   async pauseDoctor(doctorId: string, caller: AuthUser) {
     await this.clinics.assertCallerCanAccessDoctor(caller, doctorId);
-    await this.prisma.doctor.update({
+    const doctor = await this.prisma.doctor.update({
       where: { id: doctorId },
       data: { status: DoctorStatus.PAUSED },
+      include: { user: true },
     });
     void this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_paused', payload: { byUserId: caller.id } },
     }).catch(() => {});
     void this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.PAUSED });
+
+    void this.notifyActivePatients(doctorId, (phone) =>
+      this.notifications.notifyDoctorPaused(phone, doctor.user.name),
+    );
   }
 
   async resumeDoctor(doctorId: string, caller: AuthUser) {
     await this.clinics.assertCallerCanAccessDoctor(caller, doctorId);
-    await this.prisma.doctor.update({
+    const doctor = await this.prisma.doctor.update({
       where: { id: doctorId },
       // Also clear break fields when resuming. Feature 4.
       data: { status: DoctorStatus.AVAILABLE, breakUntil: null, breakNote: null },
+      include: { user: true },
     });
     void this.prisma.queueEvent.create({
       data: { doctorId, type: 'doctor_resumed', payload: { byUserId: caller.id } },
     }).catch(() => {});
     void this.broadcast(doctorId, 'doctor_status', { status: DoctorStatus.AVAILABLE });
+
+    void this.notifyActivePatients(doctorId, (phone) =>
+      this.notifications.notifyDoctorResumed(phone, doctor.user.name),
+    );
   }
 
   /**
@@ -1576,9 +1612,10 @@ export class QueueService {
   async startBreak(doctorId: string, estimatedMinutes: number, note: string | undefined, caller: AuthUser) {
     await this.clinics.assertCallerCanAccessDoctor(caller, doctorId);
     const breakUntil = new Date(Date.now() + estimatedMinutes * 60_000);
-    await this.prisma.doctor.update({
+    const doctor = await this.prisma.doctor.update({
       where: { id: doctorId },
       data: { status: DoctorStatus.PAUSED, breakUntil, breakNote: note ?? null },
+      include: { user: true },
     });
     void this.prisma.queueEvent.create({
       data: {
@@ -1592,6 +1629,33 @@ export class QueueService {
       breakUntil: breakUntil.toISOString(),
       breakNote: note ?? null,
     });
+
+    void this.notifyActivePatients(doctorId, (phone) =>
+      this.notifications.notifyDoctorBreak(phone, estimatedMinutes, doctor.user.name),
+    );
+  }
+
+  private async notifyActivePatients(
+    doctorId: string,
+    sendFn: (phone: string) => Promise<unknown>,
+  ) {
+    try {
+      const active = await this.prisma.queueEntry.findMany({
+        where: {
+          doctorId,
+          status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+          serviceDay: istServiceDay(),
+        },
+        include: { patient: { select: { phone: true } } },
+      });
+      for (const entry of active) {
+        if (entry.patient?.phone) {
+          void sendFn(entry.patient.phone).catch(() => {});
+        }
+      }
+    } catch {
+      /* ignore background notification failure */
+    }
   }
 
   // ---------- history ----------
@@ -2107,6 +2171,33 @@ export class QueueService {
       const doctorName = doctor?.user?.name ?? 'the doctor';
       await this.notifications.notifyJoined(phone, `#${tokenToCode(tokenNumber)}`, doctorName);
     } catch { /* never let notification errors surface to callers */ }
+  }
+
+  private async notifyStaffSelfBookingAsync(doctorId: string, patientId: string, tokenNumber: number) {
+    try {
+      const [patient, doctor] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: patientId },
+          select: { name: true },
+        }),
+        this.prisma.doctor.findUnique({
+          where: { id: doctorId },
+          select: { clinicId: true, user: { select: { name: true } } },
+        }),
+      ]);
+
+      if (patient && doctor) {
+        await this.notifications.notifyStaffSelfBooking({
+          clinicId: doctor.clinicId,
+          doctorId,
+          patientName: patient.name,
+          doctorName: doctor.user.name,
+          tokenCode: `#${tokenToCode(tokenNumber)}`,
+        });
+      }
+    } catch {
+      /* never let notification errors surface to callers */
+    }
   }
 
   private async getNextAvailableShift(

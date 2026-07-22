@@ -16,7 +16,7 @@ function makeService() {
   const findUnique = jest.fn();
   const update = jest.fn().mockResolvedValue({});
   const prisma = {
-    user: { findUnique, update },
+    user: { findUnique, findFirst: findUnique, update },
   } as unknown as PrismaService;
 
   const jwt = {
@@ -58,7 +58,15 @@ describe('AuthService.staffLogin', () => {
     });
 
     const out = await svc.staffLogin('a@clinic.com', 'hunter2');
-    expect(findUnique).toHaveBeenCalledWith({ where: { email: 'a@clinic.com' } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { loginId: { equals: 'a@clinic.com', mode: 'insensitive' } },
+          { email: { equals: 'a@clinic.com', mode: 'insensitive' } },
+          { phone: 'a@clinic.com' },
+        ],
+      },
+    });
     expect(out.token).toBe('signed-token');
     expect(out.user.role).toBe(Role.DOCTOR);
   });
@@ -78,7 +86,15 @@ describe('AuthService.staffLogin', () => {
     });
 
     await svc.staffLogin('9876543210', 'hunter2');
-    expect(findUnique).toHaveBeenCalledWith({ where: { phone: '+919876543210' } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { loginId: { equals: '9876543210', mode: 'insensitive' } },
+          { email: { equals: '+919876543210', mode: 'insensitive' } },
+          { phone: '+919876543210' },
+        ],
+      },
+    });
   });
 
   it('falls through with the raw string for non-Indian-mobile non-email identifiers', async () => {
@@ -90,7 +106,15 @@ describe('AuthService.staffLogin', () => {
     await expect(svc.staffLogin('garbage', 'whatever')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
-    expect(findUnique).toHaveBeenCalledWith({ where: { phone: 'garbage' } });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { loginId: { equals: 'garbage', mode: 'insensitive' } },
+          { email: { equals: 'garbage', mode: 'insensitive' } },
+          { phone: 'garbage' },
+        ],
+      },
+    });
   });
 
   it('returns generic "Invalid credentials" if user not found', async () => {

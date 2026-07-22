@@ -14,6 +14,7 @@ export interface ScheduleRow {
   startTime: string;
   endTime: string;
   isHoliday: boolean;
+  maxCapacity?: number | null;
 }
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -133,6 +134,7 @@ export function ScheduleTab({
         startTime: r.startTime,
         endTime: r.endTime,
         isHoliday: r.isHoliday,
+        maxCapacity: r.maxCapacity ?? null,
       }));
       await api(`/schedules/doctor/${selectedDocId}?locationId=${locationId}`, {
         method: 'POST',
@@ -209,9 +211,28 @@ export function ScheduleTab({
                           <span className="text-slate-400 text-xs">to</span>
                           <TimePicker value={s.endTime} onChange={(v) => updateShift(day, idx, 'endTime', v)} />
                           <span className="text-[10px] text-slate-400">IST</span>
+                          <div className="flex items-center gap-1.5 ml-2">
+                            <span className="text-[11px] font-medium text-slate-500">Max limit:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={999}
+                              placeholder="No limit"
+                              value={s.maxCapacity ?? ''}
+                              onChange={(e) =>
+                                updateShift(
+                                  day,
+                                  idx,
+                                  'maxCapacity',
+                                  e.target.value ? parseInt(e.target.value, 10) : (null as any),
+                                )
+                              }
+                              className="w-20 px-2 py-1 text-xs border rounded-lg bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-teal-500"
+                            />
+                          </div>
                           {rows.length > 1 && (
                             <button type="button" onClick={() => removeShift(day, idx)}
-                              className="text-xs text-rose-500 hover:text-rose-600">Remove</button>
+                              className="text-xs text-rose-500 hover:text-rose-600 ml-1">Remove</button>
                           )}
                         </div>
                       ))

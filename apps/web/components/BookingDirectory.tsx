@@ -28,6 +28,7 @@ interface PublicLocation {
     queueEnds: string;
     appointmentInterval?: number;
     allowOnlineBooking: boolean;
+    maxSelfBookingNoShowsPerMonth?: number;
   } | null;
   doctors: PublicDoctor[];
 }
@@ -522,6 +523,19 @@ export function BookingDirectory({
                                     </div>
                                   )}
                                   */}
+
+                                  {/* Monthly No-Show Policy Notice */}
+                                  <div className="rounded-xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 p-3 flex items-start gap-2.5 text-xs text-amber-900 dark:text-amber-200 shadow-xs">
+                                    <span className="text-base shrink-0 mt-0.5">⚠️</span>
+                                    <div className="space-y-0.5">
+                                      <p className="font-semibold text-amber-900 dark:text-amber-100">
+                                        Self-Booking Policy Notice
+                                      </p>
+                                      <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-relaxed">
+                                        Only <strong>{currentLoc.settings?.maxSelfBookingNoShowsPerMonth ?? 3} no-shows (missed appointments)</strong> are allowed for <strong>{doc.name}</strong> at <strong>{currentLoc.name}</strong> per month. Please cancel in advance if you cannot attend.
+                                      </p>
+                                    </div>
+                                  </div>
 
                                   {/* Reason / Notes */}
                                   <div>

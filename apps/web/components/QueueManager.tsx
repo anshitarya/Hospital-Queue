@@ -31,6 +31,8 @@ import { getLabels } from '@/lib/labels';
 import { serviceDay, fmtWait, formatDateIst, formatTimeIst, addServiceDays, istNowHHMM, istDayOfWeekFromKey, isShiftStillBookable } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 import { Spinner } from '@/components/PageLoader';
+import { useWebPush } from '@/lib/useWebPush';
+
 
 function doctorStorageKey(clinicId: string) {
   return `turnos_selected_doctor_${clinicId}`;
@@ -261,6 +263,67 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     });
   }, [doctorShifts]);
 
+  // Active doctor shift for capacity limits
+  const activeDoctorShift = useMemo(() => {
+    if (doctorShifts.length === 0) return null;
+    const todayDow = istDayOfWeekFromKey(serviceDay());
+    const match = doctorShifts.find((s) => s.dayOfWeek === todayDow && !s.isHoliday);
+    return match || doctorShifts[0] || null;
+  }, [doctorShifts]);
+
+  const [capacityInput, setCapacityInput] = useState<string>('');
+  const [savingCapacity, setSavingCapacity] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (activeDoctorShift) {
+      setCapacityInput(activeDoctorShift.maxCapacity != null ? String(activeDoctorShift.maxCapacity) : '');
+    } else {
+      setCapacityInput('');
+    }
+  }, [activeDoctorShift]);
+
+  const saveCapacityLimit = async (newValStr: string) => {
+    if (!selectedDoctorId || !locationId || savingCapacity) return;
+    const trimmed = newValStr.trim();
+    const newLimit = trimmed !== '' ? parseInt(trimmed, 10) : null;
+    if (newLimit !== null && (isNaN(newLimit) || newLimit < 1)) return;
+
+    setSavingCapacity(true);
+    try {
+      const fullSchedules = await api<any[]>(`/schedules/doctor/${selectedDoctorId}?locationId=${locationId}`);
+      const updatedShifts = (fullSchedules || []).map((s) => {
+        if (
+          activeDoctorShift &&
+          (s.id === activeDoctorShift.id ||
+            (s.dayOfWeek === activeDoctorShift.dayOfWeek && s.startTime === activeDoctorShift.startTime))
+        ) {
+          return { ...s, maxCapacity: newLimit };
+        }
+        return s;
+      });
+
+      await api(`/schedules/doctor/${selectedDoctorId}?locationId=${locationId}`, {
+        method: 'POST',
+        body: { shifts: updatedShifts },
+      });
+
+      setDoctorShifts(updatedShifts.filter((s: any) => !s.isHoliday));
+      setToast({
+        type: 'ok',
+        msg: newLimit
+          ? `Schedule limit set to max ${newLimit} patients for ${snapshot?.doctor?.user?.name || 'doctor'}`
+          : `Schedule capacity limit removed for ${snapshot?.doctor?.user?.name || 'doctor'}`,
+      });
+    } catch (err: any) {
+      setToast({
+        type: 'err',
+        msg: err instanceof ApiError ? err.message : 'Failed to update schedule capacity limit',
+      });
+    } finally {
+      setSavingCapacity(false);
+    }
+  };
+
   const entrySlotKey = useCallback((e: { appointmentSlot?: string | null; appointmentTime?: string | null }) => {
     if (e.appointmentSlot) return e.appointmentSlot;
     if (e.appointmentTime) return formatTimeIst(e.appointmentTime);
@@ -412,6 +475,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     const capturedWalkin = walkin;
     const capturedSlotType = slotType;
     // Generate a unique idempotency key using high-precision timestamp + random suffix to prevent stuck "Adding..." states
+    const resolvedShiftTime = capturedWalkin ? undefined : (selectedShiftTime || (upcomingShifts[0]?.appointmentTime ?? undefined));
     const idemKey = `${selectedDoctorId}:${e164}:${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const body = {
       doctorId: selectedDoctorId,
@@ -452,6 +516,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
           joinedAt: new Date().toISOString(),
           patient: { id: 'pending', name: capturedName, phone: body.patientPhone ?? null },
           walkin: capturedWalkin,
+          appointmentTime: resolvedShiftTime,
           sortOrder: null,
           slotType: (capturedSlotType === 'FOLLOWUP' ? 'FOLLOWUP' : 'NEW') as QueueEntry['slotType'],
         },
@@ -871,16 +936,52 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
   useEffect(() => () => stopAutoScroll(), [stopAutoScroll]);
 
+  const {
+    isSupported: pushSupported,
+    permission: pushPermission,
+    subscribed: pushSubscribed,
+    subscribe: subscribePush,
+    unsubscribe: unsubscribePush,
+  } = useWebPush();
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       {/* Doctor selector */}
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            Select {L.provider.toLowerCase()}
-          </span>
-          <LiveIndicator connected={connected} />
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Select {L.provider.toLowerCase()}
+            </span>
+            <LiveIndicator connected={connected} />
+          </div>
+
+          {pushSupported && pushPermission !== 'denied' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (pushSubscribed) {
+                  void unsubscribePush().then((ok) => {
+                    if (ok) setToast({ type: 'info', msg: 'Staff Push notifications paused for this device' });
+                  });
+                } else {
+                  void subscribePush().then((ok) => {
+                    if (ok) setToast({ type: 'ok', msg: 'Staff Push notifications active! You will get alerts on new patient self-bookings.' });
+                    else setToast({ type: 'err', msg: 'Could not enable push notifications' });
+                  });
+                }
+              }}
+              className={`pill-sm text-[11px] font-semibold transition-all flex items-center gap-1 py-1 px-2.5 rounded-full border ${
+                pushSubscribed
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+              }`}
+              title={pushSubscribed ? 'Click to pause push alerts for patient self-bookings' : 'Click to turn on push alerts for patient self-bookings'}
+            >
+              <span>{pushSubscribed ? '🔔 Self-Booking Push ON' : '🔕 Self-Booking Push OFF'}</span>
+            </button>
+          )}
         </div>
         {allDoctors.length > 0 ? (
           <div className="flex flex-wrap gap-2">
@@ -1082,11 +1183,56 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   <span className="text-sm font-normal text-slate-400 dark:text-slate-500">— {snapshot.doctor.user.name}</span>
                 )}
               </h2>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Now serving</span>
-                <span className="font-bold text-slate-800 dark:text-slate-100 font-mono text-sm bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1">
-                  {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
-                </span>
+
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                {/* Schedule Limit Configurator (Left side of 'Now Serving') */}
+                {selectedDoctorId && (
+                  <div
+                    className="flex items-center gap-1.5 bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200/90 dark:hover:bg-slate-700/90 transition-all rounded-xl px-2.5 py-1 border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-xs"
+                    title="Configure max capacity limit for this doctor's schedule shift"
+                  >
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1">
+                      <span>👥</span>
+                      <span className="hidden sm:inline">Limit:</span>
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      placeholder="Max"
+                      value={capacityInput}
+                      onChange={(e) => setCapacityInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void saveCapacityLimit(capacityInput);
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
+                      className="w-14 sm:w-16 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md px-1.5 py-0.5 text-xs font-bold text-slate-800 dark:text-slate-100 text-center focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void saveCapacityLimit(capacityInput)}
+                      disabled={savingCapacity}
+                      className="btn-primary !py-0.5 !px-2 text-[11px] font-semibold shrink-0"
+                    >
+                      {savingCapacity ? '...' : 'Save'}
+                    </button>
+                    {activeDoctorShift?.maxCapacity ? (
+                      <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-1.5 py-0.5 rounded">
+                        {(snapshot?.entries ?? []).filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION').length}/{activeDoctorShift.maxCapacity}
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Now serving</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-100 font-mono text-sm bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1">
+                    {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
+                  </span>
+                </div>
               </div>
             </div>
             {/* Search + controls row */}
