@@ -40,6 +40,6 @@ export const FEATURES = {
    * The hostname that is allowed to access /admin when SUPER_ADMIN_LOCKED=true.
    * Override if you chose a different subdomain.
    */
-  SUPER_ADMIN_HOST: process.env.SUPER_ADMIN_HOST ?? 'admin.turnos.fly.dev',
+  SUPER_ADMIN_HOST: process.env.SUPER_ADMIN_HOST ?? 'admin.turnos.in',
 
 } as const;

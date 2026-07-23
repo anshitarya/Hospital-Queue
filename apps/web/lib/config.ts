@@ -25,7 +25,7 @@ export const BRAND = {
     phoneTel: '+919414771828',          // for tel: links
     phoneWhatsapp: '919414771828',      // for wa.me links
     email: 'anshit.arya@flipkart.com',
-    legalEmail: 'hello@turnos.fly.dev', // shown on legal pages — update when domain is live
+    legalEmail: 'hello@turnos.in', // shown on legal pages — update when domain is live
     hours: '9 AM–8 PM IST',
   },
   // Replace with your Google Form short link for user reviews
