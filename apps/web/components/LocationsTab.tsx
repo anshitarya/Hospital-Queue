@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Toast, type ToastMessage } from '@/components/Toast';
-import { Spinner } from '@/components/PageLoader';
+import { TableSkeleton } from '@/components/Skeleton';
 
 interface LocationItem {
   id: string;
@@ -124,9 +124,8 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
 
   if (loading) {
     return (
-      <div className="py-12 flex flex-col items-center gap-4 text-slate-400">
-        <Spinner className="h-8 w-8" />
-        <span className="text-xs font-medium">Loading branch locations…</span>
+      <div className="p-5 sm:p-6 max-w-5xl mx-auto space-y-6">
+        <TableSkeleton rows={4} cols={4} />
       </div>
     );
   }

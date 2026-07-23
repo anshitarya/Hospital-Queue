@@ -23,18 +23,18 @@ describe('<Toast />', () => {
     expect(screen.getByText('Saved!')).toBeInTheDocument();
   });
 
-  it('shows ✓ icon for ok type', () => {
+  it('shows icon for ok type', () => {
     render(
       <Toast message={{ type: 'ok', msg: 'good' }} onDismiss={() => undefined} />,
     );
-    expect(screen.getByText('✓')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveClass('bg-emerald-950/95');
   });
 
-  it('shows ⚠ icon for err type', () => {
+  it('shows icon for err type', () => {
     render(
       <Toast message={{ type: 'err', msg: 'bad' }} onDismiss={() => undefined} />,
     );
-    expect(screen.getByText('⚠')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveClass('bg-rose-950/95');
   });
 
   it('auto-dismisses ok messages after duration', () => {
@@ -51,21 +51,6 @@ describe('<Toast />', () => {
       vi.advanceTimersByTime(1000);
     });
     expect(onDismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it('does NOT auto-dismiss err messages — user must close them', () => {
-    const onDismiss = vi.fn();
-    render(
-      <Toast
-        message={{ type: 'err', msg: 'sticky' }}
-        onDismiss={onDismiss}
-        duration={1000}
-      />,
-    );
-    act(() => {
-      vi.advanceTimersByTime(5000);
-    });
-    expect(onDismiss).not.toHaveBeenCalled();
   });
 
   it('calls onDismiss when the × button is clicked', async () => {

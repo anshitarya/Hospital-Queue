@@ -4,11 +4,11 @@ import { DoctorStatusPill, EntryStatusPill, LiveIndicator } from './StatusPill';
 
 describe('<EntryStatusPill />', () => {
   it.each([
-    ['WAITING', 'WAITING'],
-    ['IN_CONSULTATION', 'IN CONSULTATION'], // underscore → space
-    ['COMPLETED', 'COMPLETED'],
-    ['SKIPPED', 'SKIPPED'],
-    ['CANCELLED', 'CANCELLED'],
+    ['WAITING', 'Waiting'],
+    ['IN_CONSULTATION', 'In consultation'],
+    ['COMPLETED', 'Completed'],
+    ['SKIPPED', 'Skipped'],
+    ['CANCELLED', 'Cancelled'],
   ] as const)('renders %j status as %j', (status, displayed) => {
     render(<EntryStatusPill status={status} />);
     expect(screen.getByText(displayed)).toBeInTheDocument();
@@ -16,13 +16,15 @@ describe('<EntryStatusPill />', () => {
 });
 
 describe('<DoctorStatusPill />', () => {
-  it.each(['AVAILABLE', 'BUSY', 'PAUSED', 'AWAY'] as const)(
-    'renders %j status',
-    (status) => {
-      render(<DoctorStatusPill status={status} />);
-      expect(screen.getByText(status)).toBeInTheDocument();
-    },
-  );
+  it.each([
+    ['AVAILABLE', 'Available'],
+    ['BUSY', 'Busy'],
+    ['PAUSED', 'Paused'],
+    ['AWAY', 'Away'],
+  ] as const)('renders %j status', (status, expectedText) => {
+    render(<DoctorStatusPill status={status} />);
+    expect(screen.getByText(expectedText)).toBeInTheDocument();
+  });
 });
 
 describe('<LiveIndicator />', () => {

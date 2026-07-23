@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { loginCustomer, useAuth } from '@/lib/auth';
 import { ApiError } from '@/lib/api';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
+import { WarpSpeedLoader } from '@/components/WarpSpeedLoader';
 
 type Step = 'phone' | 'pin';
 
@@ -46,13 +47,12 @@ export default function PatientLoginPage() {
       router.push('/patient');
     } catch (ex) {
       err(ex);
-    } finally {
-      setBusy(false);
     }
   }
 
   return (
     <main className="min-h-screen flex items-center justify-center px-4">
+      {busy && <WarpSpeedLoader message="Verifying PIN…" />}
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-6">

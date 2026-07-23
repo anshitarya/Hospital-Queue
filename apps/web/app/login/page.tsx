@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api';
 import { IdentifierInput } from '@/components/IdentifierInput';
 import { TurnosIcon } from '@/components/Icons';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { WarpSpeedLoader } from '@/components/WarpSpeedLoader';
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -47,7 +48,6 @@ export default function StaffLoginPage() {
       redirectByRole(result.user.role);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Login failed');
-    } finally {
       setBusy(false);
     }
   }
@@ -61,7 +61,6 @@ export default function StaffLoginPage() {
       redirectByRole(result.user.role);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Google Sign-In failed');
-    } finally {
       setBusy(false);
     }
   }
@@ -72,6 +71,7 @@ export default function StaffLoginPage() {
 
   return (
     <main className="min-h-screen flex items-center justify-center px-4 bg-slate-50 dark:bg-[#0a0a0b]">
+      {busy && <WarpSpeedLoader />}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 h-[400px] w-[600px] rounded-full bg-brand-300/20 blur-3xl" />
         <div className="absolute bottom-0 right-0 h-[300px] w-[400px] rounded-full bg-purple-200/15 blur-3xl" />

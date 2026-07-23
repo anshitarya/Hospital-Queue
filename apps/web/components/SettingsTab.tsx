@@ -3,7 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
 import { type ToastMessage } from './Toast';
 import { QRCodePanel } from './QRCodePanel';
-import { Spinner } from './PageLoader';
+import { FormSkeleton } from './Skeleton';
 
 interface SettingsData {
   businessType: string;
@@ -139,9 +139,8 @@ export function SettingsTab({
 
   if (loading) {
     return (
-      <div className="py-16 flex flex-col items-center gap-4 text-slate-400">
-        <Spinner className="h-8 w-8" />
-        <span className="text-xs font-medium">Loading settings…</span>
+      <div className="p-5 sm:p-6 max-w-4xl mx-auto space-y-6">
+        <FormSkeleton rows={6} />
       </div>
     );
   }

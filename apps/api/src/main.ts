@@ -13,6 +13,18 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
 
+  // Artificial latency middleware for testing skeleton shimmer loaders
+  app.use((req: any, res: any, next: () => void) => {
+    const delay = Number(process.env.DEV_THROTTLE_MS ?? 0);
+    // Keep initial page bootstrap /auth/me check instant so first load is instant
+    const isInitialAuthCheck = req.method === 'GET' && (req.path === '/api/auth/me' || req.path === '/auth/me');
+    if (delay > 0 && !isInitialAuthCheck) {
+      setTimeout(next, delay);
+    } else {
+      next();
+    }
+  });
+
   app.enableCors({
     origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(','),
     credentials: true,

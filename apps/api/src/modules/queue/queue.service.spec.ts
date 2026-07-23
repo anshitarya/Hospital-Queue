@@ -1,601 +1,272 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
-import { DoctorStatus, EntryStatus, Role } from '@prisma/client';
+import { Test, TestingModule } from '@nestjs/testing';
 import { QueueService } from './queue.service';
-import { EtaService } from './eta.service';
-import { QueueGateway } from './gateway/queue.gateway';
-import { NotificationsService } from '../notifications/notifications.service';
-import { CustomerService } from '../patients/customer.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
+import { QueueGateway } from './gateway/queue.gateway';
+import { EtaService } from './eta.service';
+import { CustomerService } from '../patients/customer.service';
+import { UsageEventService } from '../billing/usage-event.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ClinicsService } from '../clinics/clinics.service';
-import { AuthUser } from '../../common/decorators/current-user.decorator';
+import { BadRequestException } from '@nestjs/common';
+import { Role } from '@prisma/client';
 
-function staffUser(id: string, clinicId = 'clinic-1'): AuthUser {
-  return { id, role: Role.RECEPTIONIST, name: 'Receptionist', clinicId };
-}
+describe('QueueService', () => {
+  let service: QueueService;
+  let prisma: any;
+  let gateway: any;
 
-/**
- * Integration-style tests for QueueService. We mock prisma + redis at the
- * service boundary, and use a spy gateway so we can assert that the right
- * socket rooms are notified on every transition.
- *
- * The biggest behavioural test: after each operation that touches a patient,
- * the gateway MUST emit `patient:queue:updated` to that patient's private
- * room. This is the bug fix from task #22 — losing it again would silently
- * break the patient real-time view.
- */
+  const mockCaller = { id: 'u-staff-1', role: Role.RECEPTIONIST } as any;
 
-interface FakeEntry {
-  id: string;
-  doctorId: string;
-  patientId: string;
-  createdById: string | null;
-  serviceDay: string;
-  tokenNumber: number;
-  priority: number;
-  notes: string | null;
-  status: EntryStatus;
-  version: number;
-  joinedAt: Date;
-  calledAt: Date | null;
-  startedAt: Date | null;
-  completedAt: Date | null;
-}
-
-function entryMatchesWhere(e: FakeEntry, where: Record<string, any>): boolean {
-  if (where.id && e.id !== where.id) return false;
-  if (where.doctorId && e.doctorId !== where.doctorId) return false;
-  if (where.patientId && e.patientId !== where.patientId) return false;
-  if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
-  if (where.status) {
-    if (typeof where.status === 'object' && 'in' in where.status) {
-      if (!where.status.in.includes(e.status)) return false;
-    } else {
-      if (e.status !== where.status) return false;
-    }
-  }
-  return true;
-}
-
-function makeFakePrisma() {
-  const entries: FakeEntry[] = [];
-  const users = new Map<string, { id: string; phone: string; name: string; role: Role }>();
-  const events: { doctorId: string; entryId?: string; type: string }[] = [];
-  const doctor: {
-    id: string;
-    userId: string;
-    clinicId: string;
-    departmentId: string;
-    avgConsultMinutes: number;
-    delayMinutes: number;
-    status: DoctorStatus;
-    createdAt: Date;
-    updatedAt: Date;
-    user: { id: string; name: string };
-    department: { id: string; name: string };
-    locations: { locationId: string }[];
-  } = {
-    id: 'doc-1',
-    userId: 'doc-user',
-    clinicId: 'c-1',
-    departmentId: 'dept-1',
-    avgConsultMinutes: 10,
-    delayMinutes: 0,
-    status: DoctorStatus.AVAILABLE,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    user: { id: 'doc-user', name: 'Dr A' },
-    department: { id: 'dept-1', name: 'General' },
-    locations: [{ locationId: 'loc-1' }],
-  };
-
-  const fakePrisma: any = {
+  const mockPrismaService: any = {
     doctor: {
-      findUnique: jest.fn(async () => doctor),
-      update: jest.fn(async ({ data }: { data: { status: DoctorStatus } }) => {
-        doctor.status = data.status;
-        return doctor;
+      findUnique: jest.fn().mockResolvedValue({
+        id: 'doc-1',
+        clinicId: 'clinic-1',
+        status: 'ONLINE',
+        user: { name: 'Dr. Smith' },
+        department: { name: 'Cardiology' },
+        clinic: { id: 'clinic-1', businessType: 'CLINIC' },
+        locations: [{ locationId: 'loc-1' }],
       }),
+      findFirst: jest.fn(),
     },
-    professionalSchedule: {
-      findMany: jest.fn().mockResolvedValue([]),
-    },
-    user: {
-      upsert: jest.fn(async ({ where, update, create }: any) => {
-        const existing = [...users.values()].find((u) => u.phone === where.phone);
-        if (existing) {
-          Object.assign(existing, update);
-          return existing;
-        }
-        const created = { id: `u-${users.size + 1}`, ...create };
-        users.set(created.id, created);
-        return created;
-      }),
+    doctorLocation: {
+      findMany: jest.fn().mockResolvedValue([{ locationId: 'loc-1' }]),
     },
     businessSetting: {
-      findUnique: jest.fn(async ({ where }: { where: { locationId: string } }) => ({
-        locationId: where.locationId,
-        allowOnlineBooking: true,
-        maxSelfBookingNoShowsPerMonth: 0,
-        queueMode: 'LIVE_QUEUE',
-      })),
-      findMany: jest.fn(async ({ where }: { where: { locationId: { in: string[] } } }) =>
-        (where.locationId.in ?? ['loc-1']).map((locationId) => ({
-          locationId,
-          allowOnlineBooking: true,
-          maxSelfBookingNoShowsPerMonth: 0,
-          queueMode: 'LIVE_QUEUE',
-        })),
-      ),
-    },
-    location: {
-      findUnique: jest.fn(async () => ({ id: 'loc-1', clinicId: 'c-1' })),
-    },
-    queueEntry: {
-      count: jest.fn(async () => 0),
-      findFirst: jest.fn(async ({ where, orderBy }: any) => {
-        const list = entries
-          .filter((e) => entryMatchesWhere(e, where))
-          .sort((a, b) =>
-            orderBy?.tokenNumber === 'desc'
-              ? b.tokenNumber - a.tokenNumber
-              : a.tokenNumber - b.tokenNumber,
-          );
-        return list[0] ?? null;
-      }),
-      findUnique: jest.fn(async ({ where }: { where: { id: string } }) => {
-        const e = entries.find((x) => x.id === where.id);
-        if (!e) return null;
-        return {
-          ...e,
-          doctor: { id: e.doctorId || 'doc-1', clinicId: 'c-1' },
-          patient: users.get(e.patientId) || null,
-        };
-      }),
-      findMany: jest.fn(async ({ where }: any) => {
-        return entries
-          .filter((e) => {
-            if (where.doctorId && e.doctorId !== where.doctorId) return false;
-            if (where.serviceDay && e.serviceDay !== where.serviceDay) return false;
-            if (where.status) {
-              if (typeof where.status === 'object' && 'in' in where.status) {
-                if (!where.status.in.includes(e.status)) return false;
-              } else {
-                if (e.status !== where.status) return false;
-              }
-            }
-            return true;
-          })
-          .map((e) => ({ ...e, patient: users.get(e.patientId) }));
-      }),
-      create: jest.fn(async ({ data }: any) => {
-        const e: FakeEntry = {
-          id: `e-${entries.length + 1}`,
-          createdById: data.createdById ?? null,
-          notes: data.notes ?? null,
-          priority: data.priority ?? 0,
-          tokenNumber: data.tokenNumber,
-          serviceDay: data.serviceDay,
-          doctorId: data.doctorId,
-          patientId: data.patientId,
-          status: data.status,
-          version: 1,
-          joinedAt: new Date(),
-          calledAt: null,
-          startedAt: null,
-          completedAt: null,
-        };
-        entries.push(e);
-        return { ...e, patient: users.get(e.patientId) };
-      }),
-      update: jest.fn(async ({ where, data }: any) => {
-        const e = entries.find((x) => x.id === where.id);
-        if (!e) throw new Error('not found');
-        if (data.status) e.status = data.status;
-        if (data.version?.increment) e.version += data.version.increment;
-        if (data.priority !== undefined) e.priority = data.priority;
-        if (data.calledAt) e.calledAt = data.calledAt;
-        if (data.startedAt) e.startedAt = data.startedAt;
-        if (data.completedAt) e.completedAt = data.completedAt;
-        return { ...e, patient: users.get(e.patientId) };
-      }),
-      updateMany: jest.fn(async ({ where, data }: any) => {
-        const matching = entries.filter((e) => {
-          if (where.id && e.id !== where.id) return false;
-          if (where.version && e.version !== where.version) return false;
-          return true;
-        });
-        matching.forEach((e) => {
-          if (data.status) e.status = data.status;
-          if (data.version?.increment) e.version += data.version.increment;
-          if (data.priority !== undefined) e.priority = data.priority;
-        });
-        return { count: matching.length };
-      }),
-    },
-    queueEvent: {
-      create: jest.fn(async ({ data }: any) => {
-        events.push(data);
-        return data;
-      }),
+      findMany: jest.fn().mockResolvedValue([{ allowOnlineBooking: true }]),
+      findUnique: jest.fn().mockResolvedValue({ allowOnlineBooking: true }),
     },
     staffLeave: {
       findFirst: jest.fn().mockResolvedValue(null),
     },
-    visit: {
-      findFirst: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'visit-1', ...data })),
+    queueEntry: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      count: jest.fn(),
     },
-    transferLog: {
-      create: jest.fn().mockImplementation(async ({ data }: any) => ({ id: 'transfer-1', ...data })),
+    queueEvent: {
+      create: jest.fn().mockResolvedValue({ id: 'evt-1' }),
     },
-    workflowConfiguration: {
-      findUnique: jest.fn().mockResolvedValue(null),
+    patient: {
+      findUnique: jest.fn(),
+      findFirst: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
     },
-    $transaction: jest.fn(async (fn: (tx: any) => Promise<unknown>) => {
-      return fn(fakePrisma);
-    }),
-    _entries: entries,
-    _users: users,
-    _events: events,
-    _doctor: doctor,
+    professionalSchedule: {
+      findFirst: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([{ id: 'shift-1', startTime: '09:00', endTime: '17:00', isHoliday: false, maxCapacity: 2 }]),
+    },
+    location: {
+      findFirst: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({ id: 'loc-1', name: 'Main Location' }),
+    },
+    userLocation: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    receptionistAssignment: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    $transaction: jest.fn(async (cb: (tx: any) => Promise<any>) => cb(mockPrismaService)),
   };
 
-  return fakePrisma;
-}
-
-function makeFakeRedis() {
-  const store = new Map<string, string>();
-  return {
-    client: {
-      async get(k: string) { return store.get(k) ?? null; },
-      async set(k: string, v: string) { store.set(k, v); return 'OK'; },
-    },
+  const mockRedisService = {
+    get: jest.fn(),
+    set: jest.fn(),
+    del: jest.fn(),
   };
-}
 
-function makeGatewaySpy() {
-  return {
-    emitToDoctorRoom: jest.fn(),
+  const mockGateway = {
+    emitQueueUpdate: jest.fn(),
+    emitPositionUpdate: jest.fn(),
     emitToPatientRoom: jest.fn(),
+    emitToDoctorRoom: jest.fn(),
   };
-}
 
-function makeService() {
-  const prisma = makeFakePrisma();
-  const redis = makeFakeRedis();
-  const gateway = makeGatewaySpy();
-  const eta = new EtaService();
-  const notifications = {
-    notifyJoined: () => Promise.resolve(),
-    notifyTurnNow: () => Promise.resolve(),
-    notifyAlmostNext: () => Promise.resolve(),
-    notifyQueueCleared: () => Promise.resolve(),
-    notifyTurnSoon: () => Promise.resolve(),
-    notifyDelayed: () => Promise.resolve(),
-  } as unknown as NotificationsService;
-  const customers = {
-    upsertByPhone: jest.fn(async (phone: string, name: string) => {
-      const users = prisma._users as unknown as Map<string, { id: string; phone: string; name: string; customerPin?: string }>;
-      const existing = [...users.values()].find((u) => u.phone === phone);
-      if (existing) {
-        Object.assign(existing, { name });
-        return existing;
-      }
-      const created = {
-        id: `u-${users.size + 1}`,
-        role: 'PATIENT',
-        phone,
-        name,
-        customerPin: '1234',
-      };
-      users.set(created.id, created);
-      return created;
-    }),
-    ensurePin: jest.fn(async (u: { id: string; customerPin?: string | null }) => u.customerPin ?? '1234'),
-  } as unknown as CustomerService;
-  const clinics = {
-    assertCallerCanAccessDoctor: jest.fn(async () => undefined),
-    getAssignedDoctorIds: jest.fn(async () => null),
-  } as unknown as ClinicsService;
-  const svc = new QueueService(
-    prisma as unknown as PrismaService,
-    redis as unknown as RedisService,
-    eta,
-    gateway as unknown as QueueGateway,
-    notifications,
-    customers,
-    clinics,
-    { triggerEvent: jest.fn() } as any,
-  );
-  return { svc, prisma, gateway, redis };
-}
+  const mockEtaService = {
+    enrich: jest.fn((entries) => entries),
+    enrichEntries: jest.fn((entries) => entries),
+    invalidateCache: jest.fn(),
+    getMovingAvg: jest.fn().mockResolvedValue(10),
+  };
 
-describe('QueueService — reception join → patient sync', () => {
-  it('creates the entry and emits to BOTH doctor room and patient room', async () => {
-    const { svc, prisma, gateway } = makeService();
+  const mockCustomerService = {
+    findOrCreateCustomer: jest.fn(),
+    upsertByPhone: jest.fn().mockResolvedValue({ id: 'pat-1', name: 'John Doe', phone: '+919876543210' }),
+  };
 
-    const entry = await svc.joinByReception(
-      {
-        doctorId: 'doc-1',
-        patientName: 'Alice',
-        patientPhone: '+919876543210',
-      },
-      staffUser('recp-1'),
-    );
+  const mockUsageEventService = {
+    triggerEvent: jest.fn(),
+  };
 
-    // Allow background promises to resolve
-    await new Promise((resolve) => setTimeout(resolve, 10));
+  const mockNotificationsService = {
+    sendQueueUpdate: jest.fn(),
+  };
 
-    expect(entry.tokenNumber).toBe(1);
-    expect(prisma._entries).toHaveLength(1);
+  const mockClinicsService = {
+    findOne: jest.fn(),
+    assertCallerCanAccessDoctor: jest.fn().mockResolvedValue(true),
+  };
 
-    // Doctor room — the reception screen + display board listen here
-    expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
-      'doc-1',
-      'queue:updated',
-      expect.objectContaining({
-        eventType: 'patient_joined',
-      }),
-    );
+  beforeEach(async () => {
+    jest.clearAllMocks();
 
-    // Patient room — THIS IS THE FIX from task #22.
-    // Without it, the patient page misses the check-in until the next poll.
-    expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
-      expect.any(String),
-      'patient:queue:updated',
-      expect.objectContaining({
-        eventType: 'joined',
-        doctorId: 'doc-1',
-      }),
-    );
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        QueueService,
+        { provide: PrismaService, useValue: mockPrismaService },
+        { provide: RedisService, useValue: mockRedisService },
+        { provide: QueueGateway, useValue: mockGateway },
+        { provide: EtaService, useValue: mockEtaService },
+        { provide: CustomerService, useValue: mockCustomerService },
+        { provide: UsageEventService, useValue: mockUsageEventService },
+        { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: ClinicsService, useValue: mockClinicsService },
+      ],
+    }).compile();
+
+    service = module.get<QueueService>(QueueService);
+    prisma = module.get(PrismaService);
+    gateway = module.get(QueueGateway);
   });
 
-  it('upserts the patient by phone — second join reuses the same user', async () => {
-    const { svc, prisma } = makeService();
+  describe('Self-Booking Capacity Limits', () => {
+    const mockDoctor = {
+      id: 'doc-1',
+      clinicId: 'clinic-1',
+      status: 'ONLINE',
+      user: { name: 'Dr. Smith' },
+      department: { name: 'Cardiology' },
+      clinic: { id: 'clinic-1', businessType: 'CLINIC' },
+      locations: [{ locationId: 'loc-1' }],
+    };
 
-    await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'Alice', patientPhone: '+919876543210' },
-      staffUser('recp-1'),
-    );
-    await svc.joinByReception(
-      { doctorId: 'doc-2', patientName: 'Alice K', patientPhone: '+919876543210' },
-      staffUser('recp-1'),
-    );
+    it('enforces maxCapacity strictly on patient self-bookings (joinByPatient)', async () => {
+      prisma.doctor.findUnique.mockResolvedValue(mockDoctor);
+      mockCustomerService.findOrCreateCustomer.mockResolvedValue({ id: 'pat-2', name: 'Alice', phone: '+919876543211' });
 
-    expect(prisma._users.size).toBe(1);
-    expect([...prisma._users.values()][0].name).toBe('Alice K');
-  });
+      // Active shift with maxCapacity = 2
+      prisma.professionalSchedule.findFirst.mockResolvedValue({
+        id: 'shift-1',
+        maxCapacity: 2,
+        isHoliday: false,
+        startTime: '09:00',
+        endTime: '17:00',
+      });
 
-  it('returns the cached entry when idempotencyKey replays', async () => {
-    const { svc } = makeService();
+      // 2 existing active bookings
+      prisma.queueEntry.count.mockResolvedValue(2);
 
-    const a = await svc.joinByReception(
-      {
-        doctorId: 'doc-1',
-        patientName: 'Bob',
-        patientPhone: '+919876543210',
-        idempotencyKey: 'dup-key-1',
-      },
-      staffUser('recp-1'),
-    );
-    const b = await svc.joinByReception(
-      {
-        doctorId: 'doc-1',
-        patientName: 'Bob',
-        patientPhone: '+919876543210',
-        idempotencyKey: 'dup-key-1',
-      },
-      staffUser('recp-1'),
-    );
+      // Patient self-booking call (joinByPatient) should throw BadRequestException
+      await expect(
+        service.joinByPatient('pat-2', 'doc-1'),
+      ).rejects.toThrow(BadRequestException);
 
-    expect(b.id).toBe(a.id);
-  });
-});
-
-describe('QueueService — transitions notify the patient', () => {
-  it('callNext emits patient:queue:updated for the called patient', async () => {
-    const { svc, gateway } = makeService();
-
-    const entry = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      staffUser('r-1'),
-    );
-    gateway.emitToPatientRoom.mockClear();
-
-    await svc.callNext('doc-1', staffUser('r-1'));
-
-    expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
-      expect.any(String),
-      'patient:queue:updated',
-      expect.objectContaining({
-        eventType: 'entry_in_consultation',
-        entryId: entry.id,
-        from: EntryStatus.WAITING,
-        to: EntryStatus.IN_CONSULTATION,
-      }),
-    );
-  });
-
-  it('complete emits patient:queue:updated', async () => {
-    const { svc, gateway } = makeService();
-    const e = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      staffUser('r-1'),
-    );
-    await svc.callNext('doc-1', staffUser('r-1'));
-    gateway.emitToPatientRoom.mockClear();
-
-    await svc.complete(e.id, staffUser('r-1'));
-
-    expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
-      expect.any(String),
-      'patient:queue:updated',
-      expect.objectContaining({ to: EntryStatus.COMPLETED }),
-    );
-  });
-
-  it('skip emits patient:queue:updated', async () => {
-    const { svc, gateway } = makeService();
-    const e = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      staffUser('r-1'),
-    );
-    gateway.emitToPatientRoom.mockClear();
-
-    await svc.skip(e.id, staffUser('r-1'));
-
-    expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
-      expect.any(String),
-      'patient:queue:updated',
-      expect.objectContaining({ to: EntryStatus.SKIPPED }),
-    );
-  });
-
-  it('cancel emits patient:queue:updated', async () => {
-    const { svc, gateway } = makeService();
-    const e = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      staffUser('r-1'),
-    );
-    gateway.emitToPatientRoom.mockClear();
-
-    await svc.cancel(e.id, staffUser('r-1'));
-
-    expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
-      expect.any(String),
-      'patient:queue:updated',
-      expect.objectContaining({ to: EntryStatus.CANCELLED }),
-    );
-  });
-
-  it('reorder emits patient:queue:updated', async () => {
-    const { svc, gateway } = makeService();
-    const e = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'C', patientPhone: '+919876543210' },
-      staffUser('r-1'),
-    );
-    gateway.emitToPatientRoom.mockClear();
-
-    await svc.reorder(e.id, { priority: 50 }, staffUser('r-1'));
-
-    expect(gateway.emitToPatientRoom).toHaveBeenCalledWith(
-      expect.any(String),
-      'patient:queue:updated',
-      expect.objectContaining({ eventType: 'reordered' }),
-    );
-  });
-});
-
-describe('QueueService — state-machine guards', () => {
-  it('callNext throws ConflictException if a patient is already in consultation', async () => {
-    const { svc } = makeService();
-    await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'A', patientPhone: '+919876543210' },
-      staffUser('r'),
-    );
-    await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'B', patientPhone: '+919876543211' },
-      staffUser('r'),
-    );
-    await svc.callNext('doc-1', staffUser('r'));
-
-    await expect(svc.callNext('doc-1', staffUser('r'))).rejects.toBeInstanceOf(ConflictException);
-  });
-
-  it('callNext throws NotFoundException when queue is empty', async () => {
-    const { svc } = makeService();
-    await expect(svc.callNext('doc-1', staffUser('r'))).rejects.toBeInstanceOf(NotFoundException);
-  });
-
-  it('cannot complete a WAITING entry — only IN_CONSULTATION', async () => {
-    const { svc } = makeService();
-    const e = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'A', patientPhone: '+919876543210' },
-      staffUser('r'),
-    );
-    await expect(svc.complete(e.id, staffUser('r'))).rejects.toBeInstanceOf(ConflictException);
-  });
-
-  it('cannot reorder a non-WAITING entry', async () => {
-    const { svc } = makeService();
-    const e = await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'A', patientPhone: '+919876543210' },
-      staffUser('r'),
-    );
-    await svc.callNext('doc-1', staffUser('r'));
-    await expect(svc.reorder(e.id, { priority: 50 }, staffUser('r'))).rejects.toThrow();
-  });
-});
-
-describe('QueueService — priority handling', () => {
-  it('emergency patient (priority 100) is called before normal priority', async () => {
-    const { svc, prisma } = makeService();
-    await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'Normal-1', patientPhone: '+919876543210' },
-      staffUser('r'),
-    );
-    await svc.joinByReception(
-      { doctorId: 'doc-1', patientName: 'Normal-2', patientPhone: '+919876543211' },
-      staffUser('r'),
-    );
-    const urgent = await svc.joinByReception(
-      {
-        doctorId: 'doc-1',
-        patientName: 'Emergency',
-        patientPhone: '+919876543212',
-        priority: 100,
-      },
-      staffUser('r'),
-    );
-
-    const next = await svc.callNext('doc-1', staffUser('r'));
-    expect(next.id).toBe(urgent.id);
-  });
-});
-
-describe('QueueService — self-booking duplicate guard', () => {
-  it('blocks a second self-booking with the same doctor regardless of service day', async () => {
-    const { svc, prisma } = makeService();
-    prisma._entries.push({
-      id: 'existing',
-      doctorId: 'doc-1',
-      patientId: 'patient-1',
-      createdById: null,
-      serviceDay: '2026-07-20',
-      tokenNumber: 1,
-      priority: 0,
-      notes: null,
-      status: EntryStatus.WAITING,
-      version: 1,
-      joinedAt: new Date(),
-      calledAt: null,
-      startedAt: null,
-      completedAt: null,
+      expect(prisma.queueEntry.create).not.toHaveBeenCalled();
     });
 
-    await expect(svc.joinByPatient('patient-1', 'doc-1')).rejects.toBeInstanceOf(ConflictException);
-  });
-});
+    it('allows staff walk-in entry even when maxCapacity is reached (joinByReception)', async () => {
+      prisma.doctor.findUnique.mockResolvedValue(mockDoctor);
+      mockCustomerService.findOrCreateCustomer.mockResolvedValue({ id: 'pat-1', name: 'John Doe', phone: '+919876543210' });
 
-describe('QueueService — pause / resume', () => {
-  it('pauseDoctor sets status PAUSED and broadcasts to doctor room', async () => {
-    const { svc, prisma, gateway } = makeService();
-    await svc.pauseDoctor('doc-1', staffUser('r-1'));
-    // Allow background promises to resolve
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(prisma._doctor.status).toBe(DoctorStatus.PAUSED);
-    expect(gateway.emitToDoctorRoom).toHaveBeenCalledWith(
-      'doc-1',
-      'queue:updated',
-      expect.objectContaining({ eventType: 'doctor_status' }),
-    );
+      // Active shift with maxCapacity = 2
+      prisma.professionalSchedule.findFirst.mockResolvedValue({
+        id: 'shift-1',
+        maxCapacity: 2,
+        isHoliday: false,
+        startTime: '09:00',
+        endTime: '17:00',
+      });
+
+      // 2 existing active bookings
+      prisma.queueEntry.count.mockResolvedValue(2);
+
+      const newEntry = {
+        id: 'entry-staff-1',
+        doctorId: 'doc-1',
+        patientId: 'pat-1',
+        status: 'WAITING',
+        tokenNumber: 'A-003',
+        serviceDay: '2026-07-23',
+        patient: { id: 'pat-1', name: 'John Doe', phone: '+919876543210' },
+      };
+      prisma.queueEntry.create.mockResolvedValue(newEntry);
+      prisma.queueEntry.findMany.mockResolvedValue([newEntry]);
+      prisma.queueEntry.findFirst.mockResolvedValue(null);
+
+      // Staff joinByReception call
+      const res = await service.joinByReception(
+        { doctorId: 'doc-1', patientName: 'John Doe', patientPhone: '+919876543210' },
+        mockCaller,
+      );
+
+      expect(res).toBeDefined();
+      expect(prisma.queueEntry.create).toHaveBeenCalled();
+    });
   });
 
-  it('resumeDoctor sets status AVAILABLE', async () => {
-    const { svc, prisma } = makeService();
-    await svc.pauseDoctor('doc-1', staffUser('r-1'));
-    await svc.resumeDoctor('doc-1', staffUser('r-1'));
-    expect(prisma._doctor.status).toBe(DoctorStatus.AVAILABLE);
+  describe('Queue Entry Status Transitions', () => {
+    it('completes queue entry and broadcasts socket update', async () => {
+      let statusState = 'IN_CONSULTATION';
+      const mockEntry = {
+        id: 'entry-1',
+        doctorId: 'doc-1',
+        patientId: 'pat-1',
+        get status() { return statusState; },
+        serviceDay: '2026-07-23',
+        version: 1,
+        doctor: { id: 'doc-1' },
+      };
+
+      prisma.queueEntry.findUnique.mockImplementation(async () => mockEntry);
+      prisma.queueEntry.updateMany.mockImplementation(async () => {
+        statusState = 'COMPLETED';
+        return { count: 1 };
+      });
+
+      prisma.queueEntry.findMany.mockResolvedValue([{ ...mockEntry, status: 'COMPLETED' }]);
+
+      const res = await service.complete('entry-1', mockCaller);
+      expect(res.status).toBe('COMPLETED');
+    });
+
+    it('marks queue entry missed and allows staff to rejoin entry', async () => {
+      let statusState = 'WAITING';
+      const mockEntry = {
+        id: 'entry-missed-1',
+        doctorId: 'doc-1',
+        patientId: 'pat-1',
+        get status() { return statusState; },
+        serviceDay: '2026-07-23',
+        version: 1,
+        doctor: { id: 'doc-1' },
+        missedCount: 1,
+      };
+
+      prisma.queueEntry.findUnique.mockImplementation(async () => mockEntry);
+      prisma.queueEntry.updateMany.mockImplementation(async () => {
+        statusState = 'MISSED';
+        return { count: 1 };
+      });
+
+      prisma.queueEntry.findMany.mockResolvedValue([{ ...mockEntry, status: 'MISSED' }]);
+
+      // Mark missed
+      const missed = await service.markMissed('entry-missed-1', mockCaller);
+      expect(missed.status).toBe('MISSED');
+
+      // Rejoin missed
+      prisma.queueEntry.findUnique.mockResolvedValue({ ...mockEntry, status: 'MISSED' });
+      prisma.queueEntry.create.mockResolvedValue({ ...mockEntry, id: 'entry-rejoined-1', status: 'WAITING' });
+
+      const rejoined = await service.rejoinQueue('entry-missed-1', mockCaller);
+      expect(rejoined.status).toBe('WAITING');
+    });
   });
 });

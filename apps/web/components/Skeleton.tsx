@@ -172,19 +172,70 @@ export function ModalSkeleton() {
 export function PatientPageSkeleton() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 space-y-6 animate-fade-in">
+      {/* ── Top Bar ── */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
-        <Skeleton className="h-4 w-40 rounded-full" />
-        <Skeleton className="h-7 w-24 rounded-full" />
-      </div>
-      <StatsGridSkeleton count={3} />
-      <div className="card p-4 space-y-3">
-        <Skeleton className="h-3 w-40 rounded-md" />
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-5 w-1/3 rounded-md" />
-          <Skeleton className="h-6 w-20 rounded-full" />
+        <Skeleton className="h-4 w-44 rounded-full" />
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-7 w-24 rounded-full" />
+          <Skeleton className="h-7 w-16 rounded-xl" />
         </div>
       </div>
-      <QueueListSkeleton rows={3} />
+
+      {/* ── Summary Stats Grid (3 cards) ── */}
+      <div className="grid grid-cols-3 gap-3 md:gap-4">
+        <div className="card p-3 md:p-4 space-y-2">
+          <Skeleton className="h-3 w-16 rounded-md" />
+          <Skeleton className="h-8 w-12 rounded-lg" />
+        </div>
+        <div className="card p-3 md:p-4 space-y-2">
+          <Skeleton className="h-3 w-20 rounded-md" />
+          <Skeleton className="h-8 w-12 rounded-lg" />
+        </div>
+        <div className="card p-3 md:p-4 space-y-2">
+          <Skeleton className="h-3 w-24 rounded-md" />
+          <Skeleton className="h-8 w-12 rounded-lg" />
+        </div>
+      </div>
+
+      {/* ── Nearest Upcoming Highlight Card Skeleton ── */}
+      <div className="space-y-2">
+        <Skeleton className="h-3 w-48 rounded-md" />
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-xl shrink-0" />
+              <div className="space-y-1.5 min-w-0">
+                <Skeleton className="h-4 w-36 rounded-md" />
+                <Skeleton className="h-3 w-28 rounded-md" />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="space-y-1 text-right">
+                <Skeleton className="h-3.5 w-20 rounded-md ml-auto" />
+                <Skeleton className="h-3 w-14 rounded-md ml-auto" />
+              </div>
+              <Skeleton className="h-6 w-14 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabs & Search Bar Skeletons ── */}
+      <div className="space-y-3">
+        <div className="flex flex-col md:flex-row justify-between gap-3">
+          <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full md:w-auto">
+            <Skeleton className="h-7 w-16 rounded-lg" />
+            <Skeleton className="h-7 w-20 rounded-lg" />
+            <Skeleton className="h-7 w-16 rounded-lg" />
+            <Skeleton className="h-7 w-20 rounded-lg" />
+          </div>
+          <Skeleton className="h-9 w-full md:w-60 rounded-xl" />
+        </div>
+        <Skeleton className="h-10 w-full rounded-xl" />
+      </div>
+
+      {/* ── Business Doctor Cards List Skeleton ── */}
+      <DoctorGridSkeleton count={4} />
     </div>
   );
 }

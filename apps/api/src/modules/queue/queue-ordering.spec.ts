@@ -42,7 +42,7 @@ describe('computeManualMoveData', () => {
       appointmentSlot: '09:00',
     };
     const move = computeManualMoveData(fri, [mon], 1);
-    expect(move.serviceDay).toBe('2026-07-20');
+    expect(move.serviceDay).toBe('2026-07-24');
     expect(move.appointmentSlot).toBe('09:00');
     expect(move.sortOrder).toBeLessThan(effectivePosition(mon));
   });

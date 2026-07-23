@@ -151,6 +151,8 @@ export class QueueService {
     movingAvgMinutes: number | null;
     hasStartedToday: boolean;
     settings: any;
+    totalBookingsCount?: number;
+    completedCount?: number;
   }> {
     const serviceDay = todayKey();
 
@@ -173,7 +175,7 @@ export class QueueService {
     };
 
     // Run remaining reads in parallel (settings is read-only — no INSERT on hot path).
-    const [rawEntries, missedRaw, movingAvgMinutes, calledToday, settingsRow, shifts] = await Promise.all([
+    const [rawEntries, missedRaw, completedRawCount, totalBookingsRawCount, movingAvgMinutes, calledToday, settingsRow, shifts] = await Promise.all([
       this.prisma.queueEntry.findMany({
         where: entryWhere,
         include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
@@ -183,6 +185,21 @@ export class QueueService {
         where: missedWhere,
         include: { patient: { select: CUSTOMER_PUBLIC_SELECT } },
         orderBy: { completedAt: 'desc' },
+      }),
+      this.prisma.queueEntry.count({
+        where: {
+          doctorId,
+          serviceDay,
+          status: EntryStatus.COMPLETED,
+          ...(filterLocationId ? { locationId: filterLocationId } : {}),
+        },
+      }),
+      this.prisma.queueEntry.count({
+        where: {
+          doctorId,
+          serviceDay,
+          ...(filterLocationId ? { locationId: filterLocationId } : {}),
+        },
       }),
       this.eta.getMovingAvg(doctorId, { serviceDay }),
       this.prisma.queueEntry.count({
@@ -244,6 +261,8 @@ export class QueueService {
       movingAvgMinutes,
       hasStartedToday: calledToday > 0,
       settings,
+      totalBookingsCount: totalBookingsRawCount,
+      completedCount: completedRawCount,
     };
   }
 
@@ -553,6 +572,7 @@ export class QueueService {
       slotType: SlotType.NEW,
       appointmentTime,
       locationId: bookingLocationId,
+      isSelfBooking: true,
     });
     void this.broadcast(doctorId, 'patient_joined', { entryId: entry.id });
     this.gateway.emitToPatientRoom(patientId, 'patient:queue:updated', {
@@ -588,6 +608,8 @@ export class QueueService {
     /** Skip time-slot allocation — used for automatic workflow routing. */
     fromWorkflow?: boolean;
     locationId?: string;
+    /** If true, this is a patient self-booking; enforce schedule maxCapacity limit. Staff additions skip capacity check. */
+    isSelfBooking?: boolean;
   }) {
     let serviceDay: string;
     if (input.serviceDay) {
@@ -661,28 +683,30 @@ export class QueueService {
           throw new BadRequestException('Professional has no working schedule configured at this branch.');
         }
 
-        // Check schedule capacity limit for this particular doctor at this location
-        const targetDate = input.appointmentTime && input.appointmentTime.includes('T')
-          ? new Date(input.appointmentTime)
-          : istAppointmentDate(serviceDay, '12:00');
-        const currentDow = istDayOfWeek(targetDate);
-        const dayShifts = shifts.filter((s: { dayOfWeek: number; maxCapacity?: number | null }) => s.dayOfWeek === currentDow);
-        const activeShiftWithLimit = dayShifts.find((s: { maxCapacity?: number | null }) => s.maxCapacity != null && s.maxCapacity > 0)
-          || shifts.find((s: { maxCapacity?: number | null }) => s.maxCapacity != null && s.maxCapacity > 0);
+        // Check schedule capacity limit for self-bookings only (staff additions skip capacity check)
+        if (input.isSelfBooking) {
+          const targetDate = input.appointmentTime && input.appointmentTime.includes('T')
+            ? new Date(input.appointmentTime)
+            : istAppointmentDate(serviceDay, '12:00');
+          const currentDow = istDayOfWeek(targetDate);
+          const dayShifts = shifts.filter((s: { dayOfWeek: number; maxCapacity?: number | null }) => s.dayOfWeek === currentDow);
+          const activeShiftWithLimit = dayShifts.find((s: { maxCapacity?: number | null }) => s.maxCapacity != null && s.maxCapacity > 0)
+            || shifts.find((s: { maxCapacity?: number | null }) => s.maxCapacity != null && s.maxCapacity > 0);
 
-        if (activeShiftWithLimit && activeShiftWithLimit.maxCapacity && activeShiftWithLimit.maxCapacity > 0) {
-          const activeCount = await tx.queueEntry.count({
-            where: {
-              doctorId: input.doctorId,
-              locationId,
-              serviceDay,
-              status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
-            },
-          });
-          if (activeCount >= activeShiftWithLimit.maxCapacity) {
-            throw new BadRequestException(
-              `Schedule capacity limit reached for this session (max ${activeShiftWithLimit.maxCapacity} patients).`,
-            );
+          if (activeShiftWithLimit && activeShiftWithLimit.maxCapacity && activeShiftWithLimit.maxCapacity > 0) {
+            const activeCount = await tx.queueEntry.count({
+              where: {
+                doctorId: input.doctorId,
+                locationId,
+                serviceDay,
+                status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+              },
+            });
+            if (activeCount >= activeShiftWithLimit.maxCapacity) {
+              throw new BadRequestException(
+                `Schedule capacity limit reached for self-booking (max ${activeShiftWithLimit.maxCapacity} online bookings).`,
+              );
+            }
           }
         }
 

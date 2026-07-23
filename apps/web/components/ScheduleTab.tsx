@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { type ToastMessage } from './Toast';
 import { TimePicker } from './TimePicker';
+import { FormSkeleton } from './Skeleton';
 
 interface DoctorItem {
   id: string;
@@ -178,7 +179,7 @@ export function ScheduleTab({
         </div>
 
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-sm">Loading schedule templates…</div>
+          <FormSkeleton rows={7} />
         ) : (
           <form onSubmit={handleSave} className="space-y-4 pt-2">
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { api, ApiError } from '../lib/api';
 import { SectionLoader, Spinner } from './PageLoader';
-import { DoctorGridSkeleton } from './Skeleton';
+import { DoctorGridSkeleton, FormSkeleton } from './Skeleton';
 import { serviceDay, istDayOfWeekFromKey, addServiceDays, formatDateIst, istNowHHMM } from '../lib/datetime';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -458,9 +458,7 @@ export function BookingDirectory({
                           {showBookingArea && (
                             <div className="px-4 pb-5 pt-1 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 animate-fade-in space-y-4">
                               {loadingDoctorData ? (
-                                <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                                  <Spinner className="h-4 w-4" /> Fetching available slots…
-                                </div>
+                                <FormSkeleton rows={2} />
                               ) : (
                                 <div className="space-y-4">
                                   {/* Shift Picker */}

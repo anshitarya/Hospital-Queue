@@ -31,6 +31,7 @@ import { getLabels } from '@/lib/labels';
 import { serviceDay, fmtWait, formatDateIst, formatTimeIst, addServiceDays, istNowHHMM, istDayOfWeekFromKey, isShiftStillBookable } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 import { Spinner } from '@/components/PageLoader';
+import { Skeleton, QueueListSkeleton } from '@/components/Skeleton';
 import { useWebPush } from '@/lib/useWebPush';
 
 
@@ -282,6 +283,22 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     }
   }, [activeDoctorShift]);
 
+  // ── Real-time queue ──────────────────────────────────────────────────────
+  const { snapshot: liveSnapshot, connected } = useDoctorQueue(selectedDoctorId);
+  const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
+
+  const inQueueCount = useMemo(() => {
+    return (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION').length;
+  }, [snapshot?.entries]);
+
+  const totalBookingsCount = useMemo(() => {
+    if (snapshot?.totalBookingsCount !== undefined) return snapshot.totalBookingsCount;
+    const activeCount = snapshot?.entries?.length ?? 0;
+    const missedCount = snapshot?.missedEntries?.length ?? 0;
+    const completedCount = snapshot?.completedCount ?? 0;
+    return activeCount + missedCount + completedCount;
+  }, [snapshot]);
+
   const saveCapacityLimit = async (newValStr: string) => {
     if (!selectedDoctorId || !locationId || savingCapacity) return;
     const trimmed = newValStr.trim();
@@ -357,7 +374,10 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }, [phoneResult.ok, phoneResult.e164]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load clinic ──────────────────────────────────────────────────────────
+  const [loadingClinic, setLoadingClinic] = useState(true);
+
   const loadClinic = useCallback(async () => {
+    setLoadingClinic(true);
     try {
       const url = locationId ? `/clinics/my?locationId=${locationId}` : '/clinics/my';
       const data = await api<Clinic>(url);
@@ -371,6 +391,9 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
         saved && doctors.some((d) => d.id === saved) ? saved : doctors[0]?.id ?? null;
       setSelectedDoctorId(valid);
     } catch { /* ignore — page-level auth already guards this */ }
+    finally {
+      setLoadingClinic(false);
+    }
   }, [locationId]);
 
   const selectDoctor = useCallback((id: string) => {
@@ -379,10 +402,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }, [clinic?.id]);
 
   useEffect(() => { void loadClinic(); }, [loadClinic, locationId]);
-
-  // ── Real-time queue ──────────────────────────────────────────────────────
-  const { snapshot: liveSnapshot, connected } = useDoctorQueue(selectedDoctorId);
-  const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
 
   // Re-render avg label while a customer is in service (elapsed time ticks up).
   const [avgTick, setAvgTick] = useState(0);
@@ -983,7 +1002,13 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
             </button>
           )}
         </div>
-        {allDoctors.length > 0 ? (
+        {loadingClinic ? (
+          <div className="flex flex-wrap gap-2.5">
+            <Skeleton className="h-14 w-36 rounded-2xl" />
+            <Skeleton className="h-14 w-36 rounded-2xl" />
+            <Skeleton className="h-14 w-36 rounded-2xl" />
+          </div>
+        ) : allDoctors.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {allDoctors.map((d) => {
               const isSelected = selectedDoctorId === d.id;
@@ -1185,45 +1210,21 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
               </h2>
 
               <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                {/* Schedule Limit Configurator (Left side of 'Now Serving') */}
+                {/* Staff Live Counter Pill: In Queue & Total Bookings (Unified & Compact) */}
                 {selectedDoctorId && (
                   <div
-                    className="flex items-center gap-1.5 bg-slate-100/90 dark:bg-slate-800/90 hover:bg-slate-200/90 dark:hover:bg-slate-700/90 transition-all rounded-xl px-2.5 py-1 border border-slate-200/80 dark:border-slate-700/80 text-xs shadow-xs"
-                    title="Configure max capacity limit for this doctor's schedule shift"
+                    className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-[11px] font-medium text-emerald-900 dark:text-emerald-200 shadow-2xs shrink-0"
+                    title="Live status: Queue count & Total schedule bookings"
                   >
-                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1">
-                      <span>👥</span>
-                      <span className="hidden sm:inline">Limit:</span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">In Queue:</span>
+                      <span className="font-extrabold tabular-nums text-emerald-800 dark:text-emerald-200">{inQueueCount}</span>
                     </span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={999}
-                      placeholder="Max"
-                      value={capacityInput}
-                      onChange={(e) => setCapacityInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          void saveCapacityLimit(capacityInput);
-                          (e.target as HTMLInputElement).blur();
-                        }
-                      }}
-                      className="w-14 sm:w-16 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md px-1.5 py-0.5 text-xs font-bold text-slate-800 dark:text-slate-100 text-center focus:outline-none focus:ring-1 focus:ring-brand-500 shadow-xs"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void saveCapacityLimit(capacityInput)}
-                      disabled={savingCapacity}
-                      className="btn-primary !py-0.5 !px-2 text-[11px] font-semibold shrink-0"
-                    >
-                      {savingCapacity ? '...' : 'Save'}
-                    </button>
-                    {activeDoctorShift?.maxCapacity ? (
-                      <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/60 px-1.5 py-0.5 rounded">
-                        {(snapshot?.entries ?? []).filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION').length}/{activeDoctorShift.maxCapacity}
-                      </span>
-                    ) : null}
+                    <span className="text-emerald-300 dark:text-emerald-800">·</span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Total:</span>
+                      <span className="font-extrabold tabular-nums text-emerald-800 dark:text-emerald-200">{totalBookingsCount}</span>
+                    </span>
                   </div>
                 )}
 
@@ -1318,7 +1319,9 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 onDragOver={handleListDragOver}
                 onDrop={(ev) => handleDrop(ev, waitingInDisplayOrder)}
               >
-                {filtered.length > 0 ? (
+                {loadingClinic || (selectedDoctorId && !snapshot) ? (
+                  <QueueListSkeleton rows={4} />
+                ) : filtered.length > 0 ? (
                   filtered.map((e, idx) => {
                     const waitingIndex = waitingInDisplayOrder.findIndex((w) => w.id === e.id);
                     const showPlaceholderBefore =

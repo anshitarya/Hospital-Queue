@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { type ToastMessage } from './Toast';
+import { StatsGridSkeleton, TableSkeleton } from './Skeleton';
 
 interface AnalyticsData {
   todayStats: { completed: number; waiting: number; cancelled: number; missed: number };
@@ -35,7 +36,12 @@ export function AnalyticsTab({ setToast, locationId }: { setToast: (t: ToastMess
   }, [setToast, locationId]);
 
   if (loading) {
-    return <div className="py-12 text-center text-slate-400 text-sm">Loading analytics console…</div>;
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <StatsGridSkeleton count={4} />
+        <TableSkeleton rows={4} cols={3} />
+      </div>
+    );
   }
 
   if (!data) {

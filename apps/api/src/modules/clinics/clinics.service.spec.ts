@@ -86,6 +86,7 @@ function makeFakePrisma() {
           name: data.name,
           email: data.email ?? null,
           phone: data.phone ?? null,
+          loginId: data.loginId ?? null,
           role: data.role,
           passwordHash: data.passwordHash ?? null,
           clinicId: data.clinicId ?? null,
@@ -172,14 +173,14 @@ function makeService() {
 }
 
 describe('ClinicsService.addDoctor', () => {
-  it('rejects when neither email nor phone is provided', async () => {
+  it('creates a doctor with name only using generated loginId', async () => {
     const { svc } = makeService();
-    await expect(
-      svc.addDoctor('c-1', {
-        name: 'Dr A',
-        departmentId: 'dept-1',
-      } as any),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    const out = await svc.addDoctor('c-1', {
+      name: 'Dr A',
+      departmentId: 'dept-1',
+    } as any);
+    expect(out.doctor.user!.loginId).toBeDefined();
+    expect(out.tempPassword).toMatch(/^\d{6}$/);
   });
 
   it('creates a doctor with email only — returns plaintext temp password', async () => {
@@ -190,7 +191,7 @@ describe('ClinicsService.addDoctor', () => {
       departmentId: 'dept-1',
     } as any);
 
-    expect(out.tempPassword).toMatch(/^[0-9a-f]{16}$/);
+    expect(out.tempPassword).toMatch(/^\d{6}$/);
     expect(out.doctor.user!.email).toBe('a@x.com');
     expect(out.doctor.user!.phone).toBeNull();
     expect(prisma._users.size).toBe(1);
@@ -330,11 +331,11 @@ describe('ClinicsService.addDoctor', () => {
 });
 
 describe('ClinicsService.addReceptionist', () => {
-  it('rejects when neither email nor phone is provided', async () => {
+  it('creates a receptionist with name only using generated loginId', async () => {
     const { svc } = makeService();
-    await expect(
-      svc.addReceptionist('c-1', { name: 'Rep A' } as any),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    const out = await svc.addReceptionist('c-1', { name: 'Rep A' } as any);
+    expect(out.user.loginId).toBeDefined();
+    expect(out.tempPassword).toMatch(/^\d{6}$/);
   });
 
   it('creates a receptionist with email only — returns plaintext temp password', async () => {
@@ -344,7 +345,7 @@ describe('ClinicsService.addReceptionist', () => {
       email: 'rep@x.com',
     } as any);
 
-    expect(out.tempPassword).toMatch(/^[0-9a-f]{16}$/);
+    expect(out.tempPassword).toMatch(/^\d{6}$/);
     expect(out.user.email).toBe('rep@x.com');
     expect(out.user.phone).toBeNull();
     expect(out.user.role).toBe('RECEPTIONIST');
@@ -434,7 +435,7 @@ describe('ClinicsService.resetStaffPassword', () => {
 
     const out = await svc.resetStaffPassword('c-1', created.user.id);
 
-    expect(out.tempPassword).toMatch(/^[0-9a-f]{16}$/);
+    expect(out.tempPassword).toMatch(/^\d{6}$/);
     expect(out.tempPassword).not.toBe(before);
     const after = [...prisma._users.values()][0].passwordHash;
     expect(after).not.toBe(before);
@@ -590,7 +591,7 @@ describe('ClinicsService staff location rules', () => {
     } as any);
 
     expect(out.user.role).toBe('CLINIC_ADMIN');
-    expect(out.tempPassword).toMatch(/^[0-9a-f]{16}$/);
+    expect(out.tempPassword).toMatch(/^\d{6}$/);
   });
 
   it('requires an active branch before adding a receptionist', async () => {

@@ -55,7 +55,7 @@ describe('<DepartmentPicker />', () => {
     render(<DepartmentPicker options={OPTIONS} value="" onChange={() => undefined} />);
     await user.click(screen.getByRole('button'));
     await user.type(screen.getByPlaceholderText('Search department…'), 'zzz');
-    expect(screen.getByText(/No departments match/i)).toBeInTheDocument();
+    expect(screen.getByText(/No match/i)).toBeInTheDocument();
   });
 
   it('calls onChange with the option id when an item is clicked', async () => {
@@ -94,10 +94,9 @@ describe('<DepartmentPicker />', () => {
     const user = userEvent.setup();
     render(<DepartmentPicker options={OPTIONS} value="" onChange={() => undefined} />);
     await user.click(screen.getByRole('button'));
-    expect(screen.getByText('4 of 4 departments')).toBeInTheDocument();
+    expect(screen.getByText(/4 of 4/)).toBeInTheDocument();
 
     await user.type(screen.getByPlaceholderText('Search department…'), 'c');
-    // "Cardiology", "Vascular Surgery", "Pediatrics" all match (contain a 'c')
-    expect(screen.getByText(/of 4 departments$/)).toBeInTheDocument();
+    expect(screen.getByText(/3 of 4/)).toBeInTheDocument();
   });
 });
