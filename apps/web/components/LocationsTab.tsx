@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { TableSkeleton } from '@/components/Skeleton';
+import LocationPickerModal from './LocationPickerModal';
+import { Icon } from './Icons';
 
 interface LocationItem {
   id: string;
@@ -40,6 +42,9 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
   const [email, setEmail] = useState('');
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [status, setStatus] = useState('ACTIVE');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const loadLocations = useCallback(async () => {
@@ -70,6 +75,8 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setEmail('');
     setGoogleReviewUrl('');
     setStatus('ACTIVE');
+    setLatitude(null);
+    setLongitude(null);
     setEditingLoc(null);
   };
 
@@ -86,12 +93,18 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setEmail(loc.email ?? '');
     setGoogleReviewUrl(loc.googleReviewUrl ?? '');
     setStatus(loc.status);
+    setLatitude(loc.latitude ?? null);
+    setLongitude(loc.longitude ?? null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (latitude === null || longitude === null) {
+      setToast({ type: 'err', msg: 'Please select a valid map location for this branch.' });
+      return;
+    }
     setSubmitting(true);
-    const body = { name, address, city, state, country, postalCode, contactNumber, bookingContactNumber, email, googleReviewUrl, status };
+    const body = { name, address, city, state, country, postalCode, contactNumber, bookingContactNumber, email, googleReviewUrl, status, latitude, longitude };
     try {
       if (editingLoc) {
         await api(`/clinics/my/locations/${editingLoc.id}`, {
@@ -157,6 +170,21 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
             <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Street Address</label>
               <input type="text" className="input mt-1 w-full py-1.5 text-xs" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. 100 Feet Rd" required />
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => setIsMapOpen(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/80 font-bold text-xs transition-colors border border-slate-200 dark:border-slate-700"
+              >
+                📍 Pick Location on Map
+              </button>
+              {latitude !== null && longitude !== null && (
+                <div className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <span>✓ Map Coordinates:</span>
+                  <span className="font-mono">{latitude.toFixed(5)}, {longitude.toFixed(5)}</span>
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -263,6 +291,22 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
           </div>
         </div>
       </div>
+
+      <LocationPickerModal
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        initialLat={latitude}
+        initialLng={longitude}
+        onConfirm={(details) => {
+          setAddress(details.address);
+          setCity(details.city);
+          setState(details.state);
+          setCountry(details.country);
+          setPostalCode(details.postalCode);
+          setLatitude(details.latitude);
+          setLongitude(details.longitude);
+        }}
+      />
     </div>
   );
 }

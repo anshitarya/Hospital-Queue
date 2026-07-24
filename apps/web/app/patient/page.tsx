@@ -175,13 +175,45 @@ export default function PatientPage() {
   const [expandedClinics, setExpandedClinics] = useState<Record<string, boolean>>({});
 
   // Filter & Search states
-  const [activeTab, setActiveTab]           = useState<PatientTab>(readStoredPatientTab);
+  const [activeTab, setActiveTab] = useState<PatientTab>(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = new URLSearchParams(window.location.search).get('tab') as PatientTab | null;
+      if (urlTab && ['active', 'upcoming', 'history', 'discover'].includes(urlTab)) {
+        return urlTab;
+      }
+    }
+    return readStoredPatientTab();
+  });
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectedClinicId, setSelectedClinicId] = useState<string>('ALL');
 
   const selectTab = useCallback((tab: PatientTab) => {
     setActiveTab(tab);
     try { sessionStorage.setItem('hq_patient_tab', tab); } catch {}
+    
+    // Push state so back button transitions tabs
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', tab);
+    params.delete('businessId');
+    params.delete('branchId');
+    params.delete('bookDoctorId');
+    const qs = params.toString();
+    window.history.pushState(null, '', `${window.location.pathname}?${qs}`);
+  }, []);
+
+  // Sync tab from URL on popstate events (browser back/forward)
+  useEffect(() => {
+    const syncTabFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlTab = params.get('tab') as PatientTab | null;
+      if (urlTab && ['active', 'upcoming', 'history', 'discover'].includes(urlTab)) {
+        setActiveTab(urlTab);
+      } else {
+        setActiveTab('active');
+      }
+    };
+    window.addEventListener('popstate', syncTabFromUrl);
+    return () => window.removeEventListener('popstate', syncTabFromUrl);
   }, []);
 
   // Persistent "You were missed" banners
@@ -379,8 +411,8 @@ export default function PatientPage() {
   const activeBookings = useMemo(
     () =>
       history
-        .filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION')
-        .map((e) => ({ doctorId: e.doctor.id, serviceDay: entryServiceDay(e) })),
+        .filter((e) => (e.status === 'WAITING' || e.status === 'IN_CONSULTATION') && entryServiceDay(e) >= serviceDay())
+        .map((e) => ({ doctorId: e.doctor.id, locationId: (e as any).location?.id ?? null, serviceDay: entryServiceDay(e) })),
     [history],
   );
 
@@ -780,7 +812,7 @@ export default function PatientPage() {
                 </p>
               </div>
             )
-          ) : (
+          ) : activeTab !== 'discover' ? (
             groupedBusinesses.length > 0 ? (
               groupedBusinesses.map(({ clinic, entries: businessEntries }) => {
                 const branding = getClinicBranding(clinic.id);
@@ -954,7 +986,7 @@ export default function PatientPage() {
                 </p>
               </div>
             )
-          )}
+          ) : null}
         </section>
       </main>
     </>

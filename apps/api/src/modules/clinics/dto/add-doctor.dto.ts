@@ -76,4 +76,18 @@ export class AddDoctorDto {
   @IsArray()
   @IsString({ each: true })
   locationIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  languages?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  experience?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  consultationFee?: number;
 }

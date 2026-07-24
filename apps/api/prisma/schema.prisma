@@ -280,6 +280,9 @@ model Doctor {
   walkinAllowed      Boolean                @default(true)
   followupPriority   Boolean                @default(false)
   specialization     String?
+  languages          String?
+  experience         Int?
+  consultationFee    Int?
   roomNumber              String?
   updatedAt               DateTime                 @updatedAt
   receptionistAssignments ReceptionistAssignment[]

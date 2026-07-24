@@ -97,6 +97,7 @@ const DEFAULT_BUSINESS_SETTINGS = {
   queueMode: 'LIVE_QUEUE',
   appointmentMode: 'HYBRID',
   businessType: 'CLINIC',
+  queueEnds: '17:00',
 } as const;
 
 
@@ -219,7 +220,27 @@ export class QueueService {
 
     const entries = this.sortActiveEntries(rawEntries, settings);
 
-    const missedEntries = missedRaw.map((e) => ({
+    // If current time is > 3 hours after schedule ends, remove them from the queue snapshot
+    const todayDow = istDayOfWeek();
+    const todayShifts = shifts.filter((s) => s.locationId === locationId && s.dayOfWeek === todayDow);
+
+    let endHm = '17:00';
+    if (todayShifts.length > 0) {
+      endHm = todayShifts.reduce((latest, s) => {
+        return s.endTime > latest ? s.endTime : latest;
+      }, '00:00');
+    } else if (settings && settings.queueEnds) {
+      endHm = settings.queueEnds;
+    }
+
+    const [endH, endM] = endHm.split(':').map(Number);
+    const scheduleEnd = new Date(`${serviceDay}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00+05:30`);
+    const cutoffTime = new Date(scheduleEnd.getTime() + 3 * 60 * 60 * 1000);
+    const isPastCutoff = Date.now() > cutoffTime.getTime();
+
+    const finalMissedRaw = isPastCutoff ? [] : missedRaw;
+
+    const missedEntries = finalMissedRaw.map((e) => ({
       id: e.id,
       locationId: e.locationId,
       tokenNumber: e.tokenNumber,
@@ -426,22 +447,83 @@ export class QueueService {
     if (targetAppointmentTime && targetAppointmentTime.includes('-')) {
       monthKey = targetAppointmentTime.slice(0, 7);
     }
-
     const monthStart = new Date(`${monthKey}-01T00:00:00+05:30`);
     const monthEndAnchor = new Date(`${monthKey}-01T12:00:00+05:30`);
     monthEndAnchor.setMonth(monthEndAnchor.getMonth() + 1);
     monthEndAnchor.setDate(0);
     const monthEnd = new Date(`${istServiceDay(monthEndAnchor)}T23:59:59.999+05:30`);
 
-    const noShowCount = await this.prisma.queueEntry.count({
+    // 1. Count marked missed entries for self-bookings
+    const markedNoShows = await this.prisma.queueEntry.count({
       where: {
         patientId,
         doctorId,
         ...(locationId ? { locationId } : {}),
         missedCount: { gte: 1 },
         completedAt: { gte: monthStart, lte: monthEnd },
+        OR: [
+          { createdById: patientId },
+          { AND: [{ createdById: null }, { walkin: false }] }
+        ],
       },
     });
+
+    // 2. Count stale entries (still WAITING/IN_CONSULTATION but schedule ended > 3 hours ago)
+    const activeEntries = await this.prisma.queueEntry.findMany({
+      where: {
+        patientId,
+        doctorId,
+        ...(locationId ? { locationId } : {}),
+        status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION] },
+        joinedAt: { gte: monthStart, lte: monthEnd },
+        OR: [
+          { createdById: patientId },
+          { AND: [{ createdById: null }, { walkin: false }] }
+        ],
+      },
+    });
+
+    let staleNoShows = 0;
+    const now = Date.now();
+    const todayStr = istServiceDay();
+
+    for (const entry of activeEntries) {
+      if (entry.serviceDay < todayStr) {
+        // Past day entry that was never processed -> count as no-show
+        staleNoShows++;
+      } else if (entry.serviceDay === todayStr) {
+        // Today's entry -> check if schedule ended > 3 hours ago
+        const [shifts, settingsRow] = await Promise.all([
+          this.prisma.professionalSchedule.findMany({
+            where: { doctorId, locationId: entry.locationId, isHoliday: false },
+          }),
+          this.prisma.businessSetting.findUnique({
+            where: { locationId: entry.locationId },
+          }),
+        ]);
+
+        const settings = settingsRow ?? DEFAULT_BUSINESS_SETTINGS;
+        const todayDow = istDayOfWeek();
+        const todayShifts = shifts.filter((s) => s.dayOfWeek === todayDow);
+
+        let endHm = '17:00';
+        if (todayShifts.length > 0) {
+          endHm = todayShifts.reduce((latest, s) => s.endTime > latest ? s.endTime : latest, '00:00');
+        } else if (settings && settings.queueEnds) {
+          endHm = settings.queueEnds;
+        }
+
+        const [endH, endM] = endHm.split(':').map(Number);
+        const scheduleEnd = new Date(`${todayStr}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00+05:30`);
+        const cutoffTime = new Date(scheduleEnd.getTime() + 3 * 60 * 60 * 1000);
+
+        if (now > cutoffTime.getTime()) {
+          staleNoShows++;
+        }
+      }
+    }
+
+    const noShowCount = markedNoShows + staleNoShows;
 
     if (noShowCount >= limit) {
       throw new ForbiddenException(
@@ -478,6 +560,7 @@ export class QueueService {
         doctorId: dto.doctorId,
         ...(locId ? { locationId: locId } : {}),
         status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION, EntryStatus.MISSED] },
+        serviceDay: { gte: todayKey() },
       },
       orderBy: { joinedAt: 'desc' },
     });
@@ -546,6 +629,7 @@ export class QueueService {
         doctorId,
         ...(bookingLocationId ? { locationId: bookingLocationId } : {}),
         status: { in: [EntryStatus.WAITING, EntryStatus.IN_CONSULTATION, EntryStatus.MISSED] },
+        serviceDay: { gte: todayKey() },
       },
     });
     if (activeEntry) {
@@ -562,6 +646,7 @@ export class QueueService {
     const entry = await this.createEntry({
       doctorId,
       patientId,
+      createdById: patientId,
       priority: 0,
       notes,
       walkin: false,
@@ -1082,9 +1167,18 @@ export class QueueService {
 
     const serviceDay = todayKey();
     const locationId = missed.locationId;
-    let settings = await this.prisma.businessSetting.findUnique({
-      where: { locationId },
-    });
+
+    // Check if current time is > 3 hours after schedule ends
+    const [shifts, settingsRow] = await Promise.all([
+      this.prisma.professionalSchedule.findMany({
+        where: { doctorId: missed.doctorId, locationId, isHoliday: false },
+      }),
+      this.prisma.businessSetting.findUnique({
+        where: { locationId },
+      }),
+    ]);
+
+    let settings = settingsRow;
     if (!settings) {
       settings = await this.prisma.businessSetting.create({
         data: {
@@ -1094,6 +1188,25 @@ export class QueueService {
           appointmentMode: 'HYBRID',
         },
       });
+    }
+
+    const todayDow = istDayOfWeek();
+    const todayShifts = shifts.filter((s) => s.dayOfWeek === todayDow);
+
+    let endHm = '17:00';
+    if (todayShifts.length > 0) {
+      endHm = todayShifts.reduce((latest, s) => {
+        return s.endTime > latest ? s.endTime : latest;
+      }, '00:00');
+    } else if (settings && settings.queueEnds) {
+      endHm = settings.queueEnds;
+    }
+
+    const [endH, endM] = endHm.split(':').map(Number);
+    const scheduleEnd = new Date(`${serviceDay}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00+05:30`);
+    const cutoffTime = new Date(scheduleEnd.getTime() + 3 * 60 * 60 * 1000);
+    if (Date.now() > cutoffTime.getTime()) {
+      throw new BadRequestException('Cannot rejoin patient: schedule ended more than 3 hours ago');
     }
 
     const allActive = await this.prisma.queueEntry.findMany({

@@ -17,6 +17,8 @@ import {
 import { formatDateIst, formatDateTimeIst, formatTimeIst } from '@/lib/datetime';
 import { BUSINESS_TYPE_OPTIONS, getLabels, departmentPresetsFor, normalizeBusinessType, type BusinessType } from '@/lib/labels';
 import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
+import LocationPickerModal from '@/components/LocationPickerModal';
+import { Icon } from '@/components/Icons';
 
 export default function AdminPage() {
   const { ready } = useRequireRole(['ADMIN']);
@@ -44,6 +46,7 @@ export default function AdminPage() {
 
   const [clinicName, setClinicName] = useState('');
   const [clinicAddress, setClinicAddress] = useState('');
+  const [isCreateMapOpen, setIsCreateMapOpen] = useState(false);
   const [clinicBusinessType, setClinicBusinessType] = useState('CLINIC');
   const [createBusy, setCreateBusy] = useState(false);
 
@@ -54,6 +57,7 @@ export default function AdminPage() {
   const [docPhoneResult, setDocPhoneResult] = useState<PhoneValidationResult>({ ok: false });
   const [docDeptId, setDocDeptId] = useState('');
   const [docAvg, setDocAvg] = useState(7);
+  const [docLanguages, setDocLanguages] = useState('');
   const [docBusy, setDocBusy] = useState(false);
 
   // Add-receptionist form (admin-only). Same shape as the doctor form minus
@@ -143,6 +147,7 @@ export default function AdminPage() {
   const [editingClinicId, setEditingClinicId] = useState<string | null>(null);
   const [editClinicName, setEditClinicName] = useState('');
   const [editClinicAddress, setEditClinicAddress] = useState('');
+  const [isEditMapOpen, setIsEditMapOpen] = useState(false);
   const [editClinicBusinessType, setEditClinicBusinessType] = useState('CLINIC');
   const [editClinicBusy, setEditClinicBusy] = useState(false);
 
@@ -679,6 +684,7 @@ export default function AdminPage() {
           phone: docPhoneResult.e164 || undefined,
           departmentId: deptId,
           avgConsultMinutes: docAvg,
+          languages: docLanguages || undefined,
         },
       });
 
@@ -689,6 +695,7 @@ export default function AdminPage() {
       setDocPhoneResult({ ok: false });
       setDocDeptId('');
       setDocAvg(7);
+      setDocLanguages('');
 
       // … then surface the credentials in a persistent modal. The temp
       // password is shown only once, so we never use a toast for it.
@@ -1131,12 +1138,22 @@ export default function AdminPage() {
                       onChange={(e) => setClinicName(e.target.value)}
                       required
                     />
-                    <input
-                      className="input"
-                      placeholder="Address (optional)"
-                      value={clinicAddress}
-                      onChange={(e) => setClinicAddress(e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                      <input
+                        className="input flex-1"
+                        placeholder="Address (optional)"
+                        value={clinicAddress}
+                        onChange={(e) => setClinicAddress(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsCreateMapOpen(true)}
+                        className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shrink-0"
+                        title="Pick location on map"
+                      >
+                        📍 Map
+                      </button>
+                    </div>
                     <select className="input" value={clinicBusinessType} onChange={(e) => setClinicBusinessType(e.target.value)}>
                       {BUSINESS_TYPE_OPTIONS.map((o) => (
                         <option key={o.value} value={o.value}>{o.label}</option>
@@ -1185,12 +1202,22 @@ export default function AdminPage() {
                                   value={editClinicName}
                                   onChange={(e) => setEditClinicName(e.target.value)}
                                 />
-                                <input
-                                  className="input !py-1.5 flex-1"
-                                  placeholder="Address (optional)"
-                                  value={editClinicAddress}
-                                  onChange={(e) => setEditClinicAddress(e.target.value)}
-                                />
+                                <div className="flex flex-1 gap-1">
+                                  <input
+                                    className="input !py-1.5 flex-1 text-xs"
+                                    placeholder="Address (optional)"
+                                    value={editClinicAddress}
+                                    onChange={(e) => setEditClinicAddress(e.target.value)}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsEditMapOpen(true)}
+                                    className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shrink-0 !py-1"
+                                    title="Pick location on map"
+                                  >
+                                    📍 Map
+                                  </button>
+                                </div>
                               </div>
                               <select className="input !py-1.5 text-xs" value={editClinicBusinessType} onChange={(e) => setEditClinicBusinessType(e.target.value)}>
                                 {BUSINESS_TYPE_OPTIONS.map((o) => (
@@ -1588,6 +1615,7 @@ export default function AdminPage() {
                           placeholder={`Search ${SL.department.toLowerCase()}…`}
                           label={`Select ${SL.department.toLowerCase()}`}
                         />
+                        <input className="input" placeholder="Languages (optional, e.g. English, Hindi)" value={docLanguages} onChange={(e) => setDocLanguages(e.target.value)} />
                         <label className="flex items-center gap-2 text-sm">
                           <span className="text-slate-600 whitespace-nowrap shrink-0">Avg {SL.service.toLowerCase()}:</span>
                           <input className="input flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} max={120} value={docAvg} onChange={(e) => setDocAvg(Number(e.target.value))} required />
@@ -2118,6 +2146,20 @@ export default function AdminPage() {
 
       <Toast message={toast} onDismiss={() => setToast(null)} />
 
+      <LocationPickerModal
+        isOpen={isCreateMapOpen}
+        onClose={() => setIsCreateMapOpen(false)}
+        onConfirm={(details) => {
+          setClinicAddress(details.address);
+        }}
+      />
+      <LocationPickerModal
+        isOpen={isEditMapOpen}
+        onClose={() => setIsEditMapOpen(false)}
+        onConfirm={(details) => {
+          setEditClinicAddress(details.address);
+        }}
+      />
       <DoctorCredentialsModal
         credentials={creds}
         onClose={() => setCreds(null)}
