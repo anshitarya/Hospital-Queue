@@ -1,3 +1,5 @@
+'use client';
+
 import { useId, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { TurnosIcon } from '@/components/Icons';
