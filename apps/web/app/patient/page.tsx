@@ -1112,9 +1112,20 @@ function ActiveAppointmentCard({
             : 'Appointment cancelled'}
         </div>
         {finalStatus === 'MISSED' && (
-          <p className="text-xs text-rose-600 mt-1">
-            Please reach out to the front desk receptionist to rejoin.
-          </p>
+          <div className="space-y-2 mt-2">
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              Please contact the clinic to add you back to the queue.
+            </p>
+            {((entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber) && (
+              <a
+                href={`tel:${(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-colors"
+              >
+                <Icon.Phone className="h-3.5 w-3.5" />
+                Call Clinic: {(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}
+              </a>
+            )}
+          </div>
         )}
         <div className="text-xs text-slate-400 mt-1">
           Token <span className="font-mono font-bold text-brand-700">{tokenDisplay(entry.tokenNumber)}</span> with {entry.doctor.user.name}
@@ -1163,8 +1174,17 @@ function ActiveAppointmentCard({
         </div>
       )}
       {(isMissedInQueue || status === 'MISSED') && (
-        <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-900 text-rose-800 dark:text-rose-300 text-center font-semibold text-[11px] py-2 px-3">
-          ⚠️ You were missed — please approach the {L.receptionDesk}
+        <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-900 text-rose-800 dark:text-rose-300 text-center font-semibold text-xs p-3 space-y-2">
+          <div>⚠️ You were missed — please approach reception or contact the branch to get added back to the queue.</div>
+          {((entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber) && (
+            <a
+              href={`tel:${(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-colors mt-1"
+            >
+              <Icon.Phone className="h-3.5 w-3.5" />
+              Call Branch to Rejoin: {(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}
+            </a>
+          )}
         </div>
       )}
       {queueNotStarted && (

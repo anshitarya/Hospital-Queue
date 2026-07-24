@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Icon, TurnosIcon } from './Icons';
+import { DarkModeToggle } from './DarkModeToggle';
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: 'features', label: 'Features' },
@@ -59,6 +60,7 @@ export function LandingNav() {
 
         {/* Desktop CTA buttons */}
         <div className="hidden md:flex items-center gap-2">
+          <DarkModeToggle />
           <Link
             href="/login/choose"
             target="_blank"

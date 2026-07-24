@@ -42,22 +42,18 @@ import {
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { ClinicsService } from '../clinics/clinics.service';
 
-function tokenToCode(n: number, settings?: any): string {
+function tokenToCode(n: number): string {
   if (n <= 0) return '---';
-  const prefix = settings?.tokenPrefix ?? 'TK';
-  const format = settings?.queueNumberFormat ?? 'NUMBER';
-  
-  if (format === 'CODE') {
-    const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const M = 17576; // 26^3
-    const A = 6949;
-    const ADD = 3749;
-    const x = (((n - 1) * A) + ADD) % M;
-    const code = CHARS[Math.floor(x / 676)] + CHARS[Math.floor((x % 676) / 26)] + CHARS[x % 26];
-    return `${prefix}-${code}`;
-  }
-  
-  return `${prefix}-${n}`;
+  const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const M = 17576; // 26^3
+  const A = 6949;
+  const ADD = 3749;
+  const x = (((n - 1) * A) + ADD) % M;
+  return (
+    CHARS[Math.floor(x / 676)] +
+    CHARS[Math.floor((x % 676) / 26)] +
+    CHARS[x % 26]
+  );
 }
 
 function todayKey(): string {

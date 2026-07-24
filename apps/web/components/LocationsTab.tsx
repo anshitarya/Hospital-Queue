@@ -14,6 +14,7 @@ interface LocationItem {
   country: string;
   postalCode: string;
   contactNumber: string;
+  bookingContactNumber?: string | null;
   email: string | null;
   googleReviewUrl?: string | null;
   timeZone?: string;
@@ -35,6 +36,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
   const [country, setCountry] = useState('India');
   const [postalCode, setPostalCode] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [bookingContactNumber, setBookingContactNumber] = useState('');
   const [email, setEmail] = useState('');
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [status, setStatus] = useState('ACTIVE');
@@ -64,6 +66,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setCountry('India');
     setPostalCode('');
     setContactNumber('');
+    setBookingContactNumber('');
     setEmail('');
     setGoogleReviewUrl('');
     setStatus('ACTIVE');
@@ -79,6 +82,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setCountry(loc.country);
     setPostalCode(loc.postalCode);
     setContactNumber(loc.contactNumber);
+    setBookingContactNumber(loc.bookingContactNumber ?? '');
     setEmail(loc.email ?? '');
     setGoogleReviewUrl(loc.googleReviewUrl ?? '');
     setStatus(loc.status);
@@ -87,7 +91,7 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const body = { name, address, city, state, country, postalCode, contactNumber, email, googleReviewUrl, status };
+    const body = { name, address, city, state, country, postalCode, contactNumber, bookingContactNumber, email, googleReviewUrl, status };
     try {
       if (editingLoc) {
         await api(`/clinics/my/locations/${editingLoc.id}`, {
@@ -177,6 +181,10 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
             <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Contact Number</label>
               <input type="text" className="input mt-1 w-full py-1.5 text-xs" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} placeholder="+91 9999988888" required />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase">Booking Contact Number (Optional)</label>
+              <input type="text" className="input mt-1 w-full py-1.5 text-xs" value={bookingContactNumber} onChange={(e) => setBookingContactNumber(e.target.value)} placeholder="e.g. +91 9876543210 (For patient appointments)" />
             </div>
             <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Email Address</label>

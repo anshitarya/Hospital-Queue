@@ -5,6 +5,7 @@ import { api, ApiError } from '../lib/api';
 import { SectionLoader, Spinner } from './PageLoader';
 import { DoctorGridSkeleton, FormSkeleton } from './Skeleton';
 import { serviceDay, istDayOfWeekFromKey, addServiceDays, formatDateIst, istNowHHMM } from '../lib/datetime';
+import { Icon } from './Icons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface PublicDoctor {
@@ -22,6 +23,8 @@ interface PublicLocation {
   id: string;
   name: string;
   address: string;
+  contactNumber?: string;
+  bookingContactNumber?: string | null;
   settings: {
     queueMode: string;
     appointmentMode: string;
@@ -371,23 +374,48 @@ export function BookingDirectory({
                   </div>
 
                   {/* Branch selector dropdown */}
-                  <div className="mt-3 flex items-center gap-2 bg-white dark:bg-slate-950 p-2 rounded-lg border border-slate-200/60 dark:border-slate-800 w-fit">
-                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Branch:</span>
-                    <select
-                      value={currentLocId || ''}
-                      onChange={(e) => {
-                        setSelectedLocationIds({ ...selectedLocationIds, [biz.id]: e.target.value });
-                        if (bookingDoctorId) setBookingDoctorId(null); // Reset booking wizard if branch changes
-                      }}
-                      className="text-[11px] font-bold rounded-md bg-transparent text-brand-600 dark:text-brand-400 cursor-pointer focus:outline-none"
-                    >
-                      {biz.locations.map((loc) => (
-                        <option key={loc.id} value={loc.id} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
-                          {loc.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 bg-white dark:bg-slate-950 p-2 rounded-lg border border-slate-200/60 dark:border-slate-800 w-fit">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Branch:</span>
+                      <select
+                        value={currentLocId || ''}
+                        onChange={(e) => {
+                          setSelectedLocationIds({ ...selectedLocationIds, [biz.id]: e.target.value });
+                          if (bookingDoctorId) setBookingDoctorId(null); // Reset booking wizard if branch changes
+                        }}
+                        className="text-[11px] font-bold rounded-md bg-transparent text-brand-600 dark:text-brand-400 cursor-pointer focus:outline-none"
+                      >
+                        {biz.locations.map((loc) => (
+                          <option key={loc.id} value={loc.id} className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100">
+                            {loc.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {currentLoc?.settings?.allowOnlineBooking === false && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 text-[11px] font-semibold border border-amber-300/50 dark:border-amber-900/50">
+                        📞 Phone Booking Only
+                      </span>
+                    )}
                   </div>
+
+                  {currentLoc?.settings?.allowOnlineBooking === false && (
+                    <div className="mt-3 flex items-center justify-between gap-3 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/50 p-3 rounded-xl text-xs">
+                      <div className="text-slate-700 dark:text-slate-300">
+                        Online queue booking is turned off for this branch. Please call to book an appointment: <strong className="text-slate-900 dark:text-white">{currentLoc.bookingContactNumber || currentLoc.contactNumber || 'Contact Branch'}</strong>
+                      </div>
+                      {(currentLoc.bookingContactNumber || currentLoc.contactNumber) && (
+                        <a
+                          href={`tel:${currentLoc.bookingContactNumber || currentLoc.contactNumber}`}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold shrink-0 text-xs shadow-sm transition-colors"
+                        >
+                          <Icon.Phone className="h-3.5 w-3.5" />
+                          Call to Book
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </header>
 
                 {/* Doctors at currently selected location */}
@@ -398,8 +426,10 @@ export function BookingDirectory({
                     currentLoc.doctors.map((doc) => {
                       const isBooked = hasActiveBooking(doc.id);
                       const isJoining = joiningId === doc.id;
-                      const canJoin = doc.status !== 'AWAY' && !isBooked;
+                      const isOnlineBookingOff = currentLoc?.settings?.allowOnlineBooking === false;
+                      const canJoin = !isOnlineBookingOff && doc.status !== 'AWAY' && !isBooked;
                       const showBookingArea = bookingDoctorId === doc.id;
+                      const bookingPhone = currentLoc?.bookingContactNumber || currentLoc?.contactNumber;
 
                       return (
                         <div key={doc.id} className="hover:bg-slate-50/20 dark:hover:bg-slate-900/10 transition-colors">
@@ -430,28 +460,44 @@ export function BookingDirectory({
                               </div>
                             </div>
 
-                            <button
-                              type="button"
-                              disabled={!canJoin || isJoining}
-                              onClick={() => {
-                                if (showBookingArea) {
-                                  setBookingDoctorId(null);
-                                } else {
-                                  handleOpenBooking(doc.id, currentLoc.id);
-                                }
-                              }}
-                              className={`shrink-0 btn !py-2 !px-4 !text-xs font-bold transition-all ${
-                                isBooked
-                                  ? 'bg-emerald-100 text-emerald-700 cursor-not-allowed dark:bg-emerald-950/40 dark:text-emerald-400'
-                                  : canJoin
-                                    ? showBookingArea
-                                      ? 'btn-secondary'
-                                      : 'btn-primary'
-                                    : 'btn-secondary opacity-50 cursor-not-allowed'
-                              }`}
-                            >
-                              {isBooked ? '✓ Booked' : showBookingArea ? 'Close' : 'Book / Join'}
-                            </button>
+                            {isOnlineBookingOff ? (
+                              bookingPhone ? (
+                                <a
+                                  href={`tel:${bookingPhone}`}
+                                  className="shrink-0 inline-flex items-center gap-1.5 btn bg-amber-600 hover:bg-amber-700 text-white !py-2 !px-3.5 !text-xs font-bold shadow-sm transition-colors"
+                                >
+                                  <Icon.Phone className="h-3.5 w-3.5" />
+                                  Call to Book
+                                </a>
+                              ) : (
+                                <span className="text-xs text-slate-400 font-medium italic shrink-0">
+                                  Phone Booking
+                                </span>
+                              )
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!canJoin || isJoining}
+                                onClick={() => {
+                                  if (showBookingArea) {
+                                    setBookingDoctorId(null);
+                                  } else {
+                                    handleOpenBooking(doc.id, currentLoc.id);
+                                  }
+                                }}
+                                className={`shrink-0 btn !py-2 !px-4 !text-xs font-bold transition-all ${
+                                  isBooked
+                                    ? 'bg-emerald-100 text-emerald-700 cursor-not-allowed dark:bg-emerald-950/40 dark:text-emerald-400'
+                                    : canJoin
+                                      ? showBookingArea
+                                        ? 'btn-secondary'
+                                        : 'btn-primary'
+                                      : 'btn-secondary opacity-50 cursor-not-allowed'
+                                }`}
+                              >
+                                {isBooked ? '✓ Booked' : showBookingArea ? 'Close' : 'Book / Join'}
+                              </button>
+                            )}
                           </div>
 
                           {/* Expandable Booking Area */}

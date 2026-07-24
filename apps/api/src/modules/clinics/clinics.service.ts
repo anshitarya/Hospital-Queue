@@ -112,7 +112,6 @@ export class ClinicsService {
         locations: {
           some: {
             status: 'ACTIVE',
-            businessSetting: { allowOnlineBooking: true },
           },
         },
       },
@@ -120,7 +119,6 @@ export class ClinicsService {
         locations: {
           where: {
             status: 'ACTIVE',
-            businessSetting: { allowOnlineBooking: true },
           },
           include: {
             businessSetting: true,
@@ -155,6 +153,8 @@ export class ClinicsService {
         id: loc.id,
         name: loc.name,
         address: `${loc.address}, ${loc.city}, ${loc.state}`,
+        contactNumber: loc.contactNumber,
+        bookingContactNumber: loc.bookingContactNumber,
         settings: loc.businessSetting,
         doctors: loc.doctors.map((dl) => {
           const d = dl.doctor;
@@ -1683,6 +1683,7 @@ export class ClinicsService {
         contactNumber: dto.contactNumber,
         email: dto.email ?? null,
         googleReviewUrl: dto.googleReviewUrl ?? null,
+        bookingContactNumber: dto.bookingContactNumber ?? null,
         timeZone: dto.timeZone ?? 'Asia/Kolkata',
         latitude: dto.latitude ?? null,
         longitude: dto.longitude ?? null,
@@ -1726,6 +1727,7 @@ export class ClinicsService {
         contactNumber: dto.contactNumber,
         email: dto.email ?? null,
         googleReviewUrl: dto.googleReviewUrl !== undefined ? (dto.googleReviewUrl ?? null) : undefined,
+        bookingContactNumber: dto.bookingContactNumber !== undefined ? (dto.bookingContactNumber ?? null) : undefined,
         timeZone: dto.timeZone,
         latitude: dto.latitude,
         longitude: dto.longitude,

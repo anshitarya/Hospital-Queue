@@ -214,25 +214,6 @@ export function SettingsTab({
           </div>
         )}
 
-        {/* Token Formatting */}
-        <div className="card p-5 space-y-4">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Token Configuration</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Token Prefix</label>
-              <input className="input mt-1 w-full" type="text" maxLength={6} value={settings.tokenPrefix}
-                onChange={(e) => setSettings({ ...settings, tokenPrefix: e.target.value })} />
-            </div>
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Number Format</label>
-              <select className="input mt-1 w-full" value={settings.queueNumberFormat}
-                onChange={(e) => setSettings({ ...settings, queueNumberFormat: e.target.value })}>
-                <option value="NUMBER">Sequential Numbers (1, 2, 3…)</option>
-                <option value="CODE">Alphanumeric Code (A-Z, 3 digits)</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
         {/* Queue Routing Rules */}
         <div className="card p-5 space-y-4">
