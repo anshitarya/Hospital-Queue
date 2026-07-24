@@ -457,6 +457,62 @@ export class AuthService {
     return { ok: true };
   }
 
+  async requestCustomerOtp(phone: string): Promise<{ sent: boolean; devCode?: string }> {
+    if (!FEATURES.CUSTOMER_OTP_LOGIN) {
+      throw new BadRequestException('OTP login is disabled');
+    }
+
+    const normalized = phone.trim();
+    const user = await this.prisma.user.findUnique({ where: { phone: normalized } });
+    if (!user || user.role !== Role.PATIENT) {
+      throw new NotFoundException(
+        'No patient account found with this mobile number. Please register at the clinic first.',
+      );
+    }
+
+    const res = await this.otp.issue('phone', normalized);
+    return { sent: true, devCode: res.devCode };
+  }
+
+  async verifyCustomerOtp(phone: string, code: string): Promise<AuthResult> {
+    if (!FEATURES.CUSTOMER_OTP_LOGIN) {
+      throw new BadRequestException('OTP login is disabled');
+    }
+
+    const normalized = phone.trim();
+    const user = await this.prisma.user.findUnique({ where: { phone: normalized } });
+    if (!user || user.role !== Role.PATIENT) {
+      throw new NotFoundException('No patient account found with this mobile number');
+    }
+
+    await this.otp.verify('phone', normalized, code);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    return this.sign(user);
+  }
+
+  async setCustomerPin(userId: string, pin: string): Promise<{ ok: boolean }> {
+    if (!FEATURES.CUSTOMER_OTP_LOGIN) {
+      throw new BadRequestException('OTP login is disabled');
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.role !== Role.PATIENT) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { customerPin: pin },
+    });
+
+    return { ok: true };
+  }
+
   private async sign(user: User): Promise<AuthResult> {
     const token = await this.jwt.signAsync({ sub: user.id, role: user.role });
     return {

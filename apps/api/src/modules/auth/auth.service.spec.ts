@@ -216,3 +216,69 @@ describe('AuthService.loginCustomer', () => {
     await expect(svc.loginCustomer('+919876543210', '4315')).rejects.toThrow('Invalid credentials');
   });
 });
+
+describe('AuthService.customerOtpLoginFlow', () => {
+  function makeCustomerOtpService() {
+    const findUnique = jest.fn();
+    const update = jest.fn().mockResolvedValue({});
+    const prisma = { user: { findUnique, update } } as unknown as PrismaService;
+    const jwt = { signAsync: jest.fn().mockResolvedValue('customer-token') } as unknown as JwtService;
+    const otp = {
+      issue: jest.fn().mockResolvedValue({ devCode: '123456' }),
+      verify: jest.fn().mockResolvedValue(true),
+    } as unknown as OtpService;
+    const config = { get: jest.fn() } as unknown as ConfigService;
+    const googleAuth = { verifyIdToken: jest.fn() };
+    const svc = new AuthService(
+      prisma,
+      jwt,
+      otp,
+      config,
+      null as any,
+      { triggerEvent: jest.fn() } as any,
+      googleAuth as any,
+    );
+    return { svc, findUnique, update, otp };
+  }
+
+  it('requests customer OTP if user exists and is a patient', async () => {
+    const { svc, findUnique, otp } = makeCustomerOtpService();
+    findUnique.mockResolvedValueOnce({
+      id: 'c-1',
+      role: Role.PATIENT,
+      phone: '+919876543210',
+    });
+
+    const res = await svc.requestCustomerOtp('+919876543210');
+    expect(res.sent).toBe(true);
+    expect(otp.issue).toHaveBeenCalledWith('phone', '+919876543210');
+  });
+
+  it('verifies OTP and logs in the customer', async () => {
+    const { svc, findUnique, otp } = makeCustomerOtpService();
+    findUnique.mockResolvedValueOnce({
+      id: 'c-1',
+      role: Role.PATIENT,
+      phone: '+919876543210',
+    });
+
+    const res = await svc.verifyCustomerOtp('+919876543210', '123456');
+    expect(res.token).toBe('customer-token');
+    expect(otp.verify).toHaveBeenCalledWith('phone', '+919876543210', '123456');
+  });
+
+  it('sets customer PIN', async () => {
+    const { svc, findUnique, update } = makeCustomerOtpService();
+    findUnique.mockResolvedValueOnce({
+      id: 'c-1',
+      role: Role.PATIENT,
+    });
+
+    const res = await svc.setCustomerPin('c-1', '5678');
+    expect(res.ok).toBe(true);
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'c-1' },
+      data: { customerPin: '5678' },
+    });
+  });
+});

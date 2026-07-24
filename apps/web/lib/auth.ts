@@ -80,6 +80,7 @@ export interface AuthStatus {
   googleAuthEnabled: boolean;
   devAuthEnabled: boolean;
   authMode: 'development' | 'production';
+  customerOtpLoginEnabled?: boolean;
 }
 
 /** Check which auth modes are enabled — used to conditionally show Google button vs password form. */
@@ -98,6 +99,27 @@ export async function registerReceptionist(opts: {
 
 export async function loginCustomer(phone: string, pin: string) {
   return api<AuthResult>('/auth/customer/login', { method: 'POST', body: { phone, pin } });
+}
+
+export async function requestCustomerOtp(phone: string) {
+  return api<{ sent?: boolean; devCode?: string }>('/auth/customer/otp/request', {
+    method: 'POST',
+    body: { phone },
+  });
+}
+
+export async function loginCustomerOtp(phone: string, code: string) {
+  return api<AuthResult>('/auth/customer/otp/login', {
+    method: 'POST',
+    body: { phone, code },
+  });
+}
+
+export async function setCustomerPin(pin: string) {
+  return api<{ ok: boolean }>('/auth/customer/set-pin', {
+    method: 'POST',
+    body: { pin },
+  });
 }
 
 /** @deprecated Use loginCustomer */
