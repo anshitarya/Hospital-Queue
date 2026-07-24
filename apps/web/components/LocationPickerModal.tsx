@@ -296,9 +296,9 @@ export default function LocationPickerModal({
 
         {/* Content body */}
         <div className="p-5 overflow-y-auto flex-1 space-y-4">
-          {/* Autocomplete & Geo location Search Row */}
-          <div className="flex gap-2 relative">
-            <div className="relative flex-1">
+          {/* Autocomplete & Geo location Search Block */}
+          <div className="space-y-2">
+            <div className="relative w-full">
               <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
                 {isSearching ? (
                   <Icon.Activity className="h-4 w-4 animate-spin text-emerald-500" />
@@ -333,45 +333,49 @@ export default function LocationPickerModal({
                   <Icon.X className="h-3.5 w-3.5" />
                 </button>
               )}
-            </div>
-            <button
-              type="button"
-              onClick={() => void searchPlaces(searchQuery)}
-              disabled={isSearching || !searchQuery.trim()}
-              className="btn-primary !py-2 !px-4 text-xs font-semibold shrink-0"
-            >
-              Search
-            </button>
-            <button
-              type="button"
-              onClick={handleUseCurrentLocation}
-              disabled={isFetchingLocation}
-              title="Use current location"
-              className="btn-secondary !py-2 !px-3 shrink-0 flex items-center justify-center gap-1.5 hover:text-emerald-600 dark:hover:text-emerald-450 text-xs font-bold"
-            >
-              {isFetchingLocation ? (
-                <Icon.Activity className="h-4 w-4 shrink-0 animate-spin text-emerald-500" />
-              ) : (
-                <Icon.MapPin className="h-4 w-4 shrink-0 text-emerald-500" />
-              )}
-              <span>Use current location</span>
-            </button>
 
-            {/* Suggestions Overlay Dropdown */}
-            {searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 max-h-48 overflow-y-auto rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xl z-[9999] divide-y divide-slate-100 dark:divide-slate-900 animate-slide-up">
-                {searchResults.map((result) => (
-                  <button
-                    key={result.place_id}
-                    type="button"
-                    onClick={() => handleSelectSearchResult(result)}
-                    className="w-full text-left px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors truncate block"
-                  >
-                    {result.display_name}
-                  </button>
-                ))}
-              </div>
-            )}
+              {/* Suggestions Overlay Dropdown */}
+              {searchResults.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 max-h-48 overflow-y-auto rounded-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 shadow-xl z-[9999] divide-y divide-slate-100 dark:divide-slate-900 animate-slide-up">
+                  {searchResults.map((result) => (
+                    <button
+                      key={result.place_id}
+                      type="button"
+                      onClick={() => handleSelectSearchResult(result)}
+                      className="w-full text-left px-4 py-2.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors truncate block"
+                    >
+                      {result.display_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons on 2nd line */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void searchPlaces(searchQuery)}
+                disabled={isSearching || !searchQuery.trim()}
+                className="btn-primary !py-2 !px-4 text-xs font-semibold flex-1 justify-center"
+              >
+                Search
+              </button>
+              <button
+                type="button"
+                onClick={handleUseCurrentLocation}
+                disabled={isFetchingLocation}
+                title="Use current location"
+                className="btn-secondary !py-2 !px-3 flex-1 flex items-center justify-center gap-1.5 hover:text-emerald-600 dark:hover:text-emerald-450 text-xs font-bold"
+              >
+                {isFetchingLocation ? (
+                  <Icon.Activity className="h-4 w-4 shrink-0 animate-spin text-emerald-500" />
+                ) : (
+                  <Icon.MapPin className="h-4 w-4 shrink-0 text-emerald-500" />
+                )}
+                <span>Use current location</span>
+              </button>
+            </div>
           </div>
 
           {errorMsg && (
