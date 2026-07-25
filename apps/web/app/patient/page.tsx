@@ -7,6 +7,7 @@ import { useDoctorQueue, usePatientStream } from '@/lib/socket';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
 import { PageLoader, Spinner } from '@/components/PageLoader';
+import { PatientPageSkeleton } from '@/components/Skeleton';
 import { LiveIndicator } from '@/components/StatusPill';
 import { useOutsideClick } from '@/lib/useOutsideClick';
 import { NotificationBell, type PatientNotification } from '@/components/NotificationBell';
@@ -16,6 +17,8 @@ import { formatTimeIst, serviceDay, serviceDaysAgo, entryServiceDay, formatDateI
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
 import { Icon } from '@/components/Icons';
 import { BookingDirectory } from '@/components/BookingDirectory';
+import { FORMS } from '@/lib/config';
+import { useWebPush } from '@/lib/useWebPush';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
@@ -172,13 +175,45 @@ export default function PatientPage() {
   const [expandedClinics, setExpandedClinics] = useState<Record<string, boolean>>({});
 
   // Filter & Search states
-  const [activeTab, setActiveTab]           = useState<PatientTab>(readStoredPatientTab);
+  const [activeTab, setActiveTab] = useState<PatientTab>(() => {
+    if (typeof window !== 'undefined') {
+      const urlTab = new URLSearchParams(window.location.search).get('tab') as PatientTab | null;
+      if (urlTab && ['active', 'upcoming', 'history', 'discover'].includes(urlTab)) {
+        return urlTab;
+      }
+    }
+    return readStoredPatientTab();
+  });
   const [searchQuery, setSearchQuery]       = useState('');
   const [selectedClinicId, setSelectedClinicId] = useState<string>('ALL');
 
   const selectTab = useCallback((tab: PatientTab) => {
     setActiveTab(tab);
     try { sessionStorage.setItem('hq_patient_tab', tab); } catch {}
+    
+    // Push state so back button transitions tabs
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', tab);
+    params.delete('businessId');
+    params.delete('branchId');
+    params.delete('bookDoctorId');
+    const qs = params.toString();
+    window.history.pushState(null, '', `${window.location.pathname}?${qs}`);
+  }, []);
+
+  // Sync tab from URL on popstate events (browser back/forward)
+  useEffect(() => {
+    const syncTabFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlTab = params.get('tab') as PatientTab | null;
+      if (urlTab && ['active', 'upcoming', 'history', 'discover'].includes(urlTab)) {
+        setActiveTab(urlTab);
+      } else {
+        setActiveTab('active');
+      }
+    };
+    window.addEventListener('popstate', syncTabFromUrl);
+    return () => window.removeEventListener('popstate', syncTabFromUrl);
   }, []);
 
   // Persistent "You were missed" banners
@@ -271,23 +306,43 @@ export default function PatientPage() {
     });
   }, []);
 
+  const {
+    isSupported: pushSupported,
+    permission: pushPermission,
+    subscribed: pushSubscribed,
+    subscribe: subscribePush,
+    unsubscribe: unsubscribePush,
+  } = useWebPush();
+
   const [notifPromptOpen, setNotifPromptOpen] = useState(false);
   const notifRequested = useRef(false);
   useEffect(() => {
-    if (notifRequested.current) return;
-    if (typeof Notification === 'undefined') return;
-    const hasLive = history.some(
-      (e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION',
-    );
-    if (hasLive && Notification.permission === 'default') {
+    if (notifRequested.current || !ready || !pushSupported) return;
+    if (pushPermission === 'default') {
       notifRequested.current = true;
       setNotifPromptOpen(true);
     }
-  }, [history]);
+  }, [ready, pushSupported, pushPermission]);
 
   const handleCompleted = useCallback((updated: HistoryItem) => {
     setCompletedIds((prev) => new Set([...prev, updated.id]));
   }, []);
+
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId]       = useState<string | null>(null);
+
+  const executeCancel = useCallback(async (entryId: string) => {
+    setCancellingId(entryId);
+    try {
+      await api(`/queue/entry/${entryId}/cancel`, { method: 'POST' });
+      setCancelConfirmId(null);
+      void fetchHistory();
+    } catch (err: any) {
+      alert(err instanceof ApiError ? err.message : 'Failed to cancel appointment');
+    } finally {
+      setCancellingId(null);
+    }
+  }, [fetchHistory]);
 
   // Filter definitions
   const isActive = useCallback((e: HistoryItem) => {
@@ -356,12 +411,12 @@ export default function PatientPage() {
   const activeBookings = useMemo(
     () =>
       history
-        .filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION')
-        .map((e) => ({ doctorId: e.doctor.id, serviceDay: entryServiceDay(e) })),
+        .filter((e) => (e.status === 'WAITING' || e.status === 'IN_CONSULTATION') && entryServiceDay(e) >= serviceDay())
+        .map((e) => ({ doctorId: e.doctor.id, locationId: (e as any).location?.id ?? null, serviceDay: entryServiceDay(e) })),
     [history],
   );
 
-  if (!ready) return <PageLoader label="Loading your queue…" />;
+  if (!ready) return <PatientPageSkeleton />;
 
   // Group listings and status counts
   const liveEntries = history.filter(isActive);
@@ -456,49 +511,72 @@ export default function PatientPage() {
           />
         }
       />
-
-      <main className="mx-auto max-w-4xl px-4 py-6 space-y-6 animate-fade-in">
-        {/* Browser Notification Permission Prompt */}
-        {notifPromptOpen && typeof Notification !== 'undefined' && Notification.permission === 'default' && (
-          <div className="rounded-2xl bg-brand-50 dark:bg-brand-950/30 ring-1 ring-brand-200 dark:ring-brand-900/60 p-4 flex items-start gap-3.5 shadow-sm animate-slide-up">
-            <Icon.Bell className="h-5 w-5 text-brand-600 dark:text-brand-400 shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0 space-y-3">
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed">
-                Allow notifications to receive real-time queue updates. We&apos;ll alert you immediately when your turn is coming up.
+      {/* Web Push Permission Modal Popup on Login */}
+      {notifPromptOpen && pushSupported && pushPermission === 'default' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-scale-up text-center">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 flex items-center justify-center text-brand-600 dark:text-brand-400 text-2xl shadow-xs">
+              🔔
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                Turn On Push Notifications
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed px-2">
+                Get real-time alerts on your phone or desktop when it&apos;s almost your turn or doctor delays occur — even if your phone screen is off or browser is closed.
               </p>
-              <div className="flex flex-wrap gap-2.5">
-                <button
-                  type="button"
-                  className="btn-primary !py-1.5 !px-3.5 text-xs font-semibold"
-                  onClick={() => {
-                    void requestNotifPermission().finally(() => setNotifPromptOpen(false));
-                  }}
-                >
-                  Enable notifications
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary !py-1.5 !px-3.5 text-xs font-semibold"
-                  onClick={() => setNotifPromptOpen(false)}
-                >
-                  Maybe later
-                </button>
-              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2 sm:flex-row sm:gap-3">
+              <button
+                type="button"
+                className="btn-primary w-full py-2.5 text-xs font-bold rounded-xl shadow-md"
+                onClick={() => {
+                  void subscribePush().finally(() => setNotifPromptOpen(false));
+                }}
+              >
+                Enable Push Notifications
+              </button>
+              <button
+                type="button"
+                className="btn-secondary w-full py-2.5 text-xs font-semibold rounded-xl"
+                onClick={() => setNotifPromptOpen(false)}
+              >
+                Maybe Later
+              </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
+      <main className="mx-auto max-w-4xl px-4 py-6 space-y-6 animate-fade-in">
         {/* ── Sync status banner ── */}
         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
           <span className="flex items-center gap-2 text-xs text-slate-500 font-medium">
             <LiveIndicator connected={streamConnected} />
             {lastSync ? `Updated ${formatRelative(lastSync)}` : 'Connecting to live queue…'}
           </span>
-          <button type="button" onClick={fetchHistory} disabled={refreshing}
-            className="btn-secondary !py-1 !px-3 text-xs font-semibold flex items-center gap-1.5" aria-label="Sync status">
-            <span className={refreshing ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
-            <span>Sync</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {pushSupported && pushPermission !== 'denied' && (
+              <button
+                type="button"
+                onClick={() => (pushSubscribed ? void unsubscribePush() : void subscribePush())}
+                className={`pill-sm text-[11px] font-semibold transition-all flex items-center gap-1.5 py-1 px-3 rounded-full border ${
+                  pushSubscribed
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                }`}
+                title={pushSubscribed ? 'Click to disable push notifications' : 'Click to enable push notifications'}
+              >
+                <span>{pushSubscribed ? '🔔 Push ON' : '🔕 Push OFF'}</span>
+              </button>
+            )}
+            <button type="button" onClick={fetchHistory} disabled={refreshing}
+              className="btn-secondary !py-1 !px-3 text-xs font-semibold flex items-center gap-1.5" aria-label="Sync status">
+              <span className={refreshing ? 'animate-spin inline-block' : 'inline-block'}>↻</span>
+              <span>Sync</span>
+            </button>
+          </div>
         </div>
 
         {/* ── Summary Stats Section (Requirement 10) ── */}
@@ -734,7 +812,7 @@ export default function PatientPage() {
                 </p>
               </div>
             )
-          ) : (
+          ) : activeTab !== 'discover' ? (
             groupedBusinesses.length > 0 ? (
               groupedBusinesses.map(({ clinic, entries: businessEntries }) => {
                 const branding = getClinicBranding(clinic.id);
@@ -821,7 +899,30 @@ export default function PatientPage() {
 
                               const isUpc = isUpcoming(entry);
 
-                              return (
+                              return cancelConfirmId === entry.id ? (
+                                <div key={entry.id} className="w-full p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-center justify-between gap-3 animate-enter">
+                                  <p className="text-xs font-semibold text-rose-800 dark:text-rose-300">
+                                    Cancel token with {entry.doctor.user.name}?
+                                  </p>
+                                  <div className="flex gap-2 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setCancelConfirmId(null)}
+                                      className="rounded-lg px-2.5 py-1 bg-white border border-slate-200 dark:bg-slate-900 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800"
+                                    >
+                                      Keep
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void executeCancel(entry.id)}
+                                      disabled={cancellingId === entry.id}
+                                      className="rounded-lg px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold disabled:opacity-50"
+                                    >
+                                      {cancellingId === entry.id ? 'Cancelling...' : 'Yes, cancel'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
                                 <div key={entry.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50/60 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/80 hover:bg-slate-100/40 dark:hover:bg-slate-900/80 transition-colors gap-3">
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
@@ -848,7 +949,18 @@ export default function PatientPage() {
                                       </span>
                                     </p>
                                   </div>
-                                  <span className={`pill ring-1 ring-inset shrink-0 capitalize ${meta.cls}`}>{meta.label}</span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className={`pill ring-1 ring-inset shrink-0 capitalize ${meta.cls}`}>{meta.label}</span>
+                                    {entry.status === 'WAITING' && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setCancelConfirmId(entry.id)}
+                                        className="btn-ghost !py-1 !px-2.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-xl shrink-0 font-bold transition-all"
+                                      >
+                                        Cancel
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}
@@ -874,7 +986,7 @@ export default function PatientPage() {
                 </p>
               </div>
             )
-          )}
+          ) : null}
         </section>
       </main>
     </>
@@ -1032,9 +1144,20 @@ function ActiveAppointmentCard({
             : 'Appointment cancelled'}
         </div>
         {finalStatus === 'MISSED' && (
-          <p className="text-xs text-rose-600 mt-1">
-            Please reach out to the front desk receptionist to rejoin.
-          </p>
+          <div className="space-y-2 mt-2">
+            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              Please contact the clinic to add you back to the queue.
+            </p>
+            {((entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber) && (
+              <a
+                href={`tel:${(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-colors"
+              >
+                <Icon.Phone className="h-3.5 w-3.5" />
+                Call Clinic: {(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}
+              </a>
+            )}
+          </div>
         )}
         <div className="text-xs text-slate-400 mt-1">
           Token <span className="font-mono font-bold text-brand-700">{tokenDisplay(entry.tokenNumber)}</span> with {entry.doctor.user.name}
@@ -1083,8 +1206,17 @@ function ActiveAppointmentCard({
         </div>
       )}
       {(isMissedInQueue || status === 'MISSED') && (
-        <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-900 text-rose-800 dark:text-rose-300 text-center font-semibold text-[11px] py-2 px-3">
-          ⚠️ You were missed — please approach the {L.receptionDesk}
+        <div className="rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-300 dark:border-rose-900 text-rose-800 dark:text-rose-300 text-center font-semibold text-xs p-3 space-y-2">
+          <div>⚠️ You were missed — please approach reception or contact the branch to get added back to the queue.</div>
+          {((entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber) && (
+            <a
+              href={`tel:${(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-sm transition-colors mt-1"
+            >
+              <Icon.Phone className="h-3.5 w-3.5" />
+              Call Branch to Rejoin: {(entry as any).location?.bookingContactNumber || (entry as any).location?.contactNumber}
+            </a>
+          )}
         </div>
       )}
       {queueNotStarted && (
@@ -1236,6 +1368,7 @@ function VisitRatingPanel({
   const [existing, setExisting] = useState<ProfessionalRating | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showGoogleModal, setShowGoogleModal] = useState<{ url: string; ratingNum: number; commentText: string } | null>(null);
 
   useEffect(() => {
     api<ProfessionalRating | null>(`/ratings/entry/${entryId}`)
@@ -1248,12 +1381,18 @@ function VisitRatingPanel({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api<ProfessionalRating>('/ratings', {
+      const res = await api<ProfessionalRating & { googleReviewUrl?: string | null }>('/ratings', {
         method: 'POST',
         body: { entryId, rating, comment: comment.trim() || undefined },
       });
       setExisting(res);
-      setTimeout(onDone, 2000);
+
+      const reviewUrl = res.googleReviewUrl || FORMS.reviewUrl;
+      if (rating >= 4 && reviewUrl) {
+        setShowGoogleModal({ url: reviewUrl, ratingNum: rating, commentText: comment.trim() });
+      } else {
+        setTimeout(onDone, 2000);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not submit rating');
     } finally {
@@ -1261,7 +1400,7 @@ function VisitRatingPanel({
     }
   }
 
-  if (existing) {
+  if (existing && !showGoogleModal) {
     return (
       <div className="mt-3 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 text-left animate-fade-in">
         <div className="text-xs font-bold text-emerald-800 dark:text-emerald-300">Thank you for your rating!</div>
@@ -1273,48 +1412,100 @@ function VisitRatingPanel({
   }
 
   return (
-    <div className="mt-3 p-3 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-left animate-fade-in space-y-2">
-      <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-        Rate your consultation with {doctorName}
-      </p>
-      <div className="flex gap-1 justify-center" role="group" aria-label="Star rating">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => setRating(n)}
-            onMouseEnter={() => setHover(n)}
-            onMouseLeave={() => setHover(0)}
-            className="text-2xl transition-transform hover:scale-110 focus:outline-none"
-            aria-label={`${n} star${n !== 1 ? 's' : ''}`}
-          >
-            {(hover || rating) >= n ? '★' : '☆'}
+    <>
+      <div className="mt-3 p-3 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-left animate-fade-in space-y-2">
+        <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+          Rate your consultation with {doctorName}
+        </p>
+        <div className="flex gap-1 justify-center" role="group" aria-label="Star rating">
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setRating(n)}
+              onMouseEnter={() => setHover(n)}
+              onMouseLeave={() => setHover(0)}
+              className="text-2xl transition-transform hover:scale-110 focus:outline-none"
+              aria-label={`${n} star${n !== 1 ? 's' : ''}`}
+            >
+              {(hover || rating) >= n ? '★' : '☆'}
+            </button>
+          ))}
+        </div>
+        <textarea
+          className="w-full text-xs rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-2 placeholder:text-slate-400 text-slate-800 dark:text-slate-100 focus:outline-none"
+          rows={2}
+          placeholder="Any additional feedback..."
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          maxLength={500}
+        />
+        {error && <p className="text-[10px] text-rose-600">{error}</p>}
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onDone} className="text-[10px] text-slate-400 font-bold px-2 py-1">
+            Skip
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={rating < 1 || submitting}
+            className="rounded px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-bold disabled:opacity-50"
+          >
+            {submitting ? 'Sending…' : 'Send'}
+          </button>
+        </div>
       </div>
-      <textarea
-        className="w-full text-xs rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-2 placeholder:text-slate-400 text-slate-800 dark:text-slate-100 focus:outline-none"
-        rows={2}
-        placeholder="Any additional feedback..."
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        maxLength={500}
-      />
-      {error && <p className="text-[10px] text-rose-600">{error}</p>}
-      <div className="flex gap-2 justify-end">
-        <button type="button" onClick={onDone} className="text-[10px] text-slate-400 font-bold px-2 py-1">
-          Skip
-        </button>
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={rating < 1 || submitting}
-          className="rounded px-2.5 py-1 bg-brand-600 hover:bg-brand-700 text-white text-[10px] font-bold disabled:opacity-50"
-        >
-          {submitting ? 'Sending…' : 'Send'}
-        </button>
-      </div>
-    </div>
+
+      {/* 4/5 Star Google Review Popup Modal */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+          <div className="card max-w-sm w-full p-6 text-center space-y-4 shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+            <div className="mx-auto h-12 w-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-2xl shadow-xs">
+              ⭐
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+                Thank you for the {showGoogleModal.ratingNum}-star review!
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                Would you mind sharing your feedback on Google as well? It helps other patients find us!
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-2">
+              <a
+                href={showGoogleModal.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => {
+                  if (showGoogleModal.commentText) {
+                    navigator.clipboard?.writeText(showGoogleModal.commentText).catch(() => {});
+                  }
+                  setShowGoogleModal(null);
+                  onDone();
+                }}
+                className="btn bg-emerald-600 hover:bg-emerald-700 text-white w-full py-2.5 text-xs font-bold shadow-md flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                  <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.545,6.477,2.545,12s4.476,10,10,10c5.753,0,9.753-4.048,9.753-9.923c0-0.655-0.061-1.288-0.16-1.838H12.545z" />
+                </svg>
+                Post on Google Review
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGoogleModal(null);
+                  onDone();
+                }}
+                className="btn bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 w-full py-2 text-xs font-medium"
+              >
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

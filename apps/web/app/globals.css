@@ -1,5 +1,6 @@
 /* ── Google Fonts — Inter ──────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import 'leaflet/dist/leaflet.css';
 
 @tailwind base;
 @tailwind components;
@@ -150,7 +151,29 @@
 
   /* ── Skeleton loading ────────────────────────────────────────────────────── */
   .skeleton {
-    @apply bg-slate-200 dark:bg-slate-700 rounded-lg animate-skeleton;
+    @apply relative overflow-hidden bg-slate-200/80 dark:bg-slate-800/60 rounded-lg;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 100%
+    );
+    animation: skeleton-shimmer 1.5s infinite linear;
+    will-change: transform;
+  }
+  .dark .skeleton::after {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.14) 50%,
+      transparent 100%
+    );
   }
 
   /* ── Dividers ────────────────────────────────────────────────────────────── */
@@ -218,8 +241,8 @@
 
   /* ── Skeleton loading ────────────────────────────────────────────────────── */
   @keyframes skeleton-shimmer {
-    0%   { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
   }
 
   /* ── Tap/ripple (landing demos) ──────────────────────────────────────────── */
@@ -408,3 +431,42 @@ html.dark .bg-amber-50   { background-color: rgb(30 22 4); }
 html.dark .text-emerald-700 { color: rgb(52 211 153); }
 html.dark .text-brand-700   { color: rgb(74 222 128); }
 html.dark .text-brand-800   { color: rgb(134 239 172); }
+
+/* ── Warp Speed Loader Animations ─────────────────────────────────────────── */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes scale-up {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fade-in-up {
+  0% { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes shimmer-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}
+.animate-bounce-subtle {
+  animation: bounce-subtle 1.8s ease-in-out infinite;
+}
+.animate-scale-up {
+  animation: scale-up 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.animate-shimmer-progress {
+  animation: shimmer-progress 1.5s ease-in-out infinite;
+}
+

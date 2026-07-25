@@ -139,15 +139,15 @@ describe('OtpRequestDto', () => {
 });
 
 describe('OtpVerifyDto', () => {
-  it('accepts a valid 6-digit code', async () => {
+  it('accepts a valid 4-digit code', async () => {
     const { errors } = await runValidate(OtpVerifyDto, {
       phone: '9876543210',
-      code: '123456',
+      code: '1234',
     });
     expect(errors).toHaveLength(0);
   });
 
-  it.each(['12345', '1234567', 'abcdef', '12 345', ''])(
+  it.each(['123', '12345', 'abcd', '12 3', ''])(
     'rejects code %j',
     async (code) => {
       const { errors } = await runValidate(OtpVerifyDto, {

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError } from '../../lib/api';
 import { useAuth, registerCustomer } from '../../lib/auth';
 import { PageLoader, Spinner } from '../../components/PageLoader';
+import { JoinPageSkeleton } from '../../components/Skeleton';
 import { fmtWait } from '../../lib/datetime';
 
 interface JoinInfo {
@@ -104,7 +105,7 @@ function JoinPageContent() {
     }
   };
 
-  if (!ready || loadingInfo) return <PageLoader label="Loading queue info…" />;
+  if (!ready || loadingInfo) return <JoinPageSkeleton />;
 
   if (!doctorId) {
     return (
@@ -302,7 +303,7 @@ function JoinPageContent() {
 
 export default function JoinPage() {
   return (
-    <Suspense fallback={<PageLoader label="Loading booking queue…" />}>
+    <Suspense fallback={<JoinPageSkeleton />}>
       <JoinPageContent />
     </Suspense>
   );

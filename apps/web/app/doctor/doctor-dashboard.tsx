@@ -10,6 +10,7 @@ import { useRequireRole } from '@/lib/useRequireRole';
 import { useTabState } from '@/lib/useTabState';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
+import { DoctorPageSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { QueueHistoryTable } from '@/components/QueueHistoryTable';
 import { LeavesTab } from '@/components/LeavesTab';
@@ -273,7 +274,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
     });
   }, [schedules]);
 
-  if (!ready) return <PageLoader label="Loading your panel…" />;
+  if (!ready) return <DoctorPageSkeleton />;
 
   const callNext = () => {
     if (!isScheduled) {
@@ -967,11 +968,6 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         <div className="min-w-0">
                           <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-2 flex-wrap text-sm">
                             {e.patient?.name ?? '—'}
-                            {e.patient?.customerPin && (
-                              <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
-                                PIN: {e.patient.customerPin}
-                              </span>
-                            )}
                             {e.missedCount > 0 && (
                               <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">Missed ×{e.missedCount}</span>
                             )}

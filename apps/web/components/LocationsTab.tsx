@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Toast, type ToastMessage } from '@/components/Toast';
-import { Spinner } from '@/components/PageLoader';
+import { TableSkeleton } from '@/components/Skeleton';
+import LocationPickerModal from './LocationPickerModal';
+import { Icon } from './Icons';
 
 interface LocationItem {
   id: string;
@@ -14,7 +16,9 @@ interface LocationItem {
   country: string;
   postalCode: string;
   contactNumber: string;
+  bookingContactNumber?: string | null;
   email: string | null;
+  googleReviewUrl?: string | null;
   timeZone?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -34,8 +38,13 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
   const [country, setCountry] = useState('India');
   const [postalCode, setPostalCode] = useState('');
   const [contactNumber, setContactNumber] = useState('');
+  const [bookingContactNumber, setBookingContactNumber] = useState('');
   const [email, setEmail] = useState('');
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [status, setStatus] = useState('ACTIVE');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const loadLocations = useCallback(async () => {
@@ -62,8 +71,12 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setCountry('India');
     setPostalCode('');
     setContactNumber('');
+    setBookingContactNumber('');
     setEmail('');
+    setGoogleReviewUrl('');
     setStatus('ACTIVE');
+    setLatitude(null);
+    setLongitude(null);
     setEditingLoc(null);
   };
 
@@ -76,14 +89,22 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
     setCountry(loc.country);
     setPostalCode(loc.postalCode);
     setContactNumber(loc.contactNumber);
+    setBookingContactNumber(loc.bookingContactNumber ?? '');
     setEmail(loc.email ?? '');
+    setGoogleReviewUrl(loc.googleReviewUrl ?? '');
     setStatus(loc.status);
+    setLatitude(loc.latitude ?? null);
+    setLongitude(loc.longitude ?? null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (latitude === null || longitude === null) {
+      setToast({ type: 'err', msg: 'Please select a valid map location for this branch.' });
+      return;
+    }
     setSubmitting(true);
-    const body = { name, address, city, state, country, postalCode, contactNumber, email, status };
+    const body = { name, address, city, state, country, postalCode, contactNumber, bookingContactNumber, email, googleReviewUrl, status, latitude, longitude };
     try {
       if (editingLoc) {
         await api(`/clinics/my/locations/${editingLoc.id}`, {
@@ -120,9 +141,8 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
 
   if (loading) {
     return (
-      <div className="py-12 flex flex-col items-center gap-4 text-slate-400">
-        <Spinner className="h-8 w-8" />
-        <span className="text-xs font-medium">Loading branch locations…</span>
+      <div className="p-5 sm:p-6 max-w-5xl mx-auto space-y-6">
+        <TableSkeleton rows={4} cols={4} />
       </div>
     );
   }
@@ -151,6 +171,21 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Street Address</label>
               <input type="text" className="input mt-1 w-full py-1.5 text-xs" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="e.g. 100 Feet Rd" required />
             </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => setIsMapOpen(true)}
+                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/80 font-bold text-xs transition-colors border border-slate-200 dark:border-slate-700"
+              >
+                📍 Pick Location on Map
+              </button>
+              {latitude !== null && longitude !== null && (
+                <div className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                  <span>✓ Map Coordinates:</span>
+                  <span className="font-mono">{latitude.toFixed(5)}, {longitude.toFixed(5)}</span>
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[10px] font-semibold text-slate-400 uppercase">City</label>
@@ -176,8 +211,16 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
               <input type="text" className="input mt-1 w-full py-1.5 text-xs" value={contactNumber} onChange={(e) => setContactNumber(e.target.value)} placeholder="+91 9999988888" required />
             </div>
             <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase">Booking Contact Number (Optional)</label>
+              <input type="text" className="input mt-1 w-full py-1.5 text-xs" value={bookingContactNumber} onChange={(e) => setBookingContactNumber(e.target.value)} placeholder="e.g. +91 9876543210 (For patient appointments)" />
+            </div>
+            <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Email Address</label>
               <input type="email" className="input mt-1 w-full py-1.5 text-xs" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="branch@clinic.local" required />
+            </div>
+            <div>
+              <label className="text-[10px] font-semibold text-slate-400 uppercase">Google Review Link (Optional)</label>
+              <input type="url" className="input mt-1 w-full py-1.5 text-xs" value={googleReviewUrl} onChange={(e) => setGoogleReviewUrl(e.target.value)} placeholder="https://share.google/unmrc0wZcKNlLQLOj" />
             </div>
             <div>
               <label className="text-[10px] font-semibold text-slate-400 uppercase">Status</label>
@@ -220,6 +263,14 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
                       <span>📞 {loc.contactNumber}</span>
                       <span>✉️ {loc.email}</span>
                     </div>
+                    {loc.googleReviewUrl && (
+                      <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <span>⭐ Google Review:</span>
+                        <a href={loc.googleReviewUrl} target="_blank" rel="noopener noreferrer" className="underline truncate max-w-[220px]">
+                          {loc.googleReviewUrl}
+                        </a>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => handleEdit(loc)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
@@ -240,6 +291,22 @@ export function LocationsTab({ setToast }: { setToast: (t: ToastMessage | null) 
           </div>
         </div>
       </div>
+
+      <LocationPickerModal
+        isOpen={isMapOpen}
+        onClose={() => setIsMapOpen(false)}
+        initialLat={latitude}
+        initialLng={longitude}
+        onConfirm={(details) => {
+          setAddress(details.address);
+          setCity(details.city);
+          setState(details.state);
+          setCountry(details.country);
+          setPostalCode(details.postalCode);
+          setLatitude(details.latitude);
+          setLongitude(details.longitude);
+        }}
+      />
     </div>
   );
 }

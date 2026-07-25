@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Param, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Put, Param, Query } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { ProfessionalScheduleService } from './professional-schedule.service';
 import { SetScheduleDto } from './dto/update-schedule.dto';
@@ -22,6 +22,7 @@ export class ProfessionalScheduleController {
 
   @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN, Role.DOCTOR)
   @Post('doctor/:doctorId')
+  @Put('doctor/:doctorId')
   async setDoctorSchedule(
     @CurrentUser() user: AuthUser,
     @Param('doctorId') doctorId: string,

@@ -10,7 +10,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { CustomerLoginDto } from './dto/customer-login.dto';
 import { CustomerRegisterDto } from './dto/customer-register.dto';
-import { ChangePinDto } from './dto/change-pin.dto';
+import { ChangePinDto, CustomerSetPinDto } from './dto/change-pin.dto';
+import { OtpRequestDto, OtpVerifyDto } from './dto/otp.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 import { FEATURES } from '../../common/features';
@@ -91,6 +92,7 @@ export class AuthController {
       googleAuthEnabled: FEATURES.ENABLE_GOOGLE_AUTH,
       devAuthEnabled: FEATURES.ENABLE_DEV_AUTH_BYPASS,
       authMode: FEATURES.AUTH_MODE,
+      customerOtpLoginEnabled: FEATURES.CUSTOMER_OTP_LOGIN,
     };
   }
 
@@ -184,6 +186,31 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   changePin(@CurrentUser() user: AuthUser, @Body() dto: ChangePinDto) {
     return this.auth.changePin(user.id, dto.currentPin, dto.newPin);
+  }
+
+  @Public()
+  @Post('customer/otp/request')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async requestCustomerOtp(@Body() dto: OtpRequestDto) {
+    return this.auth.requestCustomerOtp(dto.phone);
+  }
+
+  @Public()
+  @Post('customer/otp/login')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  async customerOtpLogin(
+    @Body() dto: OtpVerifyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.auth.verifyCustomerOtp(dto.phone, dto.code);
+    this.setSessionCookie(res, result.token);
+    return result;
+  }
+
+  @Post('customer/set-pin')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  async setCustomerPin(@CurrentUser() user: AuthUser, @Body() dto: CustomerSetPinDto) {
+    return this.auth.setCustomerPin(user.id, dto.pin);
   }
 
   /* ─── Email verification (two-step) ────────────────────────────────────── */

@@ -31,6 +31,9 @@ import { getLabels } from '@/lib/labels';
 import { serviceDay, fmtWait, formatDateIst, formatTimeIst, addServiceDays, istNowHHMM, istDayOfWeekFromKey, isShiftStillBookable } from '@/lib/datetime';
 import { resolveAvgMinutes } from '@/lib/queueAvg';
 import { Spinner } from '@/components/PageLoader';
+import { Skeleton, QueueListSkeleton } from '@/components/Skeleton';
+import { useWebPush } from '@/lib/useWebPush';
+
 
 function doctorStorageKey(clinicId: string) {
   return `turnos_selected_doctor_${clinicId}`;
@@ -261,6 +264,83 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     });
   }, [doctorShifts]);
 
+  // Active doctor shift for capacity limits
+  const activeDoctorShift = useMemo(() => {
+    if (doctorShifts.length === 0) return null;
+    const todayDow = istDayOfWeekFromKey(serviceDay());
+    const match = doctorShifts.find((s) => s.dayOfWeek === todayDow && !s.isHoliday);
+    return match || doctorShifts[0] || null;
+  }, [doctorShifts]);
+
+  const [capacityInput, setCapacityInput] = useState<string>('');
+  const [savingCapacity, setSavingCapacity] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (activeDoctorShift) {
+      setCapacityInput(activeDoctorShift.maxCapacity != null ? String(activeDoctorShift.maxCapacity) : '');
+    } else {
+      setCapacityInput('');
+    }
+  }, [activeDoctorShift]);
+
+  // ── Real-time queue ──────────────────────────────────────────────────────
+  const { snapshot: liveSnapshot, connected } = useDoctorQueue(selectedDoctorId);
+  const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
+
+  const inQueueCount = useMemo(() => {
+    return (snapshot?.entries ?? []).filter((e) => e.status === 'WAITING' || e.status === 'IN_CONSULTATION').length;
+  }, [snapshot?.entries]);
+
+  const totalBookingsCount = useMemo(() => {
+    if (snapshot?.totalBookingsCount !== undefined) return snapshot.totalBookingsCount;
+    const activeCount = snapshot?.entries?.length ?? 0;
+    const missedCount = snapshot?.missedEntries?.length ?? 0;
+    const completedCount = snapshot?.completedCount ?? 0;
+    return activeCount + missedCount + completedCount;
+  }, [snapshot]);
+
+  const saveCapacityLimit = async (newValStr: string) => {
+    if (!selectedDoctorId || !locationId || savingCapacity) return;
+    const trimmed = newValStr.trim();
+    const newLimit = trimmed !== '' ? parseInt(trimmed, 10) : null;
+    if (newLimit !== null && (isNaN(newLimit) || newLimit < 1)) return;
+
+    setSavingCapacity(true);
+    try {
+      const fullSchedules = await api<any[]>(`/schedules/doctor/${selectedDoctorId}?locationId=${locationId}`);
+      const updatedShifts = (fullSchedules || []).map((s) => {
+        if (
+          activeDoctorShift &&
+          (s.id === activeDoctorShift.id ||
+            (s.dayOfWeek === activeDoctorShift.dayOfWeek && s.startTime === activeDoctorShift.startTime))
+        ) {
+          return { ...s, maxCapacity: newLimit };
+        }
+        return s;
+      });
+
+      await api(`/schedules/doctor/${selectedDoctorId}?locationId=${locationId}`, {
+        method: 'POST',
+        body: { shifts: updatedShifts },
+      });
+
+      setDoctorShifts(updatedShifts.filter((s: any) => !s.isHoliday));
+      setToast({
+        type: 'ok',
+        msg: newLimit
+          ? `Schedule limit set to max ${newLimit} patients for ${snapshot?.doctor?.user?.name || 'doctor'}`
+          : `Schedule capacity limit removed for ${snapshot?.doctor?.user?.name || 'doctor'}`,
+      });
+    } catch (err: any) {
+      setToast({
+        type: 'err',
+        msg: err instanceof ApiError ? err.message : 'Failed to update schedule capacity limit',
+      });
+    } finally {
+      setSavingCapacity(false);
+    }
+  };
+
   const entrySlotKey = useCallback((e: { appointmentSlot?: string | null; appointmentTime?: string | null }) => {
     if (e.appointmentSlot) return e.appointmentSlot;
     if (e.appointmentTime) return formatTimeIst(e.appointmentTime);
@@ -294,7 +374,10 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }, [phoneResult.ok, phoneResult.e164]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load clinic ──────────────────────────────────────────────────────────
+  const [loadingClinic, setLoadingClinic] = useState(true);
+
   const loadClinic = useCallback(async () => {
+    setLoadingClinic(true);
     try {
       const url = locationId ? `/clinics/my?locationId=${locationId}` : '/clinics/my';
       const data = await api<Clinic>(url);
@@ -308,6 +391,9 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
         saved && doctors.some((d) => d.id === saved) ? saved : doctors[0]?.id ?? null;
       setSelectedDoctorId(valid);
     } catch { /* ignore — page-level auth already guards this */ }
+    finally {
+      setLoadingClinic(false);
+    }
   }, [locationId]);
 
   const selectDoctor = useCallback((id: string) => {
@@ -316,10 +402,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   }, [clinic?.id]);
 
   useEffect(() => { void loadClinic(); }, [loadClinic, locationId]);
-
-  // ── Real-time queue ──────────────────────────────────────────────────────
-  const { snapshot: liveSnapshot, connected } = useDoctorQueue(selectedDoctorId);
-  const { display: snapshot, applyOptimistic, revertOptimistic } = useOptimisticSnapshot(liveSnapshot);
 
   // Re-render avg label while a customer is in service (elapsed time ticks up).
   const [avgTick, setAvgTick] = useState(0);
@@ -412,6 +494,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     const capturedWalkin = walkin;
     const capturedSlotType = slotType;
     // Generate a unique idempotency key using high-precision timestamp + random suffix to prevent stuck "Adding..." states
+    const resolvedShiftTime = capturedWalkin ? undefined : (selectedShiftTime || (upcomingShifts[0]?.appointmentTime ?? undefined));
     const idemKey = `${selectedDoctorId}:${e164}:${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const body = {
       doctorId: selectedDoctorId,
@@ -452,6 +535,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
           joinedAt: new Date().toISOString(),
           patient: { id: 'pending', name: capturedName, phone: body.patientPhone ?? null },
           walkin: capturedWalkin,
+          appointmentTime: resolvedShiftTime,
           sortOrder: null,
           slotType: (capturedSlotType === 'FOLLOWUP' ? 'FOLLOWUP' : 'NEW') as QueueEntry['slotType'],
         },
@@ -871,18 +955,60 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
   useEffect(() => () => stopAutoScroll(), [stopAutoScroll]);
 
+  const {
+    isSupported: pushSupported,
+    permission: pushPermission,
+    subscribed: pushSubscribed,
+    subscribe: subscribePush,
+    unsubscribe: unsubscribePush,
+  } = useWebPush();
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
       {/* Doctor selector */}
       <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-            Select {L.provider.toLowerCase()}
-          </span>
-          <LiveIndicator connected={connected} />
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Select {L.provider.toLowerCase()}
+            </span>
+            <LiveIndicator connected={connected} />
+          </div>
+
+          {pushSupported && pushPermission !== 'denied' && (
+            <button
+              type="button"
+              onClick={() => {
+                if (pushSubscribed) {
+                  void unsubscribePush().then((ok) => {
+                    if (ok) setToast({ type: 'info', msg: 'Staff Push notifications paused for this device' });
+                  });
+                } else {
+                  void subscribePush().then((ok) => {
+                    if (ok) setToast({ type: 'ok', msg: 'Staff Push notifications active! You will get alerts on new patient self-bookings.' });
+                    else setToast({ type: 'err', msg: 'Could not enable push notifications' });
+                  });
+                }
+              }}
+              className={`pill-sm text-[11px] font-semibold transition-all flex items-center gap-1 py-1 px-2.5 rounded-full border ${
+                pushSubscribed
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+              }`}
+              title={pushSubscribed ? 'Click to pause push alerts for patient self-bookings' : 'Click to turn on push alerts for patient self-bookings'}
+            >
+              <span>{pushSubscribed ? '🔔 Self-Booking Push ON' : '🔕 Self-Booking Push OFF'}</span>
+            </button>
+          )}
         </div>
-        {allDoctors.length > 0 ? (
+        {loadingClinic ? (
+          <div className="flex flex-wrap gap-2.5">
+            <Skeleton className="h-14 w-36 rounded-2xl" />
+            <Skeleton className="h-14 w-36 rounded-2xl" />
+            <Skeleton className="h-14 w-36 rounded-2xl" />
+          </div>
+        ) : allDoctors.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {allDoctors.map((d) => {
               const isSelected = selectedDoctorId === d.id;
@@ -940,11 +1066,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
-                      {prevVisit.customerPin && (
-                        <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
-                          PIN: {prevVisit.customerPin}
-                        </span>
-                      )}
                     </div>
                     <div className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">
                       {prevVisit.totalVisits > 0 ? (
@@ -1082,11 +1203,32 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   <span className="text-sm font-normal text-slate-400 dark:text-slate-500">— {snapshot.doctor.user.name}</span>
                 )}
               </h2>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 dark:text-slate-400">Now serving</span>
-                <span className="font-bold text-slate-800 dark:text-slate-100 font-mono text-sm bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1">
-                  {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
-                </span>
+
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                {/* Staff Live Counter Pill: In Queue & Total Bookings (Unified & Compact) */}
+                {selectedDoctorId && (
+                  <div
+                    className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200/80 dark:border-emerald-800/60 text-[11px] font-medium text-emerald-900 dark:text-emerald-200 shadow-2xs shrink-0"
+                    title="Live status: Queue count & Total schedule bookings"
+                  >
+                    <span className="flex items-center gap-1">
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">In Queue:</span>
+                      <span className="font-extrabold tabular-nums text-emerald-800 dark:text-emerald-200">{inQueueCount}</span>
+                    </span>
+                    <span className="text-emerald-300 dark:text-emerald-800">·</span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Total:</span>
+                      <span className="font-extrabold tabular-nums text-emerald-800 dark:text-emerald-200">{totalBookingsCount}</span>
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">Now serving</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-100 font-mono text-sm bg-slate-100 dark:bg-slate-800 rounded-lg px-2.5 py-1">
+                    {snapshot?.currentToken ? tokenDisplay(snapshot.currentToken) : '—'}
+                  </span>
+                </div>
               </div>
             </div>
             {/* Search + controls row */}
@@ -1172,7 +1314,9 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 onDragOver={handleListDragOver}
                 onDrop={(ev) => handleDrop(ev, waitingInDisplayOrder)}
               >
-                {filtered.length > 0 ? (
+                {loadingClinic || (selectedDoctorId && !snapshot) ? (
+                  <QueueListSkeleton rows={4} />
+                ) : filtered.length > 0 ? (
                   filtered.map((e, idx) => {
                     const waitingIndex = waitingInDisplayOrder.findIndex((w) => w.id === e.id);
                     const showPlaceholderBefore =
@@ -1327,11 +1471,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                     <div className="min-w-0">
                       <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-2 flex-wrap text-sm">
                         {e.patient?.name ?? '—'}
-                        {e.patient?.customerPin && (
-                          <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono ml-1">
-                            PIN: {e.patient.customerPin}
-                          </span>
-                        )}
                         {e.missedCount > 0 && (
                           <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">Missed ×{e.missedCount}</span>
                         )}
@@ -1463,11 +1602,6 @@ const QueueRow = memo(function QueueRow({
         <div className="flex-1 min-w-0">
           <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5 flex-wrap text-sm">
             {entry.patient?.name ?? '—'}
-            {entry.patient?.customerPin && (
-              <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
-                PIN: {entry.patient.customerPin}
-              </span>
-            )}
             {isPending   && <span className="pill-sm bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-amber-200 dark:ring-amber-800/60">Adding…</span>}
             {entry.priority >= 100 && <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">🚨 Emergency</span>}
             {entry.walkin && <span className="pill-sm bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-400 ring-brand-200 dark:ring-brand-800/60">Walk-in</span>}

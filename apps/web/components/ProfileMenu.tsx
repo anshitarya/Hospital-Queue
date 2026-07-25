@@ -109,6 +109,9 @@ export function ProfileMenu() {
             <MenuItem onClick={() => { setOpen(false); router.push('/profile'); }} icon={<Icon.User className="h-4 w-4" />}>
               Profile & account
             </MenuItem>
+            <MenuItem onClick={() => { setOpen(false); router.push('/faq'); }} icon={<Icon.Sparkles className="h-4 w-4" />}>
+              Help & FAQ
+            </MenuItem>
             {user.role === 'ADMIN' && (
               <MenuItem onClick={() => { setOpen(false); router.push('/admin'); }} icon={<Icon.Settings className="h-4 w-4" />}>
                 Manage businesses

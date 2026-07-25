@@ -40,29 +40,69 @@ function fakeRedis() {
   };
 }
 
-function makeService(overrides: { devMode?: boolean; ttlSeconds?: number } = {}) {
+function makeService(overrides: { devMode?: boolean; ttlSeconds?: number; authKey?: string; widgetId?: string } = {}) {
   const redis = fakeRedis();
   const config = {
     get: (k: string) => {
       if (k === 'otp.devMode') return overrides.devMode ?? true;
       if (k === 'otp.ttlSeconds') return overrides.ttlSeconds ?? 300;
+      if (k === 'msg91.authKey') return overrides.authKey;
+      if (k === 'msg91.widgetId') return overrides.widgetId;
       return undefined;
     },
   } as unknown as ConfigService;
-  return { svc: new OtpService(redis as unknown as { client: typeof redis.client } as never, config), redis };
+  const notificationsService = {
+    send: jest.fn().mockResolvedValue({ id: 'msg-id', status: 'sent' }),
+  };
+  return {
+    svc: new OtpService(
+      redis as unknown as { client: typeof redis.client } as never,
+      config,
+      notificationsService as any,
+    ),
+    redis,
+    notificationsService,
+  };
 }
 
+const originalFetch = global.fetch;
+
 describe('OtpService.issue', () => {
+  beforeEach(() => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: 'success', message: 'mock-req-id' }),
+    });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   it('returns devCode in dev mode', async () => {
     const { svc } = makeService({ devMode: true });
     const res = await svc.issue('phone', '+919876543210');
-    expect(res.devCode).toMatch(/^\d{6}$/);
+    expect(res.devCode).toMatch(/^\d{4}$/);
   });
 
-  it('omits devCode when devMode=false', async () => {
-    const { svc } = makeService({ devMode: false });
+  it('omits devCode when devMode=false and calls MSG91 Widget sendOtp', async () => {
+    const { svc } = makeService({ devMode: false, authKey: 'test-auth-key', widgetId: 'test-widget-id' });
     const res = await svc.issue('phone', '+919876543210');
     expect(res.devCode).toBeUndefined();
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.msg91.com/api/v5/widget/sendOtp',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authkey: 'test-auth-key',
+        },
+        body: JSON.stringify({
+          widgetId: 'test-widget-id',
+          identifier: '919876543210',
+        }),
+      }),
+    );
   });
 
   it('stores the OTP at the right channel-scoped key', async () => {
@@ -79,12 +119,12 @@ describe('OtpService.issue', () => {
     expect(redis._store.get('otp:email:shared@example.com')).toBe(b.devCode);
   });
 
-  it('rate-limits issuances to 5 per window then throws 429', async () => {
+  it('rate-limits issuances to 3 per window then throws 429', async () => {
     const { svc } = makeService();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 3; i++) {
       await expect(svc.issue('phone', '+919876543210')).resolves.toBeDefined();
     }
-    // 6th attempt → 429
+    // 4th attempt → 429
     await expect(svc.issue('phone', '+919876543210')).rejects.toMatchObject({
       status: HttpStatus.TOO_MANY_REQUESTS,
     });
@@ -92,7 +132,7 @@ describe('OtpService.issue', () => {
 
   it('rate limit is per-target — different numbers do not share a counter', async () => {
     const { svc } = makeService();
-    for (let i = 0; i < 5; i++) await svc.issue('phone', '+919876543210');
+    for (let i = 0; i < 3; i++) await svc.issue('phone', '+919876543210');
     // A different number is still fresh
     await expect(svc.issue('phone', '+919999999999')).resolves.toBeDefined();
   });
@@ -184,5 +224,29 @@ describe('OtpService.verify', () => {
     // Right pairings succeed
     await expect(svc.verify('phone', '+919876543210', phoneRes.devCode!)).resolves.toBe(true);
     await expect(svc.verify('email', 'a@example.com', emailRes.devCode!)).resolves.toBe(true);
+  });
+
+  it('calls MSG91 Widget verifyOtp when devMode=false', async () => {
+    const { svc, redis } = makeService({ devMode: false, authKey: 'test-auth-key', widgetId: 'test-widget-id' });
+    await redis.client.set('otp:reqId:+919876543210', 'mock-req-id');
+
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ type: 'success', message: 'OTP verified' }),
+    });
+
+    const res = await svc.verify('phone', '+919876543210', '123456');
+    expect(res).toBe(true);
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.msg91.com/api/v5/widget/verifyOtp',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          widgetId: 'test-widget-id',
+          reqId: 'mock-req-id',
+          otp: '123456',
+        }),
+      }),
+    );
   });
 });

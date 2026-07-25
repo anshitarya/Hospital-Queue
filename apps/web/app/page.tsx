@@ -375,6 +375,7 @@ export default function HomePage() {
             <span className="text-slate-300">|</span>
             <Link href="/terms" className="hover:text-slate-900">Terms</Link>
             <Link href="/privacy" className="hover:text-slate-900">Privacy</Link>
+            <Link href="/faq" className="hover:text-slate-900 font-semibold text-brand-600 dark:text-emerald-400">FAQ</Link>
           </div>
         </div>
       </footer>

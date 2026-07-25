@@ -18,8 +18,11 @@ import { formatDateIst } from '@/lib/datetime';
 import { formatIndianMobile } from '@/lib/phone';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
+import { ProfileSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { Icon } from '@/components/Icons';
+import { useWebPush } from '@/lib/useWebPush';
+
 
 /**
  * Production profile page.
@@ -50,7 +53,7 @@ export default function ProfilePage() {
       .finally(() => setLoading(false));
   }, [ready]);
 
-  if (!ready || loading || !profile) return <PageLoader />;
+  if (!ready || loading || !profile) return <ProfileSkeleton />;
 
   // Keep the global auth store in sync whenever the profile changes —
   // ensures the header avatar and name update everywhere.
@@ -103,6 +106,11 @@ export default function ProfilePage() {
           profile={profile}
           onSuccess={() => setToast({ type: 'ok', msg:'Password changed' })}
           onError={(t) => setToast({ type: 'err', msg:t })}
+        />
+
+        <NotificationSettings
+          onSuccess={(msg) => setToast({ type: 'ok', msg })}
+          onError={(msg) => setToast({ type: 'err', msg })}
         />
       </main>
 
@@ -731,3 +739,97 @@ function Rule({ ok, children }: { ok: boolean; children: React.ReactNode }) {
     </li>
   );
 }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  Notification settings component                                           */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+function NotificationSettings({
+  onSuccess,
+  onError,
+}: {
+  onSuccess: (msg: string) => void;
+  onError: (msg: string) => void;
+}) {
+  const { isSupported, permission, subscribed, loading, subscribe, unsubscribe } = useWebPush();
+  const [busy, setBusy] = useState(false);
+
+  async function handleToggle() {
+    setBusy(true);
+    try {
+      if (subscribed) {
+        const ok = await unsubscribe();
+        if (ok) onSuccess('Web Push notifications disabled for this device');
+        else onError('Failed to disable push notifications');
+      } else {
+        const ok = await subscribe();
+        if (ok) onSuccess('Web Push notifications enabled successfully!');
+        else onError('Could not enable push notifications. Check browser permissions.');
+      }
+    } catch (e: any) {
+      onError(e.message || 'An error occurred');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card p-6">
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-4">
+        <div>
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Icon.Bell className="h-5 w-5 text-brand-600" />
+            Browser Push Notifications
+          </h3>
+          <p className="text-sm text-slate-500 mt-1 max-w-xl">
+            Receive instant alerts when your turn is coming up, even if your browser tab is backgrounded or minimized.
+          </p>
+        </div>
+
+        <div>
+          {!isSupported ? (
+            <span className="pill bg-slate-100 text-slate-600 ring-slate-200">
+              Not supported
+            </span>
+          ) : permission === 'denied' ? (
+            <span className="pill bg-rose-50 text-rose-700 ring-rose-200">
+              Blocked in browser
+            </span>
+          ) : subscribed ? (
+            <span className="pill bg-emerald-50 text-emerald-700 ring-emerald-200 flex items-center gap-1">
+              <Icon.Check className="h-3 w-3" /> Active on this device
+            </span>
+          ) : (
+            <span className="pill bg-amber-50 text-amber-700 ring-amber-200">
+              Disabled
+            </span>
+          )}
+        </div>
+      </div>
+
+      {permission === 'denied' && (
+        <div className="mb-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 text-amber-800 dark:text-amber-300 text-xs leading-relaxed">
+          <strong>Notifications blocked:</strong> Browser permission was previously denied. To re-enable push notifications, click the site lock icon 🔒 next to your browser URL bar and change &quot;Notifications&quot; to &quot;Allow&quot;.
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+        <span className="text-xs text-slate-500">
+          Device status: {loading ? 'Checking status…' : subscribed ? 'Push notifications active' : 'Push notifications paused'}
+        </span>
+
+        {isSupported && permission !== 'denied' && (
+          <button
+            type="button"
+            onClick={handleToggle}
+            disabled={loading || busy}
+            className={`btn ${subscribed ? 'btn-secondary !text-rose-600 hover:!bg-rose-50' : 'btn-primary'} !py-1.5 !px-4 text-xs font-semibold`}
+          >
+            {busy ? 'Processing…' : subscribed ? 'Disable Push Notifications' : 'Enable Push Notifications'}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+

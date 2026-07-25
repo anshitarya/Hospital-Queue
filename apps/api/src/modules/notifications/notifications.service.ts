@@ -7,12 +7,15 @@ import {
 } from './notification.provider';
 import { FEATURES } from '../../common/features';
 
+import { PushNotificationProvider, StaffBookingNotificationParams } from './push-notification.provider';
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(
     @Inject(NOTIFICATION_PROVIDERS) private readonly providers: NotificationProvider[],
+    private readonly pushProvider: PushNotificationProvider,
   ) {}
 
   async send(message: OutboundMessage) {
@@ -30,8 +33,9 @@ export class NotificationsService {
   }
 
   /**
-   * Dispatches a message to every enabled outbound channel (SMS and/or WhatsApp).
-   * When both flags are off the message goes to console only (dev mode).
+   * Dispatches a message to enabled outbound channels (SMS, WhatsApp, and Web Push).
+   * When SMS/WhatsApp flags are off, SMS goes to console (dev mode), while Web Push
+   * attempts delivery to active browser subscriptions.
    */
   async sendToAll(
     phone: string,
@@ -44,6 +48,9 @@ export class NotificationsService {
     if (FEATURES.WHATSAPP_NOTIFICATIONS) channels.push('WHATSAPP');
     // Neither flag on → console (dev mode). The ConsoleProvider supports all channels.
     if (channels.length === 0) channels.push('SMS');
+    
+    // Always attempt Web Push if the target user has active browser subscriptions
+    channels.push('PUSH');
 
     await Promise.allSettled(
       channels.map((ch) => this.send({ channel: ch, to: normalizePhone(phone), template, variables, body })),
@@ -57,7 +64,7 @@ export class NotificationsService {
       phone,
       'queue_joined',
       { tokenCode, doctorName },
-      `You have joined the queue for ${doctorName}. Your token: ${tokenCode}. Track your position live at https://turnos.fly.dev`,
+      `You have joined the queue for ${doctorName}. Your token: ${tokenCode}. Track your position live at https://turnos.in`,
     );
   }
 
@@ -104,6 +111,37 @@ export class NotificationsService {
       { tokenCode },
       `Your appointment (Token ${tokenCode}) has been cancelled. Please contact the clinic for assistance.`,
     );
+  }
+
+  notifyDoctorPaused(phone: string, doctorName: string) {
+    return this.sendToAll(
+      phone,
+      'doctor_paused',
+      { doctorName },
+      `The queue with ${doctorName} has been temporarily paused. We will notify you when it resumes.`,
+    );
+  }
+
+  notifyDoctorResumed(phone: string, doctorName: string) {
+    return this.sendToAll(
+      phone,
+      'doctor_resumed',
+      { doctorName },
+      `The queue with ${doctorName} has resumed. Please keep tracking your live status.`,
+    );
+  }
+
+  notifyDoctorBreak(phone: string, estimatedMinutes: number, doctorName: string) {
+    return this.sendToAll(
+      phone,
+      'doctor_break',
+      { estimatedMinutes, doctorName },
+      `${doctorName} is on a short ~${estimatedMinutes} min break. Your ETA has been adjusted accordingly.`,
+    );
+  }
+
+  notifyStaffSelfBooking(params: StaffBookingNotificationParams) {
+    return this.pushProvider.sendToStaff(params);
   }
 }
 

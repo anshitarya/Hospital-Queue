@@ -8,3 +8,5 @@ dist/
 coverage/
 .turbo/
 next-env.d.ts
+vapid-keys.json
+

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { getLabels, type BusinessType } from '@/lib/labels';
 import { Toast, type ToastMessage } from '@/components/Toast';
+import { TableSkeleton } from './Skeleton';
 
 interface AssignmentDoctor {
   id: string;
@@ -103,9 +104,7 @@ export function ReceptionistAssignmentsTab({
   }
 
   if (loading) {
-    return (
-      <div className="card p-8 text-center text-sm text-slate-400">Loading assignments…</div>
-    );
+    return <TableSkeleton rows={4} cols={4} />;
   }
 
   if (!data) return null;

@@ -9,6 +9,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleAuthService } from './google-auth.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { BillingModule } from '../billing/billing.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { BillingModule } from '../billing/billing.module';
       }),
     }),
     BillingModule,
+    NotificationsModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, OtpService, JwtStrategy, RedisService, GoogleAuthService],

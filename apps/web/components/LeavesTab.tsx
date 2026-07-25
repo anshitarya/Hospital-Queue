@@ -3,6 +3,7 @@ import { formatDateTimeIst } from '@/lib/datetime';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { type ToastMessage } from './Toast';
+import { TableSkeleton } from './Skeleton';
 
 interface DoctorItem {
   id: string;
@@ -291,7 +292,7 @@ export function LeavesTab({
               {isBusinessAdmin ? 'Team leave & break requests' : 'My requests'}
             </h2>
             {loading ? (
-              <div className="py-12 text-center text-slate-400 text-sm">Loading…</div>
+              <TableSkeleton rows={4} cols={5} />
             ) : leaves.length === 0 ? (
               <div className="py-12 text-center text-slate-400 text-sm">No leave or break requests yet.</div>
             ) : (

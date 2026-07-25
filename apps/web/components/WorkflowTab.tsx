@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { type ToastMessage } from './Toast';
+import { FormSkeleton } from './Skeleton';
 
 interface DoctorItem {
   id: string;
@@ -77,7 +78,7 @@ export function WorkflowTab({ doctors, setToast, locationId }: { doctors: Doctor
 
       <div className="card p-5 space-y-6">
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-sm">Loading workflow layout…</div>
+          <FormSkeleton rows={3} />
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
             {steps.length === 0 ? (

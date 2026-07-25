@@ -31,7 +31,7 @@ export class RatingsService {
       throw new BadRequestException('You have already rated this visit');
     }
 
-    return this.prisma.professionalRating.create({
+    const created = await this.prisma.professionalRating.create({
       data: {
         locationId: entry.locationId,
         doctorId: entry.doctor.id,
@@ -42,8 +42,14 @@ export class RatingsService {
       },
       include: {
         doctor: { include: { user: { select: { name: true } } } },
+        location: { select: { googleReviewUrl: true } },
       },
     });
+
+    return {
+      ...created,
+      googleReviewUrl: created.location?.googleReviewUrl || null,
+    };
   }
 
   async getRatingForEntry(entryId: string, patientId: string) {

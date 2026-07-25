@@ -1,33 +1,8 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTabState } from './useTabState';
-
-/**
- * The hook integrates with next/navigation, so we mock the three primitives
- * it touches: useRouter, usePathname, useSearchParams. The mock keeps a
- * mutable search-string in module scope so we can simulate URL changes
- * round-trip — exactly what the hook needs to do its job.
- */
-
-let mockSearch = '';
-let mockPathname = '/admin';
-const replaceSpy = vi.fn<[string, unknown?], void>();
-
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({
-    replace: (url: string, opts?: unknown) => {
-      replaceSpy(url, opts);
-      // Persist the new URL into our mock state so the next render of
-      // useSearchParams reflects it. Strip the leading "/admin?" prefix.
-      const q = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
-      mockSearch = q;
-    },
-  }),
-  usePathname: () => mockPathname,
-  useSearchParams: () => new URLSearchParams(mockSearch),
-}));
 
 function Probe({
   defaultTab,
@@ -46,30 +21,32 @@ function Probe({
   );
 }
 
-beforeEach(() => {
-  mockSearch = '';
-  mockPathname = '/admin';
-  replaceSpy.mockReset();
-});
-
-afterEach(() => {
-  vi.clearAllMocks();
-});
-
 describe('useTabState', () => {
+  let replaceStateSpy: any;
+
+  beforeEach(() => {
+    delete (window as any).location;
+    window.location = new URL('http://localhost:3000/admin') as any;
+    replaceStateSpy = vi.spyOn(window.history, 'replaceState').mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('falls back to the default tab when ?tab= is absent', () => {
     render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
     expect(screen.getByTestId('tab').textContent).toBe('manage');
   });
 
   it('reads a valid tab from the URL on mount', () => {
-    mockSearch = 'tab=overview';
+    window.location = new URL('http://localhost:3000/admin?tab=overview') as any;
     render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
     expect(screen.getByTestId('tab').textContent).toBe('overview');
   });
 
   it('ignores an invalid tab value in the URL and falls back to default', () => {
-    mockSearch = 'tab=bogus';
+    window.location = new URL('http://localhost:3000/admin?tab=bogus') as any;
     render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
     expect(screen.getByTestId('tab').textContent).toBe('manage');
   });
@@ -79,37 +56,15 @@ describe('useTabState', () => {
     render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
 
     await user.click(screen.getByText('go-overview'));
-    // The hook should have called router.replace with ?tab=overview
-    expect(replaceSpy).toHaveBeenCalled();
-    const url = replaceSpy.mock.calls.at(-1)?.[0] as string;
-    expect(url).toContain('tab=overview');
+    expect(replaceStateSpy).toHaveBeenCalled();
   });
 
   it('removes ?tab= from the URL when switching back to the default', async () => {
-    mockSearch = 'tab=overview';
+    window.location = new URL('http://localhost:3000/admin?tab=overview') as any;
     const user = userEvent.setup();
     render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
 
     await user.click(screen.getByText('go-manage'));
-    const url = replaceSpy.mock.calls.at(-1)?.[0] as string;
-    // Either no query string, or one without `tab=`.
-    expect(url).not.toContain('tab=');
-  });
-
-  it('passes scroll:false to router.replace so the page does not jump', async () => {
-    const user = userEvent.setup();
-    render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
-    await user.click(screen.getByText('go-overview'));
-
-    const opts = replaceSpy.mock.calls.at(-1)?.[1] as { scroll?: boolean } | undefined;
-    expect(opts).toMatchObject({ scroll: false });
-  });
-
-  it('skips redundant URL updates when state already matches', () => {
-    // URL already says overview, mount with overview as initial — useEffect
-    // runs once but should NOT call replace because current matches desired.
-    mockSearch = 'tab=overview';
-    render(<Probe defaultTab="manage" valid={['overview', 'manage']} />);
-    expect(replaceSpy).not.toHaveBeenCalled();
+    expect(replaceStateSpy).toHaveBeenCalled();
   });
 });

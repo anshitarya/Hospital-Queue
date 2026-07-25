@@ -3,7 +3,7 @@ import { api, ApiError } from '@/lib/api';
 import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
 import { type ToastMessage } from './Toast';
 import { QRCodePanel } from './QRCodePanel';
-import { Spinner } from './PageLoader';
+import { FormSkeleton } from './Skeleton';
 
 interface SettingsData {
   businessType: string;
@@ -139,9 +139,8 @@ export function SettingsTab({
 
   if (loading) {
     return (
-      <div className="py-16 flex flex-col items-center gap-4 text-slate-400">
-        <Spinner className="h-8 w-8" />
-        <span className="text-xs font-medium">Loading settings…</span>
+      <div className="p-5 sm:p-6 max-w-4xl mx-auto space-y-6">
+        <FormSkeleton rows={6} />
       </div>
     );
   }
@@ -215,25 +214,6 @@ export function SettingsTab({
           </div>
         )}
 
-        {/* Token Formatting */}
-        <div className="card p-5 space-y-4">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Token Configuration</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Token Prefix</label>
-              <input className="input mt-1 w-full" type="text" maxLength={6} value={settings.tokenPrefix}
-                onChange={(e) => setSettings({ ...settings, tokenPrefix: e.target.value })} />
-            </div>
-            <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Number Format</label>
-              <select className="input mt-1 w-full" value={settings.queueNumberFormat}
-                onChange={(e) => setSettings({ ...settings, queueNumberFormat: e.target.value })}>
-                <option value="NUMBER">Sequential Numbers (1, 2, 3…)</option>
-                <option value="CODE">Alphanumeric Code (A-Z, 3 digits)</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
         {/* Queue Routing Rules */}
         <div className="card p-5 space-y-4">

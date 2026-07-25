@@ -10,10 +10,18 @@ export class ShiftDto {
   @IsString()
   doctorId?: string;
 
+  @IsOptional()
+  @IsString()
+  locationId?: string;
+
   @IsInt() dayOfWeek: number;
   @IsString() startTime: string;
   @IsString() endTime: string;
   @IsBoolean() isHoliday: boolean;
+
+  @IsOptional()
+  @IsInt()
+  maxCapacity?: number | null;
 
   @IsOptional()
   @IsString()

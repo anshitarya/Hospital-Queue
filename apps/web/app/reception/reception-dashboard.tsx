@@ -9,6 +9,7 @@ import { getLabels, departmentPresetsFor, normalizeBusinessType, type BusinessTy
 import { HOSPITAL_DEPARTMENTS, FORMS } from '@/lib/config';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { PageLoader } from '@/components/PageLoader';
+import { ReceptionPageSkeleton } from '@/components/Skeleton';
 import { QueueManager } from '@/components/QueueManager';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { DepartmentPicker, type DepartmentOption } from '@/components/DepartmentPicker';
@@ -294,6 +295,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
   const [docDeptId, setDocDeptId] = useState('');
   const [docAvg, setDocAvg] = useState(7);
   const [docUseDefaultSchedule, setDocUseDefaultSchedule] = useState(true);
+  const [docLanguages, setDocLanguages] = useState('');
   const [docBusy, setDocBusy] = useState(false);
   const [departments, setDepartments] = useState<DepartmentOption[]>([]);
   const [creds, setCreds] = useState<DoctorCredentials | null>(null);
@@ -627,11 +629,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
           avgConsultMinutes: docAvg,
           useDefaultSchedule: docUseDefaultSchedule,
           locationIds: selectedLocationId ? [selectedLocationId] : undefined,
+          languages: docLanguages || undefined,
         },
       });
       setDocName(''); setDocEmail(''); setDocPhone('');
       setDocPhoneResult({ ok: false }); setDocDeptId(''); setDocAvg(7);
       setDocUseDefaultSchedule(true);
+      setDocLanguages('');
       setCreds({
         role: 'doctor',
         name: result.doctor.user.name,
@@ -738,7 +742,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
     [data?.allDoctors, data?.doctors],
   );
 
-  if (!ready || loading) return <PageLoader label="Loading…" />;
+  if (!ready || loading) return <ReceptionPageSkeleton />;
 
   const L = getLabels(data?.clinic?.businessType);
 
@@ -1300,6 +1304,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                     label={`Select ${L.department.toLowerCase()}`}
                   />
                 </div>
+                <input className="input sm:col-span-2" placeholder="Languages (optional, e.g. English, Hindi)" value={docLanguages} onChange={(e) => setDocLanguages(e.target.value)} />
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Avg {L.service.toLowerCase()} time:</span>
                   <input className="input flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} max={120} value={docAvg}

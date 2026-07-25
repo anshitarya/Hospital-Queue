@@ -29,6 +29,7 @@ import { CLINIC_PORTAL_ROLES, isClinicPortalRole } from '../../common/constants/
 import { normalizeBusinessType } from '../../common/utils/business-type';
 import { AuthUser } from '../../common/decorators/current-user.decorator';
 import { FEATURES } from '../../common/features';
+import { istDayOfWeek } from '../../common/utils/schedule-slots';
 
 @Injectable()
 export class ClinicsService {
@@ -112,7 +113,6 @@ export class ClinicsService {
         locations: {
           some: {
             status: 'ACTIVE',
-            businessSetting: { allowOnlineBooking: true },
           },
         },
       },
@@ -120,7 +120,6 @@ export class ClinicsService {
         locations: {
           where: {
             status: 'ACTIVE',
-            businessSetting: { allowOnlineBooking: true },
           },
           include: {
             businessSetting: true,
@@ -130,12 +129,17 @@ export class ClinicsService {
                   include: {
                     user: { select: { id: true, name: true } },
                     department: { select: { id: true, name: true } },
+                    ratings: { select: { rating: true } },
+                    schedules: {
+                      where: { isHoliday: false },
+                      select: { dayOfWeek: true, locationId: true },
+                    },
                     entries: {
                       where: {
-                        serviceDay: today,
+                        serviceDay: { gte: today },
                         status: { in: ['WAITING', 'IN_CONSULTATION'] },
                       },
-                      select: { id: true, status: true, appointmentTime: true, locationId: true },
+                      select: { id: true, status: true, appointmentTime: true, locationId: true, serviceDay: true },
                     },
                   },
                 },
@@ -155,10 +159,36 @@ export class ClinicsService {
         id: loc.id,
         name: loc.name,
         address: `${loc.address}, ${loc.city}, ${loc.state}`,
+        contactNumber: loc.contactNumber,
+        bookingContactNumber: loc.bookingContactNumber,
+        latitude: loc.latitude,
+        longitude: loc.longitude,
         settings: loc.businessSetting,
         doctors: loc.doctors.map((dl) => {
           const d = dl.doctor;
-          const locEntries = d.entries.filter((e) => e.locationId === loc.id);
+          
+          // Find the target serviceDay (current or next available schedule/booking day)
+          // Look from today (offset 0) up to 30 days in future
+          let targetDay = today;
+          for (let offset = 0; offset < 30; offset++) {
+            const checkDay = addServiceDays(today, offset);
+            const checkDow = istDayOfWeek(new Date(`${checkDay}T12:00:00+05:30`));
+
+            const hasEntries = d.entries.some((e) => e.serviceDay === checkDay && e.locationId === loc.id);
+            const hasSched = d.schedules.some((s) => s.dayOfWeek === checkDow && s.locationId === loc.id);
+
+            if (hasEntries || hasSched) {
+              targetDay = checkDay;
+              break;
+            }
+          }
+
+          const locEntries = d.entries.filter((e) => e.locationId === loc.id && e.serviceDay === targetDay);
+          const ratingsCount = d.ratings?.length || 0;
+          const avgRating = ratingsCount > 0
+            ? Math.round((d.ratings.reduce((acc, r) => acc + r.rating, 0) / ratingsCount) * 10) / 10
+            : null;
+          const hasSchedules = d.schedules.some((s) => s.locationId === loc.id);
           return {
             id: d.id,
             name: d.user.name,
@@ -168,6 +198,11 @@ export class ClinicsService {
             avgConsultMinutes: d.avgConsultMinutes,
             queueLength: locEntries.filter((e) => e.status === 'WAITING').length,
             inConsultation: locEntries.some((e) => e.status === 'IN_CONSULTATION'),
+            rating: avgRating,
+            experience: d.experience,
+            languages: d.languages,
+            consultationFee: d.consultationFee,
+            hasSchedules,
           };
         }),
       })),
@@ -747,6 +782,9 @@ export class ClinicsService {
           clinicId,
           avgConsultMinutes: dto.avgConsultMinutes ?? 7,
           status: DoctorStatus.AVAILABLE,
+          languages: dto.languages ?? null,
+          experience: dto.experience ?? null,
+          consultationFee: dto.consultationFee ?? null,
         },
         include: { user: true, department: true },
       });
@@ -1682,6 +1720,8 @@ export class ClinicsService {
         postalCode: dto.postalCode,
         contactNumber: dto.contactNumber,
         email: dto.email ?? null,
+        googleReviewUrl: dto.googleReviewUrl ?? null,
+        bookingContactNumber: dto.bookingContactNumber ?? null,
         timeZone: dto.timeZone ?? 'Asia/Kolkata',
         latitude: dto.latitude ?? null,
         longitude: dto.longitude ?? null,
@@ -1724,6 +1764,8 @@ export class ClinicsService {
         postalCode: dto.postalCode,
         contactNumber: dto.contactNumber,
         email: dto.email ?? null,
+        googleReviewUrl: dto.googleReviewUrl !== undefined ? (dto.googleReviewUrl ?? null) : undefined,
+        bookingContactNumber: dto.bookingContactNumber !== undefined ? (dto.bookingContactNumber ?? null) : undefined,
         timeZone: dto.timeZone,
         latitude: dto.latitude,
         longitude: dto.longitude,

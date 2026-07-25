@@ -1,0 +1,6 @@
+-- AlterTable Doctor
+ALTER TABLE "Doctor" ADD COLUMN IF NOT EXISTS "specialization" TEXT;
+ALTER TABLE "Doctor" ADD COLUMN IF NOT EXISTS "languages" TEXT;
+ALTER TABLE "Doctor" ADD COLUMN IF NOT EXISTS "experience" INTEGER;
+ALTER TABLE "Doctor" ADD COLUMN IF NOT EXISTS "consultationFee" INTEGER;
+ALTER TABLE "Doctor" ADD COLUMN IF NOT EXISTS "roomNumber" TEXT;

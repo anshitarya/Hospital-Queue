@@ -1,6 +1,7 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../common/redis/redis.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * OtpService issues and verifies 6-digit one-time codes.
@@ -22,18 +23,23 @@ export class OtpService {
   private readonly logger = new Logger(OtpService.name);
   private readonly ttl: number;
   private readonly devMode: boolean;
+  private readonly authKey: string | undefined;
+  private readonly widgetId: string | undefined;
 
   // Per-target limits — keep them tight; OTP endpoints are unauthenticated.
-  private readonly ISSUE_LIMIT = 5;
+  private readonly ISSUE_LIMIT = 3;
   private readonly VERIFY_LIMIT = 5;
   private readonly LIMIT_WINDOW_SECONDS = 600;
 
   constructor(
     private readonly redis: RedisService,
     config: ConfigService,
+    private readonly notificationsService: NotificationsService,
   ) {
     this.ttl = config.get<number>('otp.ttlSeconds') ?? 300;
     this.devMode = config.get<boolean>('otp.devMode') ?? true;
+    this.authKey = config.get<string>('msg91.authKey');
+    this.widgetId = config.get<string>('msg91.widgetId');
   }
 
   /** Redis key for the active OTP. */
@@ -61,19 +67,51 @@ export class OtpService {
     if (count === 1) await this.redis.client.expire(rk, this.LIMIT_WINDOW_SECONDS);
     if (count > this.ISSUE_LIMIT) {
       throw new HttpException(
-        'Too many OTP requests. Please wait a few minutes and try again.',
+        'Too many OTP requests. Please wait for 10 minutes and try again.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    const code = Math.floor(100_000 + Math.random() * 900_000).toString();
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
-    if (this.devMode) {
+    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId;
+
+    if (!useRealMsg91) {
       this.logger.warn(`[DEV OTP] channel=${channel} target=${target} code=${code} (expires in ${this.ttl}s)`);
       return { devCode: code };
     }
-    // Production: call SMS provider here, then return {}.
+
+    const digits = target.replace(/\D/g, '');
+    const mobile = digits.startsWith('91') ? digits : `91${digits}`;
+
+    try {
+      const response = await fetch('https://api.msg91.com/api/v5/widget/sendOtp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authkey: this.authKey,
+        },
+        body: JSON.stringify({
+          widgetId: this.widgetId,
+          identifier: mobile,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.type === 'error' || !data.message) {
+        this.logger.error(`MSG91 Widget sendOtp failed: ${JSON.stringify(data)}`);
+        throw new BadRequestException(data.message || 'Failed to send OTP via MSG91 Widget');
+      }
+
+      await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
+    } catch (err) {
+      if (err instanceof BadRequestException || err instanceof HttpException) {
+        throw err;
+      }
+      this.logger.error('MSG91 Widget sendOtp exception', err as Error);
+      throw new HttpException('Failed to send OTP. Please try again.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
     return {};
   }
 
@@ -83,7 +121,6 @@ export class OtpService {
    * resets the verify-attempt counter.
    */
   async verify(channel: Channel, target: string, code: string): Promise<boolean> {
-    // Rate-limit failed attempts so brute-forcing 6-digit OTPs isn't trivial.
     const vk = this.verifyRateKey(channel, target);
     const attempts = await this.redis.client.incr(vk);
     if (attempts === 1) await this.redis.client.expire(vk, this.LIMIT_WINDOW_SECONDS);
@@ -94,14 +131,52 @@ export class OtpService {
       );
     }
 
-    const stored = await this.redis.client.get(this.key(channel, target));
-    if (!stored) throw new BadRequestException('OTP expired or never issued. Request a new one.');
-    if (stored !== code) throw new BadRequestException('Invalid OTP');
+    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId;
 
-    // One-use: delete on success + reset verify rate.
-    await this.redis.client.del(this.key(channel, target));
-    await this.redis.client.del(vk);
-    return true;
+    if (!useRealMsg91) {
+      const stored = await this.redis.client.get(this.key(channel, target));
+      if (!stored) throw new BadRequestException('OTP expired or never issued. Request a new one.');
+      if (stored !== code) throw new BadRequestException('Invalid OTP');
+
+      await this.redis.client.del(this.key(channel, target));
+      await this.redis.client.del(vk);
+      return true;
+    }
+
+    const reqId = await this.redis.client.get(`otp:reqId:${target}`);
+    if (!reqId) {
+      throw new BadRequestException('OTP expired or never issued. Request a new one.');
+    }
+
+    try {
+      const response = await fetch('https://api.msg91.com/api/v5/widget/verifyOtp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authkey: this.authKey!,
+        },
+        body: JSON.stringify({
+          widgetId: this.widgetId,
+          reqId,
+          otp: code,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.type === 'error' || data.message === 'OTP not match' || data.message === 'Invalid OTP') {
+        throw new BadRequestException(data.message || 'Invalid OTP');
+      }
+
+      await this.redis.client.del(`otp:reqId:${target}`);
+      await this.redis.client.del(vk);
+      return true;
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      this.logger.error('MSG91 Widget verifyOtp exception', err as Error);
+      throw new HttpException('Failed to verify OTP. Please try again.', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 }
 

@@ -77,7 +77,10 @@ export class ProfessionalScheduleService {
   async getDoctorSchedule(doctorId: string, locationId: string, caller?: AuthUser) {
     const doctor = await this.prisma.doctor.findUnique({ where: { id: doctorId } });
     if (!doctor) throw new NotFoundException('Doctor not found');
-    await this.assertCallerCanManageLocation(caller, locationId);
+    
+    if (caller && caller.role !== Role.PATIENT) {
+      await this.assertCallerCanManageLocation(caller, locationId);
+    }
 
     return this.prisma.professionalSchedule.findMany({
       where: { doctorId, locationId },
@@ -105,6 +108,7 @@ export class ProfessionalScheduleService {
             startTime: shift.startTime,
             endTime: shift.endTime,
             isHoliday: shift.isHoliday,
+            maxCapacity: shift.maxCapacity ?? null,
           },
         });
         created.push(item);

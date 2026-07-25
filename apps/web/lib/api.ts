@@ -178,6 +178,8 @@ export interface Snapshot {
   /** True if at least one entry has been called today (callNext fired). Used to suppress "queue not started" after all are done. */
   hasStartedToday?: boolean;
   settings?: any;
+  totalBookingsCount?: number;
+  completedCount?: number;
 }
 
 export type SignupRequestStatus = 'PENDING' | 'CONTACTED' | 'APPROVED' | 'REJECTED';

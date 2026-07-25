@@ -6,6 +6,7 @@ import { api, ApiError } from '@/lib/api';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
+import { AdminPageSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { formatDateTimeIst, formatDateIst } from '@/lib/datetime';
 
@@ -160,7 +161,7 @@ export default function BusinessDetailsPage() {
     }
   };
 
-  if (!ready || loading) return <PageLoader label="Loading business dashboard..." />;
+  if (!ready || loading) return <AdminPageSkeleton />;
   if (!profile) return <div className="p-8 text-center text-red-500">Business not found.</div>;
 
   // Max events count for trend graph scaling

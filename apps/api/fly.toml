@@ -11,7 +11,7 @@ primary_region = "sin"   # Singapore
   DEFAULT_AVG_CONSULT_MINUTES = "7"
   JWT_EXPIRES_IN              = "30d"
   OTP_TTL_SECONDS             = "300"
-  CORS_ORIGIN                 = "https://turnos.fly.dev,https://turnos-hq.fly.dev"
+  CORS_ORIGIN                 = "https://turnos.in,https://www.turnos.in,https://turnos.fly.dev,https://turnos-hq.fly.dev"
   # Single API machine — skip Socket.IO Redis pub/sub (saves Upstash commands).
   # Set to "true" only when min_machines_running > 1.
   SOCKET_IO_REDIS_ADAPTER     = "false"

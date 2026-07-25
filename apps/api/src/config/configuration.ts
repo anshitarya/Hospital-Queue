@@ -27,6 +27,7 @@ export default () => ({
     authKey:     process.env.MSG91_AUTH_KEY,
     senderId:    process.env.MSG91_SENDER_ID ?? 'TURNOS',
     dltEntityId: process.env.MSG91_DLT_ENTITY_ID,
+    widgetId:    process.env.MSG91_WIDGET_ID,
   },
   metaWa: {
     accessToken:   process.env.META_WA_ACCESS_TOKEN,
