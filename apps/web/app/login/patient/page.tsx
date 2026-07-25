@@ -112,7 +112,7 @@ export default function PatientLoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-[#07090e] text-slate-100 selection:bg-brand-500/30">
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-50 dark:bg-[#07090e] text-slate-900 dark:text-slate-100">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[450px] w-[450px] rounded-full bg-brand-500/10 blur-[120px]" />
         <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-purple-600/10 blur-[130px]" />
@@ -122,11 +122,11 @@ export default function PatientLoginPage() {
         <div className="text-center mb-6">
           <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
             <TurnosIcon className="h-10 w-10 text-white" />
-            <span className="text-xl font-bold tracking-tight text-white">turnos</span>
+            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
           </Link>
         </div>
 
-        <div className="card p-6 space-y-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+        <div className="card p-6 space-y-5">
 
           {step === 'phone' && (
             <>

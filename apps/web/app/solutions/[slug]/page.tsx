@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { LandingNav } from '@/components/LandingNav';
 import { Icon } from '@/components/Icons';
-import { PatientDemo, ReceptionDemo, DoctorDemo } from '@/components/DemoAnimations';
+import dynamic from 'next/dynamic';
 import { SOLUTIONS } from '@/lib/solutions';
 
 interface PageProps {
@@ -51,6 +51,25 @@ export function generateMetadata({ params }: PageProps): Metadata {
     },
   };
 }
+
+const DemoSkeleton = () => (
+  <div className="h-64 rounded-xl bg-slate-100 dark:bg-white/5 animate-pulse flex items-center justify-center text-xs text-slate-400">
+    Loading preview...
+  </div>
+);
+
+const PatientDemo = dynamic(() => import('@/components/DemoAnimations').then((mod) => mod.PatientDemo), {
+  ssr: false,
+  loading: DemoSkeleton,
+});
+const ReceptionDemo = dynamic(() => import('@/components/DemoAnimations').then((mod) => mod.ReceptionDemo), {
+  ssr: false,
+  loading: DemoSkeleton,
+});
+const DoctorDemo = dynamic(() => import('@/components/DemoAnimations').then((mod) => mod.DoctorDemo), {
+  ssr: false,
+  loading: DemoSkeleton,
+});
 
 const DEMO_COMPONENTS = {
   patient: PatientDemo,
@@ -107,7 +126,7 @@ export default function SolutionPage({ params }: PageProps) {
               </div>
 
               {/* Interactive Demo mockup */}
-              <div className="relative animate-fade-in bg-slate-950/70 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 shadow-modal border border-white/15">
+              <div className="relative animate-fade-in bg-white dark:bg-slate-950/70 backdrop-blur-2xl rounded-3xl p-6 sm:p-8 shadow-lg dark:shadow-modal border border-slate-200 dark:border-white/15">
                 <div className="absolute -top-3 right-4 bg-gradient-to-r from-emerald-500 to-brand-600 text-white text-[10px] font-bold tracking-wider uppercase px-3 py-1 rounded-full shadow-glow z-20">
                   Interactive Live Demo
                 </div>
@@ -162,7 +181,7 @@ export default function SolutionPage({ params }: PageProps) {
         </section>
       </main>
 
-      <footer className="border-t border-white/10 py-10 backdrop-blur-xl bg-slate-950/40">
+      <footer className="border-t border-slate-200 dark:border-white/10 py-10 backdrop-blur-xl bg-white/80 dark:bg-slate-950/40">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5 text-sm text-slate-400">
             <Link href="/" className="relative inline-flex items-center shrink-0 rounded-2xl overflow-hidden h-7 w-7">

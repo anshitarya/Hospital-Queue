@@ -487,28 +487,44 @@ export class QueueService {
     const now = Date.now();
     const todayStr = istServiceDay();
 
-    for (const entry of activeEntries) {
-      if (entry.serviceDay < todayStr) {
-        // Past day entry that was never processed -> count as no-show
-        staleNoShows++;
-      } else if (entry.serviceDay === todayStr) {
-        // Today's entry -> check if schedule ended > 3 hours ago
-        const [shifts, settingsRow] = await Promise.all([
-          this.prisma.professionalSchedule.findMany({
-            where: { doctorId, locationId: entry.locationId, isHoliday: false },
-          }),
-          this.prisma.businessSetting.findUnique({
-            where: { locationId: entry.locationId },
-          }),
-        ]);
+    const todayEntries = activeEntries.filter((e) => e.serviceDay === todayStr);
+    const pastEntries = activeEntries.filter((e) => e.serviceDay < todayStr);
 
-        const settings = settingsRow ?? DEFAULT_BUSINESS_SETTINGS;
-        const todayDow = istDayOfWeek();
+    staleNoShows += pastEntries.length;
+
+    if (todayEntries.length > 0) {
+      const locationIds = Array.from(new Set(todayEntries.map((e) => e.locationId)));
+      const [allShifts, allSettings] = await Promise.all([
+        this.prisma.professionalSchedule.findMany({
+          where: { doctorId, locationId: { in: locationIds }, isHoliday: false },
+        }),
+        this.prisma.businessSetting.findMany({
+          where: { locationId: { in: locationIds } },
+        }),
+      ]);
+
+      const shiftsByLoc = new Map<string, typeof allShifts>();
+      const settingsByLoc = new Map<string, (typeof allSettings)[0]>();
+
+      for (const s of allShifts) {
+        const list = shiftsByLoc.get(s.locationId) || [];
+        list.push(s);
+        shiftsByLoc.set(s.locationId, list);
+      }
+      for (const st of allSettings) {
+        settingsByLoc.set(st.locationId, st);
+      }
+
+      const todayDow = istDayOfWeek();
+
+      for (const entry of todayEntries) {
+        const shifts = shiftsByLoc.get(entry.locationId) || [];
+        const settings = settingsByLoc.get(entry.locationId) ?? DEFAULT_BUSINESS_SETTINGS;
         const todayShifts = shifts.filter((s) => s.dayOfWeek === todayDow);
 
         let endHm = '17:00';
         if (todayShifts.length > 0) {
-          endHm = todayShifts.reduce((latest, s) => s.endTime > latest ? s.endTime : latest, '00:00');
+          endHm = todayShifts.reduce((latest, s) => (s.endTime > latest ? s.endTime : latest), '00:00');
         } else if (settings && settings.queueEnds) {
           endHm = settings.queueEnds;
         }

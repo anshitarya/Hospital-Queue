@@ -961,7 +961,7 @@ export default function AdminPage() {
       <Header title="Admin" />
       <main className="mx-auto max-w-6xl px-4 py-5 space-y-5 animate-fade-in">
         {/* Tab bar */}
-        <div className="tabs-bar p-1.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10">
+        <div className="tabs-bar">
           <button
             type="button"
             onClick={() => setTab('requests')}

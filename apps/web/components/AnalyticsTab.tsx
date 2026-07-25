@@ -76,20 +76,20 @@ export function AnalyticsTab({ setToast, locationId }: { setToast: (t: ToastMess
 
       {/* Row 2: Charts and Distributions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <div className="card p-6 space-y-4 md:col-span-2 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl">
-          <h3 className="font-semibold text-white text-sm">Traffic Analysis</h3>
+        <div className="card p-6 space-y-4 md:col-span-2">
+          <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Traffic Analysis</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-              <span className="text-xs text-slate-400 font-semibold uppercase">Peak Traffic Hour</span>
-              <p className="text-2xl font-bold text-white mt-1">{peakHour}</p>
-              <span className="text-[10px] text-slate-400 mt-1 block">Hour with highest visitor join rate (IST)</span>
+            <div className="card-inset p-4 rounded-2xl">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase">Peak Traffic Hour</span>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{peakHour}</p>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">Hour with highest visitor join rate (IST)</span>
             </div>
-            <div className="bg-black/40 backdrop-blur-md p-4 rounded-2xl border border-white/10">
-              <span className="text-xs text-slate-400 font-semibold uppercase">Busy Hours Window</span>
+            <div className="card-inset p-4 rounded-2xl">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase">Busy Hours Window</span>
               <div className="flex gap-1.5 mt-2 flex-wrap">
                 {busyHours.length > 0 ? (
                   busyHours.map((h, i) => (
-                    <span key={i} className="px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold backdrop-blur-md">
+                    <span key={i} className="px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-500/15 border border-amber-300 dark:border-amber-400/30 text-amber-800 dark:text-amber-300 text-xs font-semibold">
                       {h}
                     </span>
                   ))
@@ -102,38 +102,38 @@ export function AnalyticsTab({ setToast, locationId }: { setToast: (t: ToastMess
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
             <div>
-              <span className="text-xs text-slate-400 font-semibold uppercase">Customers per Hour (Average)</span>
-              <p className="text-xl font-bold text-white mt-0.5">{avgCustomersPerHour}</p>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase">Customers per Hour (Average)</span>
+              <p className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{avgCustomersPerHour}</p>
             </div>
             <div>
-              <span className="text-xs text-slate-400 font-semibold uppercase">Customers per Professional (Average)</span>
-              <p className="text-xl font-bold text-white mt-0.5">{avgCustomersPerProfessional}</p>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase">Customers per Professional (Average)</span>
+              <p className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">{avgCustomersPerProfessional}</p>
             </div>
           </div>
         </div>
 
         {/* New vs Returning Pie/Info */}
-        <div className="card p-6 space-y-4 md:col-span-1 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl">
-          <h3 className="font-semibold text-white text-sm">Customer Retention</h3>
+        <div className="card p-6 space-y-4 md:col-span-1">
+          <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Customer Retention</h3>
           <div className="space-y-4 pt-2">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-white">New Customers</p>
-                <p className="text-xs text-slate-400">First-time visitors today</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">New Customers</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">First-time visitors today</p>
               </div>
-              <span className="text-xl font-bold text-emerald-400">{newCustomers}</span>
+              <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{newCustomers}</span>
             </div>
-            <div className="flex items-center justify-between border-t border-white/10 pt-3">
+            <div className="flex items-center justify-between border-t border-slate-100 dark:border-white/10 pt-3">
               <div>
-                <p className="text-sm font-semibold text-white">Returning Customers</p>
-                <p className="text-xs text-slate-400">Repeated business</p>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">Returning Customers</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Repeated business</p>
               </div>
-              <span className="text-xl font-bold text-sky-400">{returningCustomers}</span>
+              <span className="text-xl font-bold text-sky-600 dark:text-sky-400">{returningCustomers}</span>
             </div>
-            <div className="border-t border-white/10 pt-3 text-center">
-              <span className="text-xs text-slate-400">
+            <div className="border-t border-slate-100 dark:border-white/10 pt-3 text-center">
+              <span className="text-xs text-slate-500 dark:text-slate-400">
                 Retention Rate:{' '}
-                <strong className="text-white">
+                <strong className="text-slate-900 dark:text-white">
                   {returningCustomers + newCustomers > 0
                     ? Math.round((returningCustomers / (returningCustomers + newCustomers)) * 100)
                     : 0}
@@ -150,18 +150,18 @@ export function AnalyticsTab({ setToast, locationId }: { setToast: (t: ToastMess
 
 function MetricBox({ title, value, subtitle, color }: { title: string; value: string; subtitle: string; color: string }) {
   const styles: Record<string, { text: string; bg: string; icon: string }> = {
-    teal: { text: 'text-emerald-400', bg: 'bg-emerald-500', icon: 'border-emerald-500' },
-    blue: { text: 'text-sky-400', bg: 'bg-sky-500', icon: 'border-sky-500' },
-    amber: { text: 'text-amber-400', bg: 'bg-amber-500', icon: 'border-amber-500' },
-    green: { text: 'text-emerald-400', bg: 'bg-emerald-500', icon: 'border-emerald-500' },
+    teal: { text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500', icon: 'border-emerald-500' },
+    blue: { text: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500', icon: 'border-sky-500' },
+    amber: { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500', icon: 'border-amber-500' },
+    green: { text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500', icon: 'border-emerald-500' },
   };
   const s = styles[color] || styles.teal;
   return (
-    <div className="card p-5 relative overflow-hidden backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+    <div className="card p-5 relative overflow-hidden">
       <div className={`absolute top-0 left-0 right-0 h-1 ${s.bg} opacity-70`} />
-      <span className="text-xs text-slate-400 font-semibold uppercase">{title}</span>
+      <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase">{title}</span>
       <p className={`text-2xl font-bold mt-1.5 ${s.text}`}>{value}</p>
-      <span className="text-[10px] text-slate-400 mt-1 block">{subtitle}</span>
+      <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">{subtitle}</span>
     </div>
   );
 }

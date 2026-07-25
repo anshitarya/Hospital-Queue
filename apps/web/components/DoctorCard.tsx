@@ -33,26 +33,26 @@ export function DoctorCard({ doctor, onBook, isBooked, isSelfBookable, bookingRe
   };
 
   return (
-    <div className="backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl p-5 hover:border-white/20 shadow-card hover:shadow-glow transition-all duration-300 flex flex-col justify-between h-full relative">
+    <div className="card card-hover p-5 flex flex-col justify-between h-full relative">
       {/* Top section: Avatar and Basic details */}
       <div className="space-y-4">
         <div className="flex items-start gap-4">
           {/* Avatar Placeholder */}
-          <div className="relative h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-500/20 to-emerald-500/20 border border-white/10 flex items-center justify-center shrink-0 shadow-glow">
-            <span className="text-xl font-black text-brand-300">
+          <div className="relative h-14 w-14 rounded-2xl bg-brand-50 dark:bg-brand-500/20 border border-brand-200 dark:border-white/10 flex items-center justify-center shrink-0 shadow-sm">
+            <span className="text-xl font-black text-brand-600 dark:text-brand-300">
               {doctor.name.substring(0, 2).toUpperCase()}
             </span>
             {/* Live Indicator */}
-            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-slate-900 ${isAvailable ? 'bg-emerald-500' : 'bg-slate-500'}`} />
+            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-slate-900 ${isAvailable ? 'bg-emerald-500' : 'bg-slate-400'}`} />
           </div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h4 className="font-extrabold text-sm text-white tracking-tight truncate">
+              <h4 className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight truncate">
                 {doctor.name}
               </h4>
               {doctor.rating !== null && doctor.rating !== undefined && (
-                <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-black shrink-0 shadow-glow backdrop-blur-md">
+                <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-400/30 text-emerald-800 dark:text-emerald-300 text-[10px] font-black shrink-0 shadow-sm">
                   <span>{doctor.rating.toFixed(1)}</span>
                   <span>★</span>
                 </div>

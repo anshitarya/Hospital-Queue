@@ -156,43 +156,43 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
     <div className="space-y-8">
       {/* Overview Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Active Plan Card */}
-        <div className="lg:col-span-2 card relative overflow-hidden backdrop-blur-2xl bg-slate-900/60 border border-white/15 text-white p-6 shadow-modal rounded-3xl">
+        {/* Active Plan Card — premium gradient card */}
+        <div className="lg:col-span-2 card relative overflow-hidden p-6 rounded-3xl bg-gradient-to-br from-brand-600 to-emerald-700 dark:from-slate-900 dark:to-slate-800 border-0 shadow-lg text-white">
           <div className="relative z-10 flex flex-col justify-between h-full space-y-6">
             <div className="flex items-start justify-between">
               <div>
-                <span className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Current Plan</span>
+                <span className="text-xs font-semibold text-brand-100 dark:text-sky-400 uppercase tracking-wider">Current Plan</span>
                 <h3 className="text-2xl font-bold mt-1 text-white">{currentPlan?.planName || 'No Active Plan'}</h3>
-                <p className="text-sm text-slate-300 mt-1.5 max-w-md">
+                <p className="text-sm text-brand-100 dark:text-slate-300 mt-1.5 max-w-md">
                   Status:{' '}
                   <span
-                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold backdrop-blur-md ${
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                       currentPlan?.status === 'ACTIVE'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
-                        : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
+                        ? 'bg-white/20 text-white border border-white/30'
+                        : 'bg-rose-500/20 text-rose-200 border border-rose-400/30'
                     }`}
                   >
                     {currentPlan?.status || 'INACTIVE'}
                   </span>
                 </p>
               </div>
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-3 shadow-glow border border-white/10">
-                <svg className="w-8 h-8 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <div className="bg-white/20 backdrop-blur-xl rounded-2xl p-3 shadow-lg border border-white/20">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
+            <div className="grid grid-cols-2 gap-4 border-t border-white/20 pt-4">
               <div>
-                <p className="text-xs text-slate-400">Billing Cycle Start</p>
-                <p className="text-sm font-medium mt-1">
+                <p className="text-xs text-brand-100 dark:text-slate-400">Billing Cycle Start</p>
+                <p className="text-sm font-medium mt-1 text-white">
                   {currentPlan?.billingCycleStart ? formatDateIst(currentPlan.billingCycleStart) : '—'}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-400">Next Renewal Date</p>
-                <p className="text-sm font-medium mt-1">
+                <p className="text-xs text-brand-100 dark:text-slate-400">Next Renewal Date</p>
+                <p className="text-sm font-medium mt-1 text-white">
                   {currentPlan?.billingCycleEnd ? formatDateIst(currentPlan.billingCycleEnd) : '—'}
                 </p>
               </div>
@@ -206,22 +206,22 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
         </div>
 
         {/* Current Balance / Bill Accrued Card */}
-        <div className="card p-6 flex flex-col justify-between backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+        <div className="card p-6 flex flex-col justify-between rounded-3xl">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Accrued Usage Charges</span>
-              <span className="text-xs text-emerald-300 bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-0.5 rounded-full font-medium backdrop-blur-md">Uninvoiced</span>
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Accrued Usage Charges</span>
+              <span className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-400/30 px-2.5 py-0.5 rounded-full font-medium">Uninvoiced</span>
             </div>
-            <h3 className="text-4xl font-bold mt-3 text-white">
+            <h3 className="text-4xl font-bold mt-3 text-slate-900 dark:text-white">
               ₹{billingDetails?.billing?.currentBill != null ? billingDetails.billing.currentBill.toFixed(2) : '0.00'}
             </h3>
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
               Based on completed events during this billing period.
             </p>
           </div>
-          <div className="border-t border-white/10 pt-3 mt-4 flex items-center justify-between text-xs text-slate-400">
+          <div className="border-t border-slate-100 dark:border-white/10 pt-3 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Outstanding Balance:</span>
-            <span className="font-semibold text-rose-400">
+            <span className="font-semibold text-rose-600 dark:text-rose-400">
               ₹{billingDetails?.billing?.outstandingAmount != null ? billingDetails.billing.outstandingAmount.toFixed(2) : '0.00'}
             </span>
           </div>
@@ -230,25 +230,25 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
 
       {/* Current Cycle Usage Details */}
       {billingDetails?.billing?.itemsAccrued && billingDetails.billing.itemsAccrued.length > 0 && (
-        <div className="card p-6 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card space-y-4">
-          <h4 className="text-sm font-semibold text-white">Active Cycle Usage Telemetry</h4>
+        <div className="card p-6 rounded-3xl space-y-4">
+          <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Active Cycle Usage Telemetry</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead>
-                <tr className="border-b border-white/10 text-slate-400 text-xs uppercase tracking-wider">
+                <tr className="border-b border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 text-xs uppercase tracking-wider">
                   <th className="py-2.5">Event Type</th>
                   <th className="py-2.5 text-center">Unit Price</th>
                   <th className="py-2.5 text-center">Count</th>
                   <th className="py-2.5 text-right">Subtotal</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {billingDetails.billing.itemsAccrued.map((item: any, idx: number) => (
-                  <tr key={idx} className="text-slate-300">
-                    <td className="py-3 font-medium font-mono text-xs text-white">{item.eventType}</td>
+                  <tr key={idx} className="text-slate-700 dark:text-slate-300">
+                    <td className="py-3 font-medium font-mono text-xs text-slate-900 dark:text-white">{item.eventType}</td>
                     <td className="py-3 text-center">₹{item.price.toFixed(2)}</td>
                     <td className="py-3 text-center">{item.count}</td>
-                    <td className="py-3 text-right font-medium text-white">₹{item.total.toFixed(2)}</td>
+                    <td className="py-3 text-right font-medium text-slate-900 dark:text-white">₹{item.total.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -275,10 +275,10 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
             return (
               <div
                 key={plan.id}
-                className={`card flex flex-col justify-between p-6 transition-all relative overflow-hidden backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl ${
+                className={`card flex flex-col justify-between p-6 transition-all relative overflow-hidden rounded-3xl ${
                   isCurrent
-                    ? 'border-sky-400/50 shadow-glow bg-slate-900/70'
-                    : 'hover:border-white/20'
+                    ? 'ring-2 ring-brand-400 shadow-lg'
+                    : 'hover:shadow-md hover:-translate-y-0.5'
                 }`}
               >
                 {isCurrent && (
@@ -304,7 +304,7 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
                     </div>
                     <p className="text-xs text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
                       <span className="h-1.5 w-1.5 rounded-full bg-sky-500 shrink-0" />
-                      Token price: <strong className="text-slate-850 dark:text-white">₹{pricePerToken}</strong> per completed queue visit
+                      Token price: <strong className="text-slate-900 dark:text-white">₹{pricePerToken}</strong> per completed queue visit
                     </p>
                   </div>
                 </div>
@@ -314,7 +314,7 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
                     <button
                       type="button"
                       disabled
-                      className="w-full btn-secondary text-center justify-center cursor-default bg-slate-100 text-slate-400 dark:bg-slate-800"
+                      className="w-full btn-secondary text-center justify-center cursor-default opacity-60"
                     >
                       Currently Subscribed
                     </button>

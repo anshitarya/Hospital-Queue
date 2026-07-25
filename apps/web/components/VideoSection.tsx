@@ -1,7 +1,26 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { PatientDemo, ReceptionDemo, DoctorDemo } from './DemoAnimations';
+import dynamic from 'next/dynamic';
+
+const DemoSkeleton = () => (
+  <div className="h-64 rounded-xl bg-slate-100 dark:bg-white/5 animate-pulse flex items-center justify-center text-xs text-slate-400">
+    Loading preview...
+  </div>
+);
+
+const PatientDemo = dynamic(() => import('./DemoAnimations').then((mod) => mod.PatientDemo), {
+  ssr: false,
+  loading: DemoSkeleton,
+});
+const ReceptionDemo = dynamic(() => import('./DemoAnimations').then((mod) => mod.ReceptionDemo), {
+  ssr: false,
+  loading: DemoSkeleton,
+});
+const DoctorDemo = dynamic(() => import('./DemoAnimations').then((mod) => mod.DoctorDemo), {
+  ssr: false,
+  loading: DemoSkeleton,
+});
 
 interface DemoCard {
   id: string;
@@ -17,7 +36,7 @@ const DEMOS: DemoCard[] = [
   {
     id: 'patient',
     badge: 'Customers',
-    badgeColor: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    badgeColor: 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-800/60',
     accentBar: 'from-emerald-400 to-teal-500',
     title: 'Sign in · Get your token · Go home',
     subtitle:
@@ -27,7 +46,7 @@ const DEMOS: DemoCard[] = [
   {
     id: 'reception',
     badge: 'Receptionist',
-    badgeColor: 'bg-brand-50 text-brand-700 ring-brand-200',
+    badgeColor: 'bg-brand-50 dark:bg-brand-950/50 text-brand-800 dark:text-brand-300 ring-brand-200 dark:ring-brand-800/60',
     accentBar: 'from-brand-400 to-indigo-500',
     title: 'Add customer · Queue updates instantly',
     subtitle:
@@ -37,7 +56,7 @@ const DEMOS: DemoCard[] = [
   {
     id: 'doctor',
     badge: 'Provider',
-    badgeColor: 'bg-purple-50 text-purple-700 ring-purple-200',
+    badgeColor: 'bg-purple-50 dark:bg-purple-950/50 text-purple-800 dark:text-purple-300 ring-purple-200 dark:ring-purple-800/60',
     accentBar: 'from-purple-400 to-pink-500',
     title: 'Call next · Serve · Complete · Repeat',
     subtitle:
@@ -52,13 +71,13 @@ export function VideoSection() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
         {/* Heading */}
         <div className="text-center max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 text-brand-700 px-3 py-1 text-xs font-medium ring-1 ring-brand-200">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 dark:bg-brand-950/50 text-brand-700 dark:text-brand-300 px-3 py-1 text-xs font-medium ring-1 ring-brand-200 dark:ring-brand-800/60">
             Live demos
           </div>
-          <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight">
+          <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
             Watch it work — right here
           </h2>
-          <p className="mt-3 text-slate-600">
+          <p className="mt-3 text-slate-600 dark:text-slate-400">
             These aren&apos;t screenshots. Every demo below is the real app flow, animated live in your browser.
           </p>
         </div>
@@ -71,29 +90,29 @@ export function VideoSection() {
               <div className={`h-1 w-full bg-gradient-to-r ${d.accentBar}`} />
 
               {/* Header */}
-              <div className="p-5 pb-4 border-b border-slate-100">
+              <div className="p-5 pb-4 border-b border-slate-100 dark:border-white/10">
                 <span
                   className={`inline-block text-[11px] font-semibold px-2.5 py-0.5 rounded-full ring-1 ${d.badgeColor} mb-2`}
                 >
                   {d.badge}
                 </span>
-                <h3 className="font-semibold text-slate-900 text-sm leading-snug">
+                <h3 className="font-semibold text-slate-900 dark:text-white text-sm leading-snug">
                   {d.title}
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 leading-relaxed">
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                   {d.subtitle}
                 </p>
               </div>
 
               {/* Animated demo */}
-              <div className="flex-1 p-5 bg-slate-50/60 min-h-[340px] flex flex-col justify-center">
+              <div className="flex-1 p-5 bg-slate-50/60 dark:bg-black/40 backdrop-blur-xl min-h-[340px] flex flex-col justify-center">
                 {d.demo}
               </div>
             </div>
           ))}
         </div>
 
-        <p className="mt-8 text-center text-xs text-slate-400">
+        <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
           Animations loop automatically · No videos to load · No app to install
         </p>
       </div>

@@ -37,7 +37,7 @@ const CHOICES: Choice[] = [
 
 export default function LoginChoosePage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden bg-[#07090e] text-slate-100 selection:bg-brand-500/30">
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden bg-slate-50 dark:bg-[#07090e] text-slate-900 dark:text-slate-100">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[450px] w-[450px] rounded-full bg-brand-500/10 blur-[120px]" />
         <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-purple-600/10 blur-[130px]" />
@@ -46,11 +46,11 @@ export default function LoginChoosePage() {
       <div className="w-full max-w-2xl">
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-3 mb-6">
-            <TurnosIcon className="h-12 w-12 text-white" />
-            <span className="text-2xl font-bold tracking-tight text-white">turnos</span>
+            <TurnosIcon className="h-12 w-12" />
+            <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
             Who are you signing in as?
           </h1>
           <p className="mt-2 text-slate-400 text-base">
@@ -63,7 +63,7 @@ export default function LoginChoosePage() {
             <Link
               key={c.title}
               href={c.href}
-              className="group card p-6 flex flex-col gap-4 backdrop-blur-2xl bg-slate-900/40 border border-white/10 hover:border-white/20 rounded-3xl shadow-card hover:shadow-glow hover:-translate-y-1 transition-all duration-300 cursor-pointer"
+              className="group card card-hover p-6 flex flex-col gap-4 cursor-pointer"
             >
               <div
                 className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${c.accent} shadow-glow text-2xl group-hover:scale-105 transition-transform`}
@@ -73,14 +73,14 @@ export default function LoginChoosePage() {
 
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-lg font-semibold text-white">{c.title}</span>
+                  <span className="text-lg font-semibold text-slate-900 dark:text-white">{c.title}</span>
                   {c.badge && (
-                    <span className="rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-semibold px-2.5 py-0.5 backdrop-blur-md">
+                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-400/30 text-[10px] font-semibold px-2.5 py-0.5">
                       {c.badge}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">{c.subtitle}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{c.subtitle}</p>
               </div>
 
               <p className="text-sm text-slate-600 leading-relaxed flex-1">{c.description}</p>

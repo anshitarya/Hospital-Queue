@@ -967,7 +967,7 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   return (
     <div className="space-y-4">
       {/* Doctor selector */}
-      <div className="card p-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+      <div className="card p-5">
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -1016,15 +1016,15 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 <button key={d.id} type="button" onClick={() => selectDoctor(d.id)}
                   className={`rounded-2xl border px-4 py-2.5 text-left text-sm transition-all duration-200 ease-apple backdrop-blur-md ${
                     isSelected
-                      ? 'border-emerald-400/40 bg-emerald-500/15 text-white shadow-glow ring-2 ring-emerald-400/30'
-                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:border-white/20'
+                      ? 'border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/15 text-emerald-900 dark:text-emerald-300 shadow-sm ring-2 ring-emerald-400/30'
+                      : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/10'
                   }`}>
-                  <div className={`font-semibold text-[13px] truncate ${isSelected ? 'text-emerald-300' : 'text-white'}`}>
+                  <div className={`font-semibold text-[13px] truncate ${isSelected ? 'text-emerald-800 dark:text-emerald-300' : 'text-slate-800 dark:text-white'}`}>
                     {d.user.name}
                   </div>
-                  <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
                     <DoctorStatusPill status={d.status} />
-                    {d.deptName && <span className="text-slate-400">· {d.deptName}</span>}
+                    {d.deptName && <span className="text-slate-500 dark:text-slate-400">· {d.deptName}</span>}
                   </div>
                 </button>
               );
@@ -1042,8 +1042,8 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Add-patient form */}
-        <section className="card overflow-hidden lg:col-span-1 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-          <div className="px-5 py-4 border-b border-white/10 bg-white/5 backdrop-blur-xl flex items-center justify-between">
+        <section className="card overflow-hidden lg:col-span-1">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 flex items-center justify-between">
             <h2 className="section-title">Add {L.customer.toLowerCase()}</h2>
             {snapshot?.doctor && <DoctorStatusPill status={snapshot.doctor.status} />}
           </div>
@@ -1099,21 +1099,21 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 required
               />
               <select className="input" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
-                <option value={0} className="bg-slate-900 text-white">Normal priority</option>
-                <option value={100} className="bg-slate-900 text-white">🚨 Emergency (goes to top)</option>
+                <option value={0} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Normal priority</option>
+                <option value={100} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">🚨 Emergency (goes to top)</option>
               </select>
               {priority < 100 && (
-                <div className="card-inset px-4 py-3 flex gap-5 backdrop-blur-md bg-black/40 border border-white/5 rounded-2xl">
+                <div className="card-inset px-4 py-3 flex gap-5 rounded-2xl">
                   <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-                    <input type="checkbox" className="rounded border-white/20 bg-white/5 text-brand-500 focus:ring-brand-500"
+                    <input type="checkbox" className="rounded border-slate-300 dark:border-white/20 bg-white dark:bg-white/5 text-brand-500 focus:ring-brand-500"
                       checked={walkin} onChange={(e) => setWalkin(e.target.checked)} />
-                    <span className="text-slate-200 font-medium">Walk-in</span>
-                    <span className="text-[10px] text-slate-400">(near current)</span>
+                    <span className="text-slate-700 dark:text-slate-200 font-medium">Walk-in</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">(near current)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-                    <input type="checkbox" className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500"
+                    <input type="checkbox" className="rounded border-slate-300 dark:border-white/20 bg-white dark:bg-white/5 text-purple-500 focus:ring-purple-500"
                       checked={slotType === 'FOLLOWUP'} onChange={(e) => setSlotType(e.target.checked ? 'FOLLOWUP' : 'NEW')} />
-                    <span className="text-slate-200 font-medium">Follow-up</span>
+                    <span className="text-slate-700 dark:text-slate-200 font-medium">Follow-up</span>
                   </label>
                 </div>
               )}
@@ -1121,15 +1121,15 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 value={notes} onChange={(e) => setNotes(e.target.value)} />
               {snapshot?.settings?.queueMode === 'LIVE_QUEUE' && upcomingShifts.length > 0 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-400 whitespace-nowrap shrink-0">Shift:</span>
+                  <span className="text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">Shift:</span>
                   <select
                     className="input flex-1"
                     value={selectedShiftTime}
                     onChange={(e) => setSelectedShiftTime(e.target.value)}
                   >
-                    <option value="" className="bg-slate-900 text-white">Next Available (Default)</option>
+                    <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Next Available (Default)</option>
                     {upcomingShifts.map((s) => (
-                      <option key={s.id} value={s.appointmentTime} className="bg-slate-900 text-white">
+                      <option key={s.id} value={s.appointmentTime} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">
                         {s.dateLabel}: {s.startTime}–{s.endTime}
                       </option>
                     ))}
@@ -1194,13 +1194,13 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
         </section>
 
         {/* Live queue */}
-        <section className="card overflow-hidden lg:col-span-2 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-          <div className="px-5 py-4 border-b border-white/10 bg-white/5 backdrop-blur-xl space-y-2.5">
+        <section className="card overflow-hidden lg:col-span-2">
+          <div className="px-5 py-4 border-b border-slate-200 dark:border-white/10 bg-slate-50/50 dark:bg-white/5 space-y-2.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="section-title flex items-center gap-2 text-white">
+              <h2 className="section-title flex items-center gap-2 text-slate-900 dark:text-white">
                 Live queue
                 {snapshot?.doctor && (
-                  <span className="text-sm font-normal text-slate-400">— {snapshot.doctor.user.name}</span>
+                  <span className="text-sm font-normal text-slate-500 dark:text-slate-400">— {snapshot.doctor.user.name}</span>
                 )}
               </h2>
 

@@ -35,19 +35,19 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
             <div className="space-y-6 animate-fade-in">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur-xl border border-white/15 px-3.5 py-1.5 text-xs font-medium text-slate-200 shadow-glass">
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-white/10 backdrop-blur-xl border border-slate-200 dark:border-white/15 px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 shadow-sm">
                 <span className="live-dot" />
                 Live ETA · No app needed
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-[1.05]">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.05]">
                 Stop waiting blindly.{' '}
-                <span className="bg-gradient-to-r from-emerald-400 via-brand-400 to-purple-400 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-emerald-600 via-brand-600 to-purple-600 dark:from-emerald-400 dark:via-brand-400 dark:to-purple-400 bg-clip-text text-transparent">
                   Know exactly when it&apos;s your turn.
                 </span>
               </h1>
 
-              <p className="text-lg text-slate-300 max-w-xl leading-relaxed">
+              <p className="text-lg text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed font-normal">
                 Turnos lets customers see their live position and wait time on their
                 phone — without downloading any app. Providers call the next customer in one tap.
                 Staff manages everything from a single screen.
@@ -73,15 +73,15 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              <div className="flex items-center gap-6 text-sm text-slate-400 pt-2">
+              <div className="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400 pt-2 font-medium">
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-400" /> Free for customers
+                  <Icon.Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Free for customers
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-400" /> No app to install
+                  <Icon.Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> No app to install
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-400" /> Ready in minutes
+                  <Icon.Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Ready in minutes
                 </div>
               </div>
             </div>
@@ -95,11 +95,11 @@ export default function HomePage() {
           {/* Stats strip */}
           <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {HERO_STATS.map((s) => (
-              <div key={s.l} className="card p-5 text-center backdrop-blur-2xl bg-white/5 border border-white/10 rounded-3xl shadow-glass">
-                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-emerald-400 to-brand-300 bg-clip-text text-transparent">
+              <div key={s.l} className="card p-5 text-center shadow-sm">
+                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-emerald-600 to-brand-600 dark:from-emerald-400 dark:to-brand-300 bg-clip-text text-transparent">
                   {s.v}
                 </div>
-                <div className="text-xs text-slate-400 mt-1.5 font-medium">{s.l}</div>
+                <div className="text-xs text-slate-600 dark:text-slate-400 mt-1.5 font-semibold">{s.l}</div>
               </div>
             ))}
           </div>
@@ -494,35 +494,35 @@ function HeroMock() {
   return (
     <div className="relative max-w-md mx-auto lg:ml-auto lg:mr-0">
       {/* Floating "in consultation" badge */}
-      <div className="absolute -top-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-500/20 backdrop-blur-xl border border-emerald-400/40 text-emerald-300 px-3.5 py-1 text-xs font-semibold shadow-glow">
-        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+      <div className="absolute -top-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-400/40 text-emerald-800 dark:text-emerald-300 px-3.5 py-1 text-xs font-bold shadow-sm">
+        <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
         Live · It&apos;s your turn
       </div>
 
       {/* Main patient card */}
-      <div className="relative rounded-3xl bg-slate-950/70 backdrop-blur-2xl p-6 shadow-modal border border-white/15 z-10 rotate-[-1deg]">
+      <div className="relative card p-6 shadow-xl z-10 rotate-[-1deg]">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="font-semibold text-white text-base">Anjali Sharma</div>
-            <div className="text-xs text-slate-400">Serving now</div>
+            <div className="font-bold text-slate-900 dark:text-white text-base">Anjali Sharma</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Serving now</div>
           </div>
-          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
             <span className="live-dot" /> Live
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl bg-brand-500/10 border border-brand-400/20 p-4 text-center backdrop-blur-md">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Your token</div>
-            <div className="text-4xl font-bold text-emerald-400 mt-1">#12</div>
+          <div className="rounded-2xl bg-emerald-50 dark:bg-brand-500/10 border border-emerald-200 dark:border-brand-400/20 p-4 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Your token</div>
+            <div className="text-4xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">#12</div>
           </div>
-          <div className="rounded-2xl bg-white/5 border border-white/10 p-4 text-center backdrop-blur-md">
-            <div className="text-[10px] uppercase tracking-wider text-slate-400">Now serving</div>
-            <div className="text-4xl font-bold text-white mt-1">#12</div>
+          <div className="rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-4 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Now serving</div>
+            <div className="text-4xl font-bold text-slate-900 dark:text-white mt-1">#12</div>
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 px-3.5 py-2.5 text-emerald-300 text-sm text-center font-medium animate-pulse-slow backdrop-blur-md shadow-glow">
+        <div className="mt-4 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-400/30 px-3.5 py-2.5 text-emerald-800 dark:text-emerald-300 text-sm text-center font-medium animate-pulse-slow shadow-sm">
           It&apos;s your turn — head to the service area
         </div>
       </div>

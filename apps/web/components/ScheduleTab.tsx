@@ -167,13 +167,13 @@ export function ScheduleTab({
         </p>
       </div>
 
-      <div className="card p-6 space-y-4 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+      <div className="card p-6 space-y-4">
         <div>
-          <label className="label text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Professional</label>
+          <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Select Professional</label>
           <select className="input mt-1 w-full max-w-md" value={selectedDocId}
             onChange={(e) => setSelectedDocId(e.target.value)}>
             {doctors.map((d) => (
-              <option key={d.id} value={d.id} className="bg-slate-900 text-white">{d.name} ({d.department})</option>
+              <option key={d.id} value={d.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{d.name} ({d.department})</option>
             ))}
           </select>
         </div>

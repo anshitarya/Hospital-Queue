@@ -21,7 +21,7 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
   }, [loaded, hydrate]);
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-950/70 backdrop-blur-2xl border-b border-white/10 shadow-glass">
+    <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-950/70 backdrop-blur-2xl border-b border-slate-200 dark:border-white/10 shadow-sm dark:shadow-glass">
       {/* Brand accent strip */}
       <div className="h-[2px] bg-gradient-to-r from-brand-500 via-emerald-400 to-purple-500" />
       <div className="mx-auto max-w-7xl flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 gap-2.5">
@@ -30,11 +30,11 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
           <TurnosIcon className="h-9 sm:h-11 shrink-0 select-none" />
           {title && title !== 'Turnos' && (
             <div className="min-w-0">
-              <span className="text-xs sm:text-sm font-bold text-white tracking-tight truncate block leading-tight">
+              <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white tracking-tight truncate block leading-tight">
                 {title}
               </span>
               {subtitle && (
-                <span className="text-[10px] sm:text-[11px] text-slate-400 font-normal truncate block leading-tight">{subtitle}</span>
+                <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 font-normal truncate block leading-tight">{subtitle}</span>
               )}
             </div>
           )}

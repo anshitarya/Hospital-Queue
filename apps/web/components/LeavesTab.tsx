@@ -162,61 +162,61 @@ export function LeavesTab({
     <div className="p-5 sm:p-6 max-w-6xl mx-auto space-y-6">
       {analytics && (
         <div className="space-y-4">
-          <h2 className="section-title text-white">Leave & break analytics</h2>
+          <h2 className="section-title text-slate-900 dark:text-white">Leave & break analytics</h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="card p-4 text-center backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-              <p className="text-2xl font-bold text-white">{analytics.totals.requests}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Total requests</p>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-slate-900 dark:text-white">{analytics.totals.requests}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-1">Total requests</p>
             </div>
-            <div className="card p-4 text-center backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-              <p className="text-2xl font-bold text-amber-400">{analytics.totals.pending}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Pending</p>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{analytics.totals.pending}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-1">Pending</p>
             </div>
-            <div className="card p-4 text-center backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-              <p className="text-2xl font-bold text-emerald-400">{analytics.totals.approved}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Approved</p>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{analytics.totals.approved}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-1">Approved</p>
             </div>
-            <div className="card p-4 text-center backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-              <p className="text-2xl font-bold text-rose-400">{analytics.totals.rejected}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Rejected</p>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-rose-600 dark:text-rose-400">{analytics.totals.rejected}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-1">Rejected</p>
             </div>
-            <div className="card p-4 text-center backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-              <p className="text-2xl font-bold text-slate-300">{analytics.totals.cancelled}</p>
-              <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-1">Cancelled</p>
+            <div className="card p-4 text-center">
+              <p className="text-2xl font-bold text-slate-700 dark:text-slate-300">{analytics.totals.cancelled}</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-wider mt-1">Cancelled</p>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="card p-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">By type</h3>
+            <div className="card p-5">
+              <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">By type</h3>
               <ul className="space-y-1.5 text-sm">
                 {analytics.byType.map((t) => (
-                  <li key={t.type} className="flex justify-between text-slate-200">
+                  <li key={t.type} className="flex justify-between text-slate-700 dark:text-slate-200">
                     <span>{LEAVE_TYPES.find((x) => x.value === t.type)?.label ?? t.type}</span>
-                    <span className="font-semibold tabular-nums text-white">{t.count}</span>
+                    <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{t.count}</span>
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="card p-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">By role</h3>
+            <div className="card p-5">
+              <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">By role</h3>
               <ul className="space-y-1.5 text-sm">
                 {analytics.byRole.map((r) => (
-                  <li key={r.role} className="flex justify-between text-slate-200">
+                  <li key={r.role} className="flex justify-between text-slate-700 dark:text-slate-200">
                     <span>{roleLabel(r.role)}</span>
-                    <span className="font-semibold tabular-nums text-white">{r.count}</span>
+                    <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{r.count}</span>
                   </li>
                 ))}
               </ul>
             </div>
-            <div className="card p-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl">
-              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Most time off (days)</h3>
+            <div className="card p-5">
+              <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Most time off (days)</h3>
               <ul className="space-y-1.5 text-sm">
                 {analytics.topStaff.length === 0 ? (
                   <li className="text-slate-400 text-xs">No data yet</li>
                 ) : analytics.topStaff.map((s) => (
-                  <li key={s.name} className="flex justify-between gap-2 text-slate-200">
+                  <li key={s.name} className="flex justify-between gap-2 text-slate-700 dark:text-slate-200">
                     <span className="truncate">{s.name}</span>
-                    <span className="font-semibold tabular-nums shrink-0 text-white">{s.days}d</span>
+                    <span className="font-semibold tabular-nums shrink-0 text-slate-900 dark:text-white">{s.days}d</span>
                   </li>
                 ))}
               </ul>
@@ -232,35 +232,35 @@ export function LeavesTab({
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="card p-5 space-y-4 lg:col-span-1 h-fit backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-          <h2 className="section-title flex items-center gap-2 text-white">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300 text-sm font-bold border border-emerald-400/30">+</span>
+        <div className="card p-5 space-y-4 lg:col-span-1 h-fit">
+          <h2 className="section-title flex items-center gap-2 text-slate-900 dark:text-white">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-sm font-bold border border-emerald-300 dark:border-emerald-400/30">+</span>
             Request Leave/Break
           </h2>
           {isStaff && (
-            <p className="text-xs text-slate-400 -mt-2">
+            <p className="text-xs text-slate-500 dark:text-slate-400 -mt-2">
               Submitted to your business admin for approval.
             </p>
           )}
           <form onSubmit={handleRequest} className="space-y-3">
             {isBusinessAdmin && doctors.length > 0 && (
               <div>
-                <label className="label text-xs font-semibold text-slate-400 uppercase tracking-wider">Staff member (optional)</label>
+                <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Staff member (optional)</label>
                 <select className="input mt-1 w-full" value={selectedDocId}
                   onChange={(e) => setSelectedDocId(e.target.value)}>
-                  <option value="" className="bg-slate-900 text-white">Myself</option>
+                  <option value="" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">Myself</option>
                   {doctors.map((d) => (
-                    <option key={d.id} value={d.id} className="bg-slate-900 text-white">{d.name} ({d.department})</option>
+                    <option key={d.id} value={d.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{d.name} ({d.department})</option>
                   ))}
                 </select>
               </div>
             )}
             <div>
-              <label className="label text-xs font-semibold text-slate-400 uppercase tracking-wider">Type</label>
+              <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Type</label>
               <select className="input mt-1 w-full" value={type}
                 onChange={(e) => setType(e.target.value)}>
                 {LEAVE_TYPES.map((t) => (
-                  <option key={t.value} value={t.value} className="bg-slate-900 text-white">{t.label}</option>
+                  <option key={t.value} value={t.value} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{t.label}</option>
                 ))}
               </select>
             </div>
@@ -287,8 +287,8 @@ export function LeavesTab({
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          <div className="card p-5 space-y-4 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
-            <h2 className="section-title text-white">
+          <div className="card p-5 space-y-4">
+            <h2 className="section-title text-slate-900 dark:text-white">
               {isBusinessAdmin ? 'Team leave & break requests' : 'My requests'}
             </h2>
             {loading ? (

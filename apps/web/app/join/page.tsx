@@ -134,7 +134,7 @@ function JoinPageContent() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#07090e] text-slate-100 p-4 relative overflow-hidden selection:bg-brand-500/30">
+    <main className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-[#07090e] text-slate-900 dark:text-slate-100 p-4 relative overflow-hidden">
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[450px] w-[450px] rounded-full bg-brand-500/10 blur-[120px]" />
         <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-purple-600/10 blur-[130px]" />
@@ -146,21 +146,21 @@ function JoinPageContent() {
           <div className="inline-flex h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-500 to-emerald-500 items-center justify-center text-white text-2xl font-bold shadow-glow mb-4">
             {info.clinic?.name.charAt(0) ?? 'Q'}
           </div>
-          <h1 className="text-xl font-extrabold text-white">{info.clinic?.name}</h1>
+          <h1 className="text-xl font-extrabold text-slate-900 dark:text-white">{info.clinic?.name}</h1>
           {info.clinic?.address && (
             <p className="text-xs text-slate-400 mt-1">{info.clinic.address}</p>
           )}
         </div>
 
         {/* Doctor card */}
-        <div className="card p-6 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+        <div className="card p-6">
           <div className="flex items-start gap-4">
-            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-700 flex items-center justify-center text-white text-lg font-bold shrink-0 border border-white/10 shadow-glow">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-500 to-emerald-600 flex items-center justify-center text-white text-lg font-bold shrink-0 shadow-sm">
               {info.doctor?.name.charAt(0)}
             </div>
             <div className="min-w-0 flex-1">
-              <h2 className="text-base font-bold text-white">{info.doctor?.name}</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{info.doctor?.department ?? info.doctor?.specialization ?? 'General'}</p>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">{info.doctor?.name}</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{info.doctor?.department ?? info.doctor?.specialization ?? 'General'}</p>
               <div className="flex items-center gap-3 mt-3">
                 <div className="text-center">
                   <div className="text-xl font-extrabold text-white tabular-nums">{info.queueLength}</div>
