@@ -161,19 +161,19 @@ export function ScheduleTab({
   return (
     <div className="p-5 sm:p-6 max-w-4xl mx-auto space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Professional Working Schedules</h2>
+        <h2 className="text-xl font-bold text-white tracking-tight">Professional Working Schedules</h2>
         <p className="text-xs text-slate-400 mt-0.5">
           All business professionals appear here. Hours are saved per branch (IST). Overlapping slots across branches for the same person are blocked.
         </p>
       </div>
 
-      <div className="card p-5 space-y-4">
+      <div className="card p-6 space-y-4 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
         <div>
-          <label className="label text-xs font-semibold text-slate-500 uppercase">Select Professional</label>
+          <label className="label text-xs font-semibold text-slate-400 uppercase tracking-wider">Select Professional</label>
           <select className="input mt-1 w-full max-w-md" value={selectedDocId}
             onChange={(e) => setSelectedDocId(e.target.value)}>
             {doctors.map((d) => (
-              <option key={d.id} value={d.id}>{d.name} ({d.department})</option>
+              <option key={d.id} value={d.id} className="bg-slate-900 text-white">{d.name} ({d.department})</option>
             ))}
           </select>
         </div>

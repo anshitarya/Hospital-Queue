@@ -967,10 +967,10 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   return (
     <div className="space-y-4">
       {/* Doctor selector */}
-      <div className="card p-4">
+      <div className="card p-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Select {L.provider.toLowerCase()}
             </span>
             <LiveIndicator connected={connected} />
@@ -991,10 +991,10 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   });
                 }
               }}
-              className={`pill-sm text-[11px] font-semibold transition-all flex items-center gap-1 py-1 px-2.5 rounded-full border ${
+              className={`pill-sm text-[11px] font-semibold transition-all flex items-center gap-1 py-1 px-3 rounded-full border backdrop-blur-md ${
                 pushSubscribed
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40 shadow-glow'
+                  : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
               }`}
               title={pushSubscribed ? 'Click to pause push alerts for patient self-bookings' : 'Click to turn on push alerts for patient self-bookings'}
             >
@@ -1009,22 +1009,22 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
             <Skeleton className="h-14 w-36 rounded-2xl" />
           </div>
         ) : allDoctors.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2.5">
             {allDoctors.map((d) => {
               const isSelected = selectedDoctorId === d.id;
               return (
                 <button key={d.id} type="button" onClick={() => selectDoctor(d.id)}
-                  className={`rounded-2xl border px-4 py-2.5 text-left text-sm transition-all duration-150 ${
+                  className={`rounded-2xl border px-4 py-2.5 text-left text-sm transition-all duration-200 ease-apple backdrop-blur-md ${
                     isSelected
-                      ? 'border-brand-500/60 bg-brand-50 dark:bg-brand-950/40 shadow-sm ring-2 ring-brand-500/20'
-                      : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
+                      ? 'border-emerald-400/40 bg-emerald-500/15 text-white shadow-glow ring-2 ring-emerald-400/30'
+                      : 'border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:border-white/20'
                   }`}>
-                  <div className={`font-semibold text-[13px] truncate ${isSelected ? 'text-brand-700 dark:text-brand-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                  <div className={`font-semibold text-[13px] truncate ${isSelected ? 'text-emerald-300' : 'text-white'}`}>
                     {d.user.name}
                   </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
+                  <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
                     <DoctorStatusPill status={d.status} />
-                    {d.deptName && <span className="text-slate-400 dark:text-slate-500">· {d.deptName}</span>}
+                    {d.deptName && <span className="text-slate-400">· {d.deptName}</span>}
                   </div>
                 </button>
               );
@@ -1042,8 +1042,8 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Add-patient form */}
-        <section className="card overflow-hidden lg:col-span-1">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between">
+        <section className="card overflow-hidden lg:col-span-1 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+          <div className="px-5 py-4 border-b border-white/10 bg-white/5 backdrop-blur-xl flex items-center justify-between">
             <h2 className="section-title">Add {L.customer.toLowerCase()}</h2>
             {snapshot?.doctor && <DoctorStatusPill status={snapshot.doctor.status} />}
           </div>
@@ -1061,13 +1061,13 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 autoComplete="off"
               />
               {prevVisit && (
-                <div className="rounded-xl bg-teal-50 dark:bg-teal-900/20 border border-teal-200/60 dark:border-teal-800/60 px-3.5 py-2.5 flex items-start gap-3 animate-enter">
-                  <span className="text-teal-500 text-base shrink-0 mt-0.5">↩</span>
+                <div className="rounded-2xl bg-teal-500/15 border border-teal-400/30 px-3.5 py-2.5 flex items-start gap-3 animate-enter backdrop-blur-md">
+                  <span className="text-teal-300 text-base shrink-0 mt-0.5">↩</span>
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
+                      <div className="text-sm font-semibold text-teal-200 truncate">{prevVisit.name}</div>
                     </div>
-                    <div className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">
+                    <div className="text-xs text-teal-300 mt-0.5">
                       {prevVisit.totalVisits > 0 ? (
                         <span>{prevVisit.totalVisits} completed visit{prevVisit.totalVisits !== 1 ? 's' : ''} at this business</span>
                       ) : (
@@ -1076,11 +1076,11 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                       {prevVisit.providers.map((p) => (
                         <div key={p.name} className="mt-1.5">
                           <span className="font-medium">{p.name}</span>
-                          <span className="text-teal-500 dark:text-teal-500"> — {p.count} visit{p.count !== 1 ? 's' : ''}</span>
+                          <span className="text-teal-300"> — {p.count} visit{p.count !== 1 ? 's' : ''}</span>
                           {p.dates.length > 0 && (
                             <div className="mt-0.5 flex flex-wrap gap-1">
                               {p.dates.map((d) => (
-                                <span key={d} className="bg-teal-100 dark:bg-teal-800/40 rounded-lg px-1.5 py-0.5 text-[10px] font-medium">{fmtShortDate(d)}</span>
+                                <span key={d} className="bg-teal-500/30 rounded-lg px-1.5 py-0.5 text-[10px] font-medium text-teal-200">{fmtShortDate(d)}</span>
                               ))}
                             </div>
                           )}
@@ -1099,21 +1099,21 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 required
               />
               <select className="input" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
-                <option value={0}>Normal priority</option>
-                <option value={100}>🚨 Emergency (goes to top)</option>
+                <option value={0} className="bg-slate-900 text-white">Normal priority</option>
+                <option value={100} className="bg-slate-900 text-white">🚨 Emergency (goes to top)</option>
               </select>
               {priority < 100 && (
-                <div className="card-inset px-3.5 py-2.5 flex gap-5">
+                <div className="card-inset px-4 py-3 flex gap-5 backdrop-blur-md bg-black/40 border border-white/5 rounded-2xl">
                   <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-brand-600 focus:ring-brand-500"
+                    <input type="checkbox" className="rounded border-white/20 bg-white/5 text-brand-500 focus:ring-brand-500"
                       checked={walkin} onChange={(e) => setWalkin(e.target.checked)} />
-                    <span className="text-slate-700 dark:text-slate-300">Walk-in</span>
+                    <span className="text-slate-200 font-medium">Walk-in</span>
                     <span className="text-[10px] text-slate-400">(near current)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer select-none text-sm">
-                    <input type="checkbox" className="rounded border-slate-300 dark:border-slate-600 text-purple-600 focus:ring-purple-500"
+                    <input type="checkbox" className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-500"
                       checked={slotType === 'FOLLOWUP'} onChange={(e) => setSlotType(e.target.checked ? 'FOLLOWUP' : 'NEW')} />
-                    <span className="text-slate-700 dark:text-slate-300">Follow-up</span>
+                    <span className="text-slate-200 font-medium">Follow-up</span>
                   </label>
                 </div>
               )}
@@ -1121,15 +1121,15 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 value={notes} onChange={(e) => setNotes(e.target.value)} />
               {snapshot?.settings?.queueMode === 'LIVE_QUEUE' && upcomingShifts.length > 0 && (
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Shift:</span>
+                  <span className="text-slate-400 whitespace-nowrap shrink-0">Shift:</span>
                   <select
                     className="input flex-1"
                     value={selectedShiftTime}
                     onChange={(e) => setSelectedShiftTime(e.target.value)}
                   >
-                    <option value="">Next Available (Default)</option>
+                    <option value="" className="bg-slate-900 text-white">Next Available (Default)</option>
                     {upcomingShifts.map((s) => (
-                      <option key={s.id} value={s.appointmentTime}>
+                      <option key={s.id} value={s.appointmentTime} className="bg-slate-900 text-white">
                         {s.dateLabel}: {s.startTime}–{s.endTime}
                       </option>
                     ))}
@@ -1137,21 +1137,21 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 </div>
               )}
               <label className="flex items-center gap-2 text-sm">
-                <span className="text-slate-600 dark:text-slate-400 whitespace-nowrap shrink-0">Position:</span>
+                <span className="text-slate-400 whitespace-nowrap shrink-0">Position:</span>
                 <input className="input flex-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" type="number" min={1} placeholder="Auto (end of queue)"
                   value={insertAtPosition}
                   onChange={(e) => setInsertAtPosition(e.target.value === '' ? '' : Math.max(1, Number(e.target.value)))} />
                 <span className="text-xs text-slate-400 shrink-0">optional</span>
               </label>
-              <button type="submit" className="btn-primary w-full" disabled={!selectedDoctorId || !phoneResult.ok}>
+              <button type="submit" className="btn-primary w-full !rounded-2xl" disabled={!selectedDoctorId || !phoneResult.ok}>
                 {insertAtPosition !== '' ? `+ Add at #${insertAtPosition}` : walkin ? '+ Walk-in (near current)' : '+ Add to queue'}
               </button>
             </form>
 
             {/* Doctor quick controls */}
             {snapshot?.doctor && (
-              <div className="border-t border-slate-100 dark:border-slate-800/60 pt-3 space-y-2.5">
-                <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <div className="border-t border-white/10 pt-3 space-y-2.5">
+                <div className="text-xs text-slate-400 flex items-center justify-between">
                   <span>
                     {avgDisplay
                       ? avgDisplay.live
@@ -1160,11 +1160,11 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                       : null}
                   </span>
                   {snapshot.doctor.delayMinutes > 0 && (
-                    <span className="text-amber-600 dark:text-amber-400 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
+                    <span className="text-amber-400 font-medium">+{snapshot.doctor.delayMinutes} min delay</span>
                   )}
                 </div>
                 <div className="flex gap-2 flex-wrap items-center">
-                  {doctorActionInFlight && <Spinner className="h-4 w-4 text-brand-500 mr-1" />}
+                  {doctorActionInFlight && <Spinner className="h-4 w-4 text-brand-400 mr-1" />}
                   <button
                     type="button"
                     onClick={callNext}
@@ -1178,14 +1178,14 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                             ? 'No patients due for their slot yet'
                             : undefined
                     }
-                    className="btn-primary flex-1 !py-2 text-xs min-w-[100px] disabled:opacity-50"
+                    className="btn-primary flex-1 !py-2 text-xs min-w-[100px] disabled:opacity-50 !rounded-xl"
                   >
                     ▶ Call next
                   </button>
                   {snapshot.doctor.status === 'PAUSED' ? (
-                    <button type="button" onClick={() => controlDoctor('resume')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50">Resume</button>
+                    <button type="button" onClick={() => controlDoctor('resume')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50 !rounded-xl">Resume</button>
                   ) : (
-                    <button type="button" onClick={() => controlDoctor('pause')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50">Pause</button>
+                    <button type="button" onClick={() => controlDoctor('pause')} disabled={!!doctorActionInFlight} className="btn-secondary !py-2 text-xs disabled:opacity-50 !rounded-xl">Pause</button>
                   )}
                 </div>
               </div>
@@ -1194,13 +1194,13 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
         </section>
 
         {/* Live queue */}
-        <section className="card overflow-hidden lg:col-span-2">
-          <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-800/30 space-y-2.5">
+        <section className="card overflow-hidden lg:col-span-2 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
+          <div className="px-5 py-4 border-b border-white/10 bg-white/5 backdrop-blur-xl space-y-2.5">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="section-title flex items-center gap-2">
+              <h2 className="section-title flex items-center gap-2 text-white">
                 Live queue
                 {snapshot?.doctor && (
-                  <span className="text-sm font-normal text-slate-400 dark:text-slate-500">— {snapshot.doctor.user.name}</span>
+                  <span className="text-sm font-normal text-slate-400">— {snapshot.doctor.user.name}</span>
                 )}
               </h2>
 

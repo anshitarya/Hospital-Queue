@@ -112,36 +112,27 @@ export default function PatientLoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      {busy && (
-        <WarpSpeedLoader
-          message={
-            step === 'phone'
-              ? 'Checking…'
-              : step === 'pin'
-              ? 'Verifying PIN…'
-              : step === 'otp'
-              ? 'Verifying OTP…'
-              : 'Saving PIN…'
-          }
-        />
-      )}
-      <div className="w-full max-w-sm">
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-[#07090e] text-slate-100 selection:bg-brand-500/30">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -left-32 h-[450px] w-[450px] rounded-full bg-brand-500/10 blur-[120px]" />
+        <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-purple-600/10 blur-[130px]" />
+      </div>
 
+      <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
-            <TurnosIcon className="h-10 w-10" />
-            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
+            <TurnosIcon className="h-10 w-10 text-white" />
+            <span className="text-xl font-bold tracking-tight text-white">turnos</span>
           </Link>
         </div>
 
-        <div className="card p-6 space-y-5">
+        <div className="card p-6 space-y-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
 
           {step === 'phone' && (
             <>
               <div>
-                <h1 className="text-xl font-semibold">Customer sign-in</h1>
-                <p className="text-sm text-slate-500 mt-0.5">
+                <h1 className="text-xl font-semibold text-white">Customer sign-in</h1>
+                <p className="text-sm text-slate-400 mt-0.5">
                   Enter your registered mobile number to continue.
                 </p>
               </div>

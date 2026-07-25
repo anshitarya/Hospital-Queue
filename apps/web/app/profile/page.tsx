@@ -75,13 +75,13 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#07090e] text-slate-100 selection:bg-brand-500/30">
       <Header />
 
-      <main className="mx-auto max-w-4xl px-4 sm:px-6 py-8 space-y-6">
+      <main className="mx-auto max-w-4xl px-4 sm:px-6 py-8 space-y-6 animate-fade-in">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Profile & account</h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Profile & account</h1>
+          <p className="mt-1 text-sm text-slate-400">
             Manage your personal details, email, and security settings.
           </p>
         </div>

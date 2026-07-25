@@ -785,7 +785,14 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
   };
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-[#0a0a0b] overflow-hidden">
+    <div className="flex h-screen bg-[#07090e] text-slate-100 overflow-hidden relative selection:bg-brand-500/30">
+      {/* Ambient background glow mesh */}
+      <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -top-40 -left-40 h-[500px] w-[500px] rounded-full bg-brand-500/10 blur-[120px]" />
+        <div className="absolute top-1/2 -right-40 h-[550px] w-[550px] rounded-full bg-purple-600/10 blur-[130px]" />
+        <div className="absolute bottom-0 left-1/3 h-[500px] w-[500px] rounded-full bg-sky-500/10 blur-[120px]" />
+      </div>
+
       <DoctorCredentialsModal credentials={creds} onClose={() => setCreds(null)} />
       {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
 
@@ -793,17 +800,17 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
           <div
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm animate-fade-in"
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-md animate-fade-in"
             onClick={() => setMobileMenuOpen(false)}
           />
-          <aside className="relative w-4/5 max-w-xs bg-white dark:bg-slate-950 flex flex-col h-full z-10 shadow-2xl border-r border-slate-200 dark:border-slate-800 animate-drawer-in">
+          <aside className="relative w-4/5 max-w-xs bg-slate-950/80 backdrop-blur-2xl flex flex-col h-full z-10 shadow-modal border-r border-white/10 animate-drawer-in">
             {/* Mobile Drawer Header */}
-            <div className="flex items-center justify-between px-4 py-4 border-b border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between px-4 py-4 border-b border-white/10">
               <div className="flex items-center gap-2.5 min-w-0">
                 <TurnosIcon className="h-9 shrink-0" />
                 <div className="min-w-0">
-                  <div className="font-semibold text-slate-900 dark:text-white text-sm truncate">{data?.clinic?.name ?? 'Turnos'}</div>
-                  <div className="text-[10px] text-slate-500 truncate">
+                  <div className="font-semibold text-white text-sm truncate">{data?.clinic?.name ?? 'Turnos'}</div>
+                  <div className="text-[10px] text-slate-400 truncate">
                     {user?.role === 'CLINIC_ADMIN' ? 'Business Admin' : user?.role === 'MANAGER' ? 'Branch Manager' : user?.role === 'ADMIN' ? 'Admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Reception'}
                   </div>
                 </div>
@@ -811,7 +818,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                className="btn-icon p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                className="btn-icon p-2 text-slate-400 hover:text-white"
               >
                 <span className="text-xl leading-none">&times;</span>
               </button>
@@ -821,18 +828,18 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
             <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
               {NAV.map(({ label, tab, icon: Icon }) => (
                 <button key={tab} type="button" onClick={() => handleTabChange(tab)}
-                  className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all ${activeTab === tab
-                    ? 'bg-brand-50 text-brand-700 dark:bg-white/10 dark:text-white font-semibold'
-                    : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5'
+                  className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-medium transition-all ${activeTab === tab
+                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 font-semibold backdrop-blur-xl shadow-glow'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                   }`}>
                   <Icon className="w-5 h-5 shrink-0" />
                   <span>{label}</span>
-                  {activeTab === tab && <span className="ml-auto w-2 h-2 rounded-full bg-brand-500" />}
+                  {activeTab === tab && <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 shadow-glow" />}
                 </button>
               ))}
 
-              <div className="pt-3 mt-3 border-t border-slate-200 dark:border-slate-800 space-y-1">
-                <div className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Configuration</div>
+              <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
+                <div className="px-3.5 py-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Configuration</div>
                 {[
                   { label: 'Settings', tab: 'settings', icon: GearIcon },
                   ...(user?.role !== 'MANAGER' ? [{ label: 'Locations', tab: 'locations', icon: MapPinIcon }] : []),
@@ -843,13 +850,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                   { label: 'Analytics', tab: 'analytics', icon: ChartIcon },
                 ].map(({ label, tab, icon: Icon }) => (
                   <button key={tab} type="button" onClick={() => handleTabChange(tab as Tab)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab
-                      ? 'bg-brand-50 text-brand-700 dark:bg-white/10 dark:text-white font-semibold'
-                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5'
+                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-medium transition-all ${activeTab === tab
+                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 font-semibold backdrop-blur-xl shadow-glow'
+                      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                     }`}>
                     <Icon className="w-5 h-5 shrink-0" />
                     <span>{label}</span>
-                    {activeTab === tab && <span className="ml-auto w-2 h-2 rounded-full bg-brand-500" />}
+                    {activeTab === tab && <span className="ml-auto w-2 h-2 rounded-full bg-emerald-400 shadow-glow" />}
                   </button>
                 ))}
                 {FORMS.reviewUrl && (
@@ -857,13 +864,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                     href={FORMS.reviewUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/5 transition-all"
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-medium text-slate-400 hover:bg-white/5 hover:text-slate-200 transition-all"
                   >
-                    <svg className="w-5 h-5 shrink-0 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-5 h-5 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                     </svg>
                     <span>Review & Feedback</span>
-                    <svg className="w-3.5 h-3.5 ml-auto text-slate-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="w-3.5 h-3.5 ml-auto text-slate-500 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
                   </a>
@@ -872,13 +879,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
             </nav>
 
             {/* User Footer inside Drawer */}
-            <div className="p-3 border-t border-slate-200 dark:border-slate-800 flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-sm font-bold text-white shrink-0">
+            <div className="p-3 border-t border-white/10 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-brand-500 to-emerald-700 flex items-center justify-center text-sm font-bold text-white shrink-0 shadow-glow">
                 {(user?.name ?? 'U').charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-semibold text-slate-900 dark:text-slate-200 truncate">{user?.name ?? 'User'}</div>
-                <div className="text-[10px] text-slate-500 truncate">{user?.email ?? user?.phone ?? ''}</div>
+                <div className="text-xs font-semibold text-white truncate">{user?.name ?? 'User'}</div>
+                <div className="text-[10px] text-slate-400 truncate">{user?.email ?? user?.phone ?? ''}</div>
               </div>
             </div>
           </aside>
@@ -886,34 +893,34 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
       )}
 
       {/* ── Desktop Sidebar ── */}
-      <aside className="hidden md:flex w-60 flex-shrink-0 bg-white dark:bg-slate-950 flex-col border-r border-slate-200/80 dark:border-slate-800/60">
+      <aside className="hidden md:flex w-60 flex-shrink-0 bg-slate-950/40 backdrop-blur-2xl flex-col border-r border-white/10 z-20">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-5 border-b border-slate-200/80 dark:border-slate-800/60">
+        <div className="flex items-center gap-3 px-4 py-5 border-b border-white/10">
           <TurnosIcon className="h-10 shrink-0" />
           <div className="min-w-0">
-            <div className="font-semibold text-slate-900 dark:text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
-            <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+            <div className="font-semibold text-white text-sm leading-tight truncate">{data?.clinic?.name ?? 'Turnos'}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">
               {user?.role === 'CLINIC_ADMIN' ? 'Business Admin' : user?.role === 'MANAGER' ? 'Branch Manager' : user?.role === 'ADMIN' ? 'Admin' : user?.role === 'DOCTOR' ? 'Doctor' : 'Reception'}
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-2 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 py-4 px-2.5 space-y-1 overflow-y-auto">
           {NAV.map(({ label, tab, icon: Icon }) => (
             <button key={tab} type="button" onClick={() => handleTabChange(tab)}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === tab
-                ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-200/60 dark:bg-white/10 dark:text-white dark:ring-white/10'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/6 cursor-pointer'
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-sm font-medium transition-all duration-200 ease-apple ${activeTab === tab
+                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-glow font-semibold backdrop-blur-xl'
+                : 'text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer'
                 }`}>
               <Icon className="w-4 h-4 shrink-0" />
               <span>{label}</span>
-              {activeTab === tab && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-500" />}
+              {activeTab === tab && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-glow" />}
             </button>
           ))}
 
-          <div className="pt-2 mt-2 border-t border-slate-200/80 dark:border-slate-800/60 space-y-0.5">
-            <div className="px-3 py-1 text-[9px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Configuration</div>
+          <div className="pt-2.5 mt-2.5 border-t border-white/10 space-y-1">
+            <div className="px-3.5 py-1 text-[9px] font-semibold text-slate-500 uppercase tracking-wider">Configuration</div>
             {[
               { label: 'Settings', tab: 'settings', icon: GearIcon },
               ...(user?.role !== 'MANAGER' ? [{ label: 'Locations', tab: 'locations', icon: MapPinIcon }] : []),
@@ -924,13 +931,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
               { label: 'Analytics', tab: 'analytics', icon: ChartIcon },
             ].map(({ label, tab, icon: Icon }) => (
               <button key={tab} type="button" onClick={() => handleTabChange(tab as Tab)}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-150 ${activeTab === tab
-                  ? 'bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-200/60 dark:bg-white/10 dark:text-white dark:ring-white/10'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/6 cursor-pointer'
+                className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-2xl text-sm font-medium transition-all duration-200 ease-apple ${activeTab === tab
+                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 shadow-glow font-semibold backdrop-blur-xl'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer'
                   }`}>
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="text-xs">{label}</span>
-                {activeTab === tab && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-brand-500" />}
+                {activeTab === tab && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-glow" />}
               </button>
             ))}
             {FORMS.reviewUrl && (
@@ -938,13 +945,13 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                 href={FORMS.reviewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/6 transition-all duration-150 cursor-pointer"
+                className="w-full flex items-center gap-3 px-3.5 py-2 rounded-2xl text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 transition-all duration-200 cursor-pointer"
               >
                 <svg className="w-4 h-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                 </svg>
                 <span className="text-xs">Review & Feedback</span>
-                <svg className="w-3 h-3 ml-auto text-slate-400 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-3 h-3 ml-auto text-slate-500 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                 </svg>
               </a>
@@ -953,28 +960,28 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
         </nav>
 
         {/* User footer */}
-        <div className="p-3 border-t border-slate-200/80 dark:border-slate-800/60">
-          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-100/80 dark:hover:bg-white/5 transition-colors group">
-            <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-xs font-bold text-white shrink-0">
+        <div className="p-3 border-t border-white/10">
+          <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-2xl hover:bg-white/5 transition-colors group">
+            <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-700 flex items-center justify-center text-xs font-bold text-white shrink-0 shadow-glow">
               {(user?.name ?? 'U').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium text-slate-800 dark:text-slate-300 truncate">{user?.name ?? 'User'}</div>
-              <div className="text-[10px] text-slate-500 truncate">{user?.email ?? user?.phone ?? ''}</div>
+              <div className="text-xs font-medium text-slate-200 truncate">{user?.name ?? 'User'}</div>
+              <div className="text-[10px] text-slate-400 truncate">{user?.email ?? user?.phone ?? ''}</div>
             </div>
           </div>
         </div>
       </aside>
 
       {/* ── Main Content Area ── */}
-      <main className="flex-1 overflow-y-auto min-w-0">
+      <main className="flex-1 overflow-y-auto min-w-0 relative z-10">
         {/* Sticky Header */}
-        <div className="sticky top-0 z-10 bg-white/90 dark:bg-[#0a0a0b]/90 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 px-3 sm:px-6 py-2 flex items-center justify-between gap-2">
+        <div className="sticky top-0 z-20 bg-slate-950/60 backdrop-blur-2xl border-b border-white/10 px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 shadow-glass">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden h-8 w-8 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700/60 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors shrink-0 flex items-center justify-center shadow-xs"
+              className="md:hidden h-9 w-9 rounded-2xl bg-white/5 text-slate-200 border border-white/10 hover:bg-white/10 transition-colors shrink-0 flex items-center justify-center backdrop-blur-md"
               aria-label="Open menu"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>

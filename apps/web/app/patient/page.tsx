@@ -581,24 +581,24 @@ export default function PatientPage() {
 
         {/* ── Summary Stats Section (Requirement 10) ── */}
         <section className="grid grid-cols-3 gap-3 md:gap-4">
-          <div className="card p-3 md:p-4 bg-emerald-50/40 dark:bg-emerald-950/10 ring-emerald-100/50 dark:ring-emerald-900/10 flex flex-col justify-between">
-            <span className="text-[10px] md:text-xs font-semibold text-emerald-800 dark:text-emerald-400 uppercase tracking-wider">Active</span>
+          <div className="card p-4 md:p-5 backdrop-blur-2xl bg-emerald-500/10 border border-emerald-400/20 rounded-3xl shadow-card flex flex-col justify-between">
+            <span className="text-[10px] md:text-xs font-semibold text-emerald-400 uppercase tracking-wider">Active</span>
             <div className="flex items-baseline gap-1 mt-2">
-              <span className="text-2xl md:text-3xl font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{liveEntries.length}</span>
+              <span className="text-2xl md:text-3xl font-extrabold text-white tabular-nums">{liveEntries.length}</span>
               <span className="text-xs text-slate-400 font-medium">live</span>
             </div>
           </div>
-          <div className="card p-3 md:p-4 bg-brand-50/40 dark:bg-brand-950/10 ring-brand-100/50 dark:ring-brand-900/10 flex flex-col justify-between">
-            <span className="text-[10px] md:text-xs font-semibold text-brand-800 dark:text-brand-400 uppercase tracking-wider">Upcoming</span>
+          <div className="card p-4 md:p-5 backdrop-blur-2xl bg-brand-500/10 border border-brand-400/20 rounded-3xl shadow-card flex flex-col justify-between">
+            <span className="text-[10px] md:text-xs font-semibold text-brand-300 uppercase tracking-wider">Upcoming</span>
             <div className="flex items-baseline gap-1 mt-2">
-              <span className="text-2xl md:text-3xl font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{upcomingEntries.length}</span>
+              <span className="text-2xl md:text-3xl font-extrabold text-white tabular-nums">{upcomingEntries.length}</span>
               <span className="text-xs text-slate-400 font-medium">booked</span>
             </div>
           </div>
-          <div className="card p-3 md:p-4 bg-slate-50 dark:bg-slate-900/40 ring-slate-200/50 dark:ring-slate-800/50 flex flex-col justify-between">
-            <span className="text-[10px] md:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Completed Today</span>
+          <div className="card p-4 md:p-5 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card flex flex-col justify-between">
+            <span className="text-[10px] md:text-xs font-semibold text-slate-400 uppercase tracking-wider">Completed Today</span>
             <div className="flex items-baseline gap-1 mt-2">
-              <span className="text-2xl md:text-3xl font-extrabold text-slate-800 dark:text-slate-100 tabular-nums">{completedTodayEntries.length}</span>
+              <span className="text-2xl md:text-3xl font-extrabold text-white tabular-nums">{completedTodayEntries.length}</span>
               <span className="text-xs text-slate-400 font-medium">today</span>
             </div>
           </div>
@@ -608,26 +608,26 @@ export default function PatientPage() {
         {nearestUpcoming && (
           <section className="animate-slide-up">
             <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Nearest Upcoming Appointment</h2>
-            <div className="card p-4 ring-2 ring-brand-400/30 bg-gradient-to-r from-white to-brand-50/20 dark:from-slate-900 dark:to-brand-950/10 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white text-base font-bold shadow-sm">
+            <div className="card p-5 backdrop-blur-2xl bg-slate-900/60 border border-brand-400/30 rounded-3xl shadow-glow flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-brand-500 to-emerald-500 flex items-center justify-center text-white text-lg font-bold shadow-glow">
                   {nearestUpcoming.doctor.clinic?.name.charAt(0) || 'B'}
                 </div>
                 <div>
-                  <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-100">{nearestUpcoming.doctor.clinic?.name}</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{nearestUpcoming.doctor.user.name} · {nearestUpcoming.doctor.department?.name}</p>
+                  <h3 className="font-semibold text-base text-white">{nearestUpcoming.doctor.clinic?.name}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{nearestUpcoming.doctor.user.name} · {nearestUpcoming.doctor.department?.name}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 w-full md:w-auto border-t md:border-t-0 border-slate-100 dark:border-slate-800 pt-3 md:pt-0">
+              <div className="flex items-center gap-3 w-full md:w-auto border-t md:border-t-0 border-white/10 pt-3 md:pt-0">
                 <div className="text-left md:text-right flex-1 md:flex-none">
-                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                  <p className="text-xs font-semibold text-white">
                     {nearestUpcoming.appointmentTime ? formatDateIst(nearestUpcoming.appointmentTime, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Today'}
                   </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-[11px] text-slate-400 mt-0.5">
                     {nearestUpcoming.appointmentTime ? formatTimeIst(nearestUpcoming.appointmentTime) : 'N/A'}
                   </p>
                 </div>
-                <span className="pill bg-brand-100 text-brand-700 ring-brand-200/50 dark:bg-brand-900/40 dark:text-brand-300">
+                <span className="pill bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 font-bold px-3 py-1 text-sm shadow-glow">
                   {tokenDisplay(nearestUpcoming.tokenNumber)}
                 </span>
               </div>
@@ -639,15 +639,15 @@ export default function PatientPage() {
         <section className="space-y-3">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             {/* Status tab bar */}
-            <div className="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-full md:w-auto">
+            <div className="tabs-bar p-1.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10 w-full md:w-auto">
               {PATIENT_TABS.map((tab) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => selectTab(tab)}
-                  className={`flex-1 md:flex-none rounded-lg px-3 py-1.5 text-xs font-bold uppercase tracking-wide transition-all ${
+                  className={`flex-1 md:flex-none rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-wide transition-all ${
                     activeTab === tab
-                      ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm'
+                      ? 'bg-white/15 text-white shadow-soft backdrop-blur-2xl border border-white/20'
                       : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
                   }`}
                 >

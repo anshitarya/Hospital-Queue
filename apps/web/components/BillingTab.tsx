@@ -157,7 +157,7 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
       {/* Overview Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Plan Card */}
-        <div className="lg:col-span-2 card relative overflow-hidden bg-gradient-to-br from-slate-900 to-slate-850 text-white p-6 shadow-xl">
+        <div className="lg:col-span-2 card relative overflow-hidden backdrop-blur-2xl bg-slate-900/60 border border-white/15 text-white p-6 shadow-modal rounded-3xl">
           <div className="relative z-10 flex flex-col justify-between h-full space-y-6">
             <div className="flex items-start justify-between">
               <div>
@@ -166,19 +166,19 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
                 <p className="text-sm text-slate-300 mt-1.5 max-w-md">
                   Status:{' '}
                   <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-semibold backdrop-blur-md ${
                       currentPlan?.status === 'ACTIVE'
-                        ? 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30'
-                        : 'bg-rose-500/20 text-rose-400 ring-1 ring-rose-500/30'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30'
+                        : 'bg-rose-500/20 text-rose-300 border border-rose-400/30'
                     }`}
                   >
                     {currentPlan?.status || 'INACTIVE'}
                   </span>
                 </p>
               </div>
-              <div className="bg-white/10 backdrop-blur-md rounded-xl p-3 shadow-lg">
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-3 shadow-glow border border-white/10">
                 <svg className="w-8 h-8 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
             </div>
@@ -206,22 +206,22 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
         </div>
 
         {/* Current Balance / Bill Accrued Card */}
-        <div className="card p-6 flex flex-col justify-between shadow-md">
+        <div className="card p-6 flex flex-col justify-between backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Accrued Usage Charges</span>
-              <span className="text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 px-2 py-0.5 rounded-full font-medium">Uninvoiced</span>
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Accrued Usage Charges</span>
+              <span className="text-xs text-emerald-300 bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-0.5 rounded-full font-medium backdrop-blur-md">Uninvoiced</span>
             </div>
-            <h3 className="text-4xl font-bold mt-3 text-slate-900 dark:text-white">
+            <h3 className="text-4xl font-bold mt-3 text-white">
               ₹{billingDetails?.billing?.currentBill != null ? billingDetails.billing.currentBill.toFixed(2) : '0.00'}
             </h3>
             <p className="text-xs text-slate-400 mt-2">
               Based on completed events during this billing period.
             </p>
           </div>
-          <div className="border-t border-slate-100 dark:border-slate-800 pt-3 mt-4 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <div className="border-t border-white/10 pt-3 mt-4 flex items-center justify-between text-xs text-slate-400">
             <span>Outstanding Balance:</span>
-            <span className="font-semibold text-rose-600 dark:text-rose-400">
+            <span className="font-semibold text-rose-400">
               ₹{billingDetails?.billing?.outstandingAmount != null ? billingDetails.billing.outstandingAmount.toFixed(2) : '0.00'}
             </span>
           </div>
@@ -230,25 +230,25 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
 
       {/* Current Cycle Usage Details */}
       {billingDetails?.billing?.itemsAccrued && billingDetails.billing.itemsAccrued.length > 0 && (
-        <div className="card p-6 shadow-sm space-y-4">
-          <h4 className="text-sm font-semibold text-slate-950 dark:text-white">Active Cycle Usage Telemetry</h4>
+        <div className="card p-6 backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl shadow-card space-y-4">
+          <h4 className="text-sm font-semibold text-white">Active Cycle Usage Telemetry</h4>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                <tr className="border-b border-white/10 text-slate-400 text-xs uppercase tracking-wider">
                   <th className="py-2.5">Event Type</th>
                   <th className="py-2.5 text-center">Unit Price</th>
                   <th className="py-2.5 text-center">Count</th>
                   <th className="py-2.5 text-right">Subtotal</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-white/5">
                 {billingDetails.billing.itemsAccrued.map((item: any, idx: number) => (
-                  <tr key={idx} className="text-slate-700 dark:text-slate-300">
-                    <td className="py-3 font-medium font-mono text-xs">{item.eventType}</td>
+                  <tr key={idx} className="text-slate-300">
+                    <td className="py-3 font-medium font-mono text-xs text-white">{item.eventType}</td>
                     <td className="py-3 text-center">₹{item.price.toFixed(2)}</td>
                     <td className="py-3 text-center">{item.count}</td>
-                    <td className="py-3 text-right font-medium">₹{item.total.toFixed(2)}</td>
+                    <td className="py-3 text-right font-medium text-white">₹{item.total.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -260,8 +260,8 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
       {/* Pricing / Plan Catalog Selection */}
       <div className="space-y-4">
         <div>
-          <h3 className="text-lg font-bold text-slate-950 dark:text-white">Subscription Plans</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Upgrade or downgrade your Turnos queue billing plan instantly.</p>
+          <h3 className="text-lg font-bold text-white">Subscription Plans</h3>
+          <p className="text-sm text-slate-400">Upgrade or downgrade your Turnos queue billing plan instantly.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -275,10 +275,10 @@ export function BillingTab({ setToast, user }: BillingTabProps) {
             return (
               <div
                 key={plan.id}
-                className={`card flex flex-col justify-between p-6 transition-all relative overflow-hidden ${
+                className={`card flex flex-col justify-between p-6 transition-all relative overflow-hidden backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl ${
                   isCurrent
-                    ? 'ring-2 ring-sky-500 shadow-lg scale-102 dark:bg-slate-900'
-                    : 'hover:shadow-md dark:hover:bg-slate-900/60'
+                    ? 'border-sky-400/50 shadow-glow bg-slate-900/70'
+                    : 'hover:border-white/20'
                 }`}
               >
                 {isCurrent && (

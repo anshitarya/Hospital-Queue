@@ -33,36 +33,36 @@ export function DoctorCard({ doctor, onBook, isBooked, isSelfBookable, bookingRe
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/80 rounded-2xl p-5 hover:border-slate-200 dark:hover:border-slate-700/80 hover:shadow-lg transition-all duration-300 flex flex-col justify-between h-full relative">
+    <div className="backdrop-blur-2xl bg-slate-900/40 border border-white/10 rounded-3xl p-5 hover:border-white/20 shadow-card hover:shadow-glow transition-all duration-300 flex flex-col justify-between h-full relative">
       {/* Top section: Avatar and Basic details */}
       <div className="space-y-4">
         <div className="flex items-start gap-4">
           {/* Avatar Placeholder */}
-          <div className="relative h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-100 to-brand-200 dark:from-slate-800 dark:to-slate-700/50 flex items-center justify-center shrink-0 shadow-inner">
-            <span className="text-xl font-black text-brand-700 dark:text-brand-450">
+          <div className="relative h-14 w-14 rounded-2xl bg-gradient-to-br from-brand-500/20 to-emerald-500/20 border border-white/10 flex items-center justify-center shrink-0 shadow-glow">
+            <span className="text-xl font-black text-brand-300">
               {doctor.name.substring(0, 2).toUpperCase()}
             </span>
             {/* Live Indicator */}
-            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-white dark:border-slate-900 ${isAvailable ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            <span className={`absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full border-2 border-slate-900 ${isAvailable ? 'bg-emerald-500' : 'bg-slate-500'}`} />
           </div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h4 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 tracking-tight truncate">
+              <h4 className="font-extrabold text-sm text-white tracking-tight truncate">
                 {doctor.name}
               </h4>
               {doctor.rating !== null && doctor.rating !== undefined && (
-                <div className="flex items-center gap-0.5 px-1.5 py-0.2 rounded bg-emerald-500 text-white text-[9px] font-black shrink-0 shadow-xs">
+                <div className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-black shrink-0 shadow-glow backdrop-blur-md">
                   <span>{doctor.rating.toFixed(1)}</span>
                   <span>★</span>
                 </div>
               )}
             </div>
-            <p className="text-[11px] text-brand-600 dark:text-brand-400 font-bold uppercase tracking-wider mt-0.5">
+            <p className="text-[11px] text-brand-300 font-bold uppercase tracking-wider mt-0.5">
               {doctor.specialization || 'General Practitioner'}
             </p>
             {(hasExp || hasLang) && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px] font-semibold text-slate-450 dark:text-slate-500">
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-[10px] font-semibold text-slate-400">
                 {hasExp && <span>{doctor.experience} Years Exp</span>}
                 {hasExp && hasLang && <span>•</span>}
                 {hasLang && <span>🗣️ {doctor.languages}</span>}
@@ -72,10 +72,10 @@ export function DoctorCard({ doctor, onBook, isBooked, isSelfBookable, bookingRe
         </div>
 
         {/* Live Queue status */}
-        <div className="grid grid-cols-2 gap-3 bg-slate-50 dark:bg-slate-950/40 p-3 rounded-xl border border-slate-100/50 dark:border-slate-850/30 text-center">
+        <div className="grid grid-cols-2 gap-3 bg-white/5 p-3 rounded-2xl border border-white/10 text-center backdrop-blur-xl">
           <div>
-            <div className="text-[10px] text-slate-450 dark:text-slate-550 font-bold uppercase tracking-wider">Queue Length</div>
-            <div className="text-sm font-black text-slate-800 dark:text-slate-100 mt-0.5 font-mono">{doctor.queueLength} waiting</div>
+            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Queue Length</div>
+            <div className="text-sm font-black text-white mt-0.5 font-mono">{doctor.queueLength} waiting</div>
           </div>
           <div>
             <div className="text-[10px] text-slate-450 dark:text-slate-550 font-bold uppercase tracking-wider">Est. Wait Time</div>

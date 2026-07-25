@@ -300,15 +300,15 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
               matchesTokenSearch(sq, e.tokenNumber)
             ) : byStatus;
             return (
-            <div className="overflow-x-auto rounded-xl ring-1 ring-slate-200">
+            <div className="overflow-x-auto rounded-3xl border border-white/10 bg-slate-900/40 backdrop-blur-2xl shadow-card">
               {(sq || statusFilter) && (
-                <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-xs text-slate-500 flex items-center gap-2">
+                <div className="px-4 py-2.5 bg-white/5 border-b border-white/10 text-xs text-slate-300 flex items-center gap-2">
                   <span>{filtered.length} of {entries.length} results{sq ? ` for "${search}"` : ''}</span>
                   {statusFilter && (
                     <button
                       type="button"
                       onClick={() => setStatusFilter(null)}
-                      className="ml-auto text-slate-400 hover:text-slate-700 transition-colors"
+                      className="ml-auto text-slate-400 hover:text-white transition-colors"
                       title="Clear status filter"
                     >
                       ✕ Clear filter
@@ -318,7 +318,7 @@ export function QueueHistoryTable({ doctorId, showDoctorColumn = false, doctorNa
               )}
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-left text-xs text-slate-500 uppercase tracking-wider">
+                  <tr className="border-b border-white/10 bg-white/5 text-slate-400 text-xs font-semibold uppercase tracking-wider">
                     <th className="px-3 py-2.5 font-medium">#</th>
                     <th className="px-3 py-2.5 font-medium">Patient</th>
                     {showDoctorColumn && (

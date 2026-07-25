@@ -961,15 +961,15 @@ export default function AdminPage() {
       <Header title="Admin" />
       <main className="mx-auto max-w-6xl px-4 py-5 space-y-5 animate-fade-in">
         {/* Tab bar */}
-        <div className="tabs-bar">
+        <div className="tabs-bar p-1.5 rounded-2xl bg-white/5 backdrop-blur-xl border border-white/10">
           <button
             type="button"
             onClick={() => setTab('requests')}
-            className={'tab ' + (tab === 'requests' ? 'tab-active' : 'tab-inactive')}
+            className={'tab rounded-xl !py-2 !px-4 ' + (tab === 'requests' ? 'tab-active' : 'tab-inactive')}
           >
             Signup requests
             {pendingSignupCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+              <span className="ml-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 shadow-glow">
                 {pendingSignupCount}
               </span>
             )}
@@ -977,7 +977,7 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setTab('manage')}
-            className={'tab ' + (tab === 'manage' ? 'tab-active' : 'tab-inactive')}
+            className={'tab rounded-xl !py-2 !px-4 ' + (tab === 'manage' ? 'tab-active' : 'tab-inactive')}
           >
             Manage businesses
             <span className="ml-1.5 opacity-70 text-xs">({clinics.length})</span>

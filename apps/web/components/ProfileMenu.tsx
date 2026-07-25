@@ -82,23 +82,23 @@ export function ProfileMenu() {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 mt-2 w-64 rounded-xl bg-white dark:bg-slate-800 shadow-lg ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden animate-slide-up z-50"
+          className="absolute right-0 mt-2 w-64 rounded-3xl bg-slate-950/80 backdrop-blur-2xl shadow-modal border border-white/10 overflow-hidden animate-slide-up z-50"
         >
           {/* User info header */}
-          <div className="p-4 bg-gradient-to-br from-slate-50 to-white dark:from-slate-700 dark:to-slate-700/60 border-b border-slate-100 dark:border-slate-700">
+          <div className="p-4 bg-white/5 border-b border-white/10 backdrop-blur-xl">
             <div className="flex items-center gap-3">
               <span className={`h-10 w-10 rounded-full bg-gradient-to-br ${roleColor} text-white font-semibold flex items-center justify-center shadow-sm`}>
                 {initials}
               </span>
               <div className="min-w-0">
-                <div className="text-sm font-semibold truncate dark:text-slate-100">{user.name}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                <div className="text-sm font-semibold truncate text-white">{user.name}</div>
+                <div className="text-xs text-slate-400 truncate">
                   {user.email || user.phone || roleLabel}
                 </div>
               </div>
             </div>
             <div className="mt-3 flex items-center gap-2">
-              <span className="pill bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-slate-200 ring-slate-200 dark:ring-slate-500">{roleLabel}</span>
+              <span className="pill bg-white/10 text-slate-200 border border-white/10">{roleLabel}</span>
             </div>
           </div>
 
@@ -120,11 +120,11 @@ export function ProfileMenu() {
           </div>
 
           {/* Dark Mode toggle item inside ProfileMenu */}
-          <div className="border-t border-slate-100 dark:border-slate-700 py-1">
+          <div className="border-t border-white/10 py-1">
             <ThemeMenuItem />
           </div>
 
-          <div className="border-t border-slate-100 dark:border-slate-700 py-1">
+          <div className="border-t border-white/10 py-1">
             <MenuItem
               onClick={() => {
                 setOpen(false);

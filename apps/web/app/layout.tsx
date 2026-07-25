@@ -64,11 +64,18 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
       <head />
-      <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
+      <body className="relative min-h-screen bg-[#07090e] text-slate-100 antialiased selection:bg-brand-500/30">
+        <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+          <div className="absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-brand-500/10 blur-[120px]" />
+          <div className="absolute top-1/3 -right-40 h-[650px] w-[650px] rounded-full bg-purple-600/10 blur-[140px]" />
+          <div className="absolute -bottom-40 left-1/3 h-[600px] w-[600px] rounded-full bg-sky-500/10 blur-[130px]" />
+        </div>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+          <div className="relative z-10">
+            {children}
+          </div>
         </ThemeProvider>
       </body>
     </html>
