@@ -1066,11 +1066,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{prevVisit.name}</div>
-                      {prevVisit.customerPin && (
-                        <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
-                          PIN: {prevVisit.customerPin}
-                        </span>
-                      )}
                     </div>
                     <div className="text-xs text-teal-600 dark:text-teal-400 mt-0.5">
                       {prevVisit.totalVisits > 0 ? (
@@ -1476,11 +1471,6 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                     <div className="min-w-0">
                       <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-2 flex-wrap text-sm">
                         {e.patient?.name ?? '—'}
-                        {e.patient?.customerPin && (
-                          <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono ml-1">
-                            PIN: {e.patient.customerPin}
-                          </span>
-                        )}
                         {e.missedCount > 0 && (
                           <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">Missed ×{e.missedCount}</span>
                         )}
@@ -1612,11 +1602,6 @@ const QueueRow = memo(function QueueRow({
         <div className="flex-1 min-w-0">
           <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5 flex-wrap text-sm">
             {entry.patient?.name ?? '—'}
-            {entry.patient?.customerPin && (
-              <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
-                PIN: {entry.patient.customerPin}
-              </span>
-            )}
             {isPending   && <span className="pill-sm bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 ring-amber-200 dark:ring-amber-800/60">Adding…</span>}
             {entry.priority >= 100 && <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">🚨 Emergency</span>}
             {entry.walkin && <span className="pill-sm bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-400 ring-brand-200 dark:ring-brand-800/60">Walk-in</span>}

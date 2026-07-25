@@ -221,7 +221,8 @@ describe('AuthService.customerOtpLoginFlow', () => {
   function makeCustomerOtpService() {
     const findUnique = jest.fn();
     const update = jest.fn().mockResolvedValue({});
-    const prisma = { user: { findUnique, update } } as unknown as PrismaService;
+    const create = jest.fn().mockResolvedValue({});
+    const prisma = { user: { findUnique, update, create } } as unknown as PrismaService;
     const jwt = { signAsync: jest.fn().mockResolvedValue('customer-token') } as unknown as JwtService;
     const otp = {
       issue: jest.fn().mockResolvedValue({ devCode: '123456' }),
@@ -238,7 +239,7 @@ describe('AuthService.customerOtpLoginFlow', () => {
       { triggerEvent: jest.fn() } as any,
       googleAuth as any,
     );
-    return { svc, findUnique, update, otp };
+    return { svc, findUnique, update, create, otp };
   }
 
   it('requests customer OTP if user exists and is a patient', async () => {
@@ -261,6 +262,24 @@ describe('AuthService.customerOtpLoginFlow', () => {
       role: Role.PATIENT,
       phone: '+919876543210',
     });
+
+    const res = await svc.verifyCustomerOtp('+919876543210', '123456');
+    expect(res.token).toBe('customer-token');
+    expect(otp.verify).toHaveBeenCalledWith('phone', '+919876543210', '123456');
+  });
+
+  it('requests customer OTP even if user does not exist (new patient)', async () => {
+    const { svc, findUnique, otp } = makeCustomerOtpService();
+    findUnique.mockResolvedValueOnce(null);
+
+    const res = await svc.requestCustomerOtp('+919876543210');
+    expect(res.sent).toBe(true);
+    expect(otp.issue).toHaveBeenCalledWith('phone', '+919876543210');
+  });
+
+  it('verifies OTP and auto-registers new patient if not existing', async () => {
+    const { svc, findUnique, otp } = makeCustomerOtpService();
+    findUnique.mockResolvedValueOnce(null);
 
     const res = await svc.verifyCustomerOtp('+919876543210', '123456');
     expect(res.token).toBe('customer-token');

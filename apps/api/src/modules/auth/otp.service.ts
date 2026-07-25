@@ -27,7 +27,7 @@ export class OtpService {
   private readonly widgetId: string | undefined;
 
   // Per-target limits — keep them tight; OTP endpoints are unauthenticated.
-  private readonly ISSUE_LIMIT = 5;
+  private readonly ISSUE_LIMIT = 3;
   private readonly VERIFY_LIMIT = 5;
   private readonly LIMIT_WINDOW_SECONDS = 600;
 
@@ -67,54 +67,50 @@ export class OtpService {
     if (count === 1) await this.redis.client.expire(rk, this.LIMIT_WINDOW_SECONDS);
     if (count > this.ISSUE_LIMIT) {
       throw new HttpException(
-        'Too many OTP requests. Please wait a few minutes and try again.',
+        'Too many OTP requests. Please wait for 10 minutes and try again.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
 
-    const code = Math.floor(100_000 + Math.random() * 900_000).toString();
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
-    if (this.devMode) {
+    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId;
+
+    if (!useRealMsg91) {
       this.logger.warn(`[DEV OTP] channel=${channel} target=${target} code=${code} (expires in ${this.ttl}s)`);
       return { devCode: code };
     }
 
-    if (channel === 'phone') {
-      if (!this.authKey || !this.widgetId) {
-        this.logger.error('MSG91_AUTH_KEY or MSG91_WIDGET_ID not configured');
-        throw new HttpException('SMS OTP service is misconfigured.', HttpStatus.INTERNAL_SERVER_ERROR);
+    const digits = target.replace(/\D/g, '');
+    const mobile = digits.startsWith('91') ? digits : `91${digits}`;
+
+    try {
+      const response = await fetch('https://api.msg91.com/api/v5/widget/sendOtp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authkey: this.authKey,
+        },
+        body: JSON.stringify({
+          widgetId: this.widgetId,
+          identifier: mobile,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || data.type === 'error' || !data.message) {
+        this.logger.error(`MSG91 Widget sendOtp failed: ${JSON.stringify(data)}`);
+        throw new BadRequestException(data.message || 'Failed to send OTP via MSG91 Widget');
       }
-      const digits = target.replace(/\D/g, '');
-      const mobile = digits.startsWith('91') ? digits : `91${digits}`;
 
-      try {
-        const response = await fetch('https://api.msg91.com/api/v5/widget/sendOtp', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            authkey: this.authKey,
-          },
-          body: JSON.stringify({
-            widgetId: this.widgetId,
-            identifier: mobile,
-          }),
-        });
-
-        const data = await response.json();
-        if (!response.ok || data.type === 'error' || !data.reqId) {
-          this.logger.error(`MSG91 Widget sendOtp failed: ${JSON.stringify(data)}`);
-          throw new BadRequestException(data.message || 'Failed to send OTP via MSG91 Widget');
-        }
-
-        await this.redis.client.set(`otp:reqId:${target}`, data.reqId, 'EX', this.ttl);
-      } catch (err) {
-        if (err instanceof BadRequestException || err instanceof HttpException) {
-          throw err;
-        }
-        this.logger.error('MSG91 Widget sendOtp exception', err as Error);
-        throw new HttpException('Failed to send OTP. Please try again.', HttpStatus.INTERNAL_SERVER_ERROR);
+      await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
+    } catch (err) {
+      if (err instanceof BadRequestException || err instanceof HttpException) {
+        throw err;
       }
+      this.logger.error('MSG91 Widget sendOtp exception', err as Error);
+      throw new HttpException('Failed to send OTP. Please try again.', HttpStatus.INTERNAL_SERVER_ERROR);
     }
     return {};
   }
@@ -135,7 +131,9 @@ export class OtpService {
       );
     }
 
-    if (this.devMode || channel !== 'phone') {
+    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId;
+
+    if (!useRealMsg91) {
       const stored = await this.redis.client.get(this.key(channel, target));
       if (!stored) throw new BadRequestException('OTP expired or never issued. Request a new one.');
       if (stored !== code) throw new BadRequestException('Invalid OTP');

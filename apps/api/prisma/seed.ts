@@ -297,10 +297,24 @@ async function main() {
     },
   });
 
+  // ── Seed a test Patient user for OTP testing ──────────────────────────────
+  await prisma.user.upsert({
+    where: { phone: '+919464664646' },
+    update: {},
+    create: {
+      phone: '+919464664646',
+      role: Role.PATIENT,
+      name: 'Test Patient',
+      customerPin: '1234',
+      phoneVerified: true,
+    },
+  });
+
   console.log('');
   console.log('Seed complete.');
   console.log(`  Departments: ${HOSPITAL_DEPARTMENTS.length} loaded`);
   console.log('  Admin:       admin@clinic.local / password123');
+  console.log('  Test Patient: +919464664646 / PIN: 1234 (OTP local bypass)');
 }
 
 main()

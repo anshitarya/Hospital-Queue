@@ -968,11 +968,6 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         <div className="min-w-0">
                           <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-2 flex-wrap text-sm">
                             {e.patient?.name ?? '—'}
-                            {e.patient?.customerPin && (
-                              <span className="pill-sm bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-slate-200 dark:ring-slate-600 font-mono">
-                                PIN: {e.patient.customerPin}
-                              </span>
-                            )}
                             {e.missedCount > 0 && (
                               <span className="pill-sm bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400 ring-rose-200 dark:ring-rose-800/60">Missed ×{e.missedCount}</span>
                             )}

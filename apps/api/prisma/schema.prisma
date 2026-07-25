@@ -199,7 +199,7 @@ model User {
 
   // Permanent 4-digit Customer PIN (1000–9999). Assigned at first registration,
   // never changes. Used for customer login and shown to reception staff.
-  customerPin String? @unique
+  customerPin String?
 
   // Populated for RECEPTIONIST role — which clinic they belong to.
   clinicId  String?

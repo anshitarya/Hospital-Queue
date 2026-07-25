@@ -464,10 +464,8 @@ export class AuthService {
 
     const normalized = phone.trim();
     const user = await this.prisma.user.findUnique({ where: { phone: normalized } });
-    if (!user || user.role !== Role.PATIENT) {
-      throw new NotFoundException(
-        'No patient account found with this mobile number. Please register at the clinic first.',
-      );
+    if (user && user.role !== Role.PATIENT) {
+      throw new BadRequestException('This phone number is registered to a staff account');
     }
 
     const res = await this.otp.issue('phone', normalized);
@@ -480,17 +478,29 @@ export class AuthService {
     }
 
     const normalized = phone.trim();
-    const user = await this.prisma.user.findUnique({ where: { phone: normalized } });
-    if (!user || user.role !== Role.PATIENT) {
-      throw new NotFoundException('No patient account found with this mobile number');
+    let user = await this.prisma.user.findUnique({ where: { phone: normalized } });
+    if (user && user.role !== Role.PATIENT) {
+      throw new BadRequestException('This phone number is registered to a staff account');
     }
 
     await this.otp.verify('phone', normalized, code);
 
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    if (!user) {
+      user = await this.prisma.user.create({
+        data: {
+          role: Role.PATIENT,
+          phone: normalized,
+          name: 'Patient',
+          phoneVerified: true,
+          lastLoginAt: new Date(),
+        },
+      });
+    } else {
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+    }
 
     return this.sign(user);
   }

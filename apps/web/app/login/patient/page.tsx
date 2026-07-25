@@ -157,7 +157,7 @@ export default function PatientLoginPage() {
                 </button>
               </form>
               <p className="text-xs text-slate-400 text-center">
-                First visit? Ask reception for your Customer PIN when you join the queue, or log in with OTP.
+                 Click Forgot PIN / Login with OTP when logging in for the first time.
               </p>
             </>
           )}
@@ -196,7 +196,7 @@ export default function PatientLoginPage() {
               <div>
                 <h1 className="text-xl font-semibold">Verify Mobile Number</h1>
                 <p className="text-sm text-slate-500 mt-0.5">
-                  We sent a 6-digit OTP to{' '}
+                  We sent a 4-digit OTP to{' '}
                   <span className="font-medium text-slate-700">{e164}</span>.
                 </p>
               </div>
@@ -331,7 +331,7 @@ function OtpPad({
   disabled,
   error,
   onClearError,
-  label = 'Enter your 6-digit OTP code',
+  label = 'Enter your 4-digit OTP code',
 }: {
   onComplete: (code: string) => void;
   disabled?: boolean;
@@ -344,9 +344,9 @@ function OtpPad({
   function press(digit: string) {
     if (disabled) return;
     onClearError?.();
-    const next = (entered + digit).slice(0, 6);
+    const next = (entered + digit).slice(0, 4);
     setEntered(next);
-    if (next.length === 6) {
+    if (next.length === 4) {
       setTimeout(() => {
         setEntered('');
         onComplete(next);
@@ -367,7 +367,7 @@ function OtpPad({
       <p className="text-xs text-slate-500 text-center font-medium">{label}</p>
 
       <div className="flex justify-center gap-2">
-        {Array.from({ length: 6 }, (_, i) => (
+        {Array.from({ length: 4 }, (_, i) => (
           <span
             key={i}
             className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${
