@@ -1,12 +1,17 @@
 import { Injectable, Logger, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { RazorpayService } from './razorpay.service';
+import { VerifySubscriptionPaymentDto } from './dto/subscription.dto';
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly razorpayService: RazorpayService,
+  ) { }
 
   /**
    * Creates a new billing plan with pricing rules.
@@ -745,5 +750,261 @@ export class BillingService {
       next.setMonth(next.getMonth() + 1);
     }
     return next;
+  }
+
+  /**
+   * Creates a Razorpay subscription order for a clinic to upgrade/downgrade to a plan.
+   */
+  async createSubscriptionOrder(clinicId: string, planId: string) {
+    const plan = await this.prisma.billingPlan.findUnique({
+      where: { id: planId },
+      include: { rules: true },
+    });
+    if (!plan) throw new NotFoundException('Billing plan not found');
+
+    // Find if there is a flat rate monthly cost rule (e.g. eventType: 'SYSTEM_ACCESS')
+    const flatRateRule = plan.rules.find((r) => r.ruleType === 'FLAT_RATE');
+    const cost = flatRateRule ? Number(flatRateRule.price) : 0;
+
+    if (cost <= 0) {
+      // Direct free migration
+      await this.assignPlanToBusiness(clinicId, planId);
+      
+      const now = new Date();
+      const nextMonth = this.addCyclePeriod(now, plan.billingCycle);
+
+      const subscription = await this.prisma.subscription.create({
+        data: {
+          clinicId,
+          planId,
+          status: 'ACTIVE',
+          amount: new Prisma.Decimal(0.00),
+          startDate: now,
+          endDate: nextMonth,
+        },
+      });
+
+      return { requiresPayment: false, subscription };
+    }
+
+    // Cost > 0, requires Razorpay Payment
+    const amountInPaise = Math.round(cost * 100);
+    const order = await this.razorpayService.createOrder(amountInPaise, clinicId, {
+      clinicId,
+      planId,
+    });
+
+    const subscription = await this.prisma.subscription.create({
+      data: {
+        clinicId,
+        planId,
+        status: 'PENDING',
+        razorpayOrderId: order.id,
+        amount: new Prisma.Decimal(cost),
+      },
+    });
+
+    return {
+      requiresPayment: true,
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      subscription,
+    };
+  }
+
+  /**
+   * Verifies Razorpay payment signature and activates the subscription.
+   */
+  async verifySubscriptionPayment(clinicId: string, dto: VerifySubscriptionPaymentDto) {
+    const isValid = this.razorpayService.verifyPaymentSignature(
+      dto.razorpay_order_id,
+      dto.razorpay_payment_id,
+      dto.razorpay_signature,
+    );
+
+    if (!isValid) {
+      throw new BadRequestException('Invalid payment signature');
+    }
+
+    return this.activateSubscription(dto.razorpay_order_id, dto.razorpay_payment_id, dto.razorpay_signature);
+  }
+
+  /**
+   * Private helper to activate a subscription on verification or webhook trigger.
+   */
+  private async activateSubscription(orderId: string, paymentId: string, signature: string) {
+    const pendingSub = await this.prisma.subscription.findUnique({
+      where: { razorpayOrderId: orderId },
+      include: { plan: true },
+    });
+
+    if (!pendingSub) {
+      throw new NotFoundException('Subscription order not found');
+    }
+
+    if (pendingSub.status === 'ACTIVE') {
+      return pendingSub;
+    }
+
+    const now = new Date();
+    const nextMonth = this.addCyclePeriod(now, pendingSub.plan.billingCycle);
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update subscription status
+      const updatedSub = await tx.subscription.update({
+        where: { id: pendingSub.id },
+        data: {
+          status: 'ACTIVE',
+          razorpayPaymentId: paymentId,
+          razorpaySignature: signature,
+          startDate: now,
+          endDate: nextMonth,
+        },
+      });
+
+      // 2. Assign plan to business
+      await tx.businessBilling.upsert({
+        where: { businessId: pendingSub.clinicId },
+        update: {
+          planId: pendingSub.planId,
+          billingCycleStart: now,
+          billingCycleEnd: nextMonth,
+          status: 'ACTIVE',
+        },
+        create: {
+          businessId: pendingSub.clinicId,
+          planId: pendingSub.planId,
+          billingCycleStart: now,
+          billingCycleEnd: nextMonth,
+          status: 'ACTIVE',
+          outstandingAmount: new Prisma.Decimal(0.00),
+        },
+      });
+
+      // 3. Create a paid Invoice
+      const invoiceNumber = `INV-SUB-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${pendingSub.clinicId.slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const invoice = await tx.invoice.create({
+        data: {
+          invoiceNumber,
+          businessId: pendingSub.clinicId,
+          startDate: now,
+          endDate: nextMonth,
+          subtotal: pendingSub.amount,
+          discount: new Prisma.Decimal(0.00),
+          tax: new Prisma.Decimal(0.00),
+          total: pendingSub.amount,
+          status: 'PAID',
+        },
+      });
+
+      // 4. Create InvoiceItem
+      await tx.invoiceItem.create({
+        data: {
+          invoiceId: invoice.id,
+          eventType: 'SYSTEM_ACCESS',
+          eventCount: 1,
+          unitPrice: pendingSub.amount,
+          totalPrice: pendingSub.amount,
+          slabDetails: 'Subscription activation',
+        },
+      });
+
+      // 5. Create Payment record
+      await tx.payment.create({
+        data: {
+          invoiceId: invoice.id,
+          subscriptionId: updatedSub.id,
+          amount: pendingSub.amount,
+          status: 'COMPLETED',
+          paymentMethod: 'RAZORPAY',
+          referenceId: paymentId,
+        },
+      });
+
+      return updatedSub;
+    });
+  }
+
+  /**
+   * Handle incoming Razorpay Webhooks.
+   */
+  async handleRazorpayWebhook(rawBody: string, signature: string, body: any) {
+    const isValid = this.razorpayService.verifyWebhookSignature(rawBody, signature);
+    if (!isValid) {
+      throw new BadRequestException('Invalid webhook signature');
+    }
+
+    const event = body.event;
+    this.logger.log(`Received Razorpay webhook event: ${event}`);
+
+    if (event === 'order.paid' || event === 'payment.captured') {
+      const orderId = body.payload?.payment?.entity?.order_id || body.payload?.order?.entity?.id;
+      const paymentId = body.payload?.payment?.entity?.id;
+      const signatureVal = signature; // signature header itself acts as verification or dummy placeholder
+
+      if (orderId && paymentId) {
+        try {
+          await this.activateSubscription(orderId, paymentId, signatureVal);
+          this.logger.log(`Webhook successfully processed order.paid for Order ID: ${orderId}`);
+        } catch (error) {
+          this.logger.error(`Error processing webhook subscription activation: ${error.message}`);
+        }
+      }
+    } else if (event === 'payment.failed') {
+      const orderId = body.payload?.payment?.entity?.order_id;
+      if (orderId) {
+        await this.prisma.subscription.updateMany({
+          where: { razorpayOrderId: orderId, status: 'PENDING' },
+          data: { status: 'FAILED' },
+        });
+        this.logger.warn(`Subscription payment failed webhook registered for Order ID: ${orderId}`);
+      }
+    } else if (event === 'refund.processed') {
+      const paymentId = body.payload?.payment?.entity?.id;
+      if (paymentId) {
+        const payment = await this.prisma.payment.findFirst({
+          where: { referenceId: paymentId },
+        });
+
+        if (payment) {
+          await this.prisma.$transaction(async (tx) => {
+            // Update Payment to REFUNDED
+            await tx.payment.update({
+              where: { id: payment.id },
+              data: { status: 'REFUNDED' },
+            });
+
+            // Update associated invoice to unpaid/refunded
+            if (payment.invoiceId) {
+              await tx.invoice.update({
+                where: { id: payment.invoiceId },
+                data: { status: 'VOID' }, // Or VOID / REFUNDED
+              });
+            }
+
+            // Cancel subscription
+            if (payment.subscriptionId) {
+              await tx.subscription.update({
+                where: { id: payment.subscriptionId },
+                data: { status: 'CANCELLED' },
+              });
+
+              // Suspend billing status
+              const sub = await tx.subscription.findUnique({ where: { id: payment.subscriptionId } });
+              if (sub) {
+                await tx.businessBilling.update({
+                  where: { businessId: sub.clinicId },
+                  data: { status: 'SUSPENDED' },
+                });
+              }
+            }
+          });
+          this.logger.log(`Refund processed and logged for payment ID: ${paymentId}`);
+        }
+      }
+    }
+
+    return { received: true };
   }
 }

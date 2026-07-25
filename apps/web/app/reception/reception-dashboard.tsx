@@ -25,10 +25,11 @@ import { AnalyticsTab } from '@/components/AnalyticsTab';
 import { ReceptionistAssignmentsTab } from '@/components/ReceptionistAssignmentsTab';
 import { formatDateIst, formatTimeIst, formatDurationHms, serviceDay, serviceDaysAgo } from '@/lib/datetime';
 import { DatePicker } from '@/components/DatePicker';
+import { BillingTab } from '@/components/BillingTab';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'dashboard' | 'queue' | 'history' | 'staff' | 'settings' | 'schedule' | 'leaves' | 'workflows' | 'analytics' | 'locations';
+type Tab = 'dashboard' | 'queue' | 'history' | 'staff' | 'settings' | 'schedule' | 'leaves' | 'workflows' | 'analytics' | 'locations' | 'billing';
 
 const LOCATION_STORAGE_KEY = 'turnos_reception_location';
 
@@ -200,7 +201,7 @@ interface DoctorAnalytics { from: string; to: string; doctors: DoctorAnalyticsRo
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff', 'settings', 'schedule', 'leaves', 'workflows', 'analytics', 'locations'];
+const VALID_TABS: Tab[] = ['dashboard', 'queue', 'history', 'staff', 'settings', 'schedule', 'leaves', 'workflows', 'analytics', 'locations', 'billing'];
 const TODAY = serviceDay();
 const daysAgo = (n: number) => serviceDaysAgo(n);
 const SEVEN_AGO = daysAgo(6);
@@ -225,6 +226,16 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
 
   // ── Tab — persisted in localStorage so refresh keeps the user here ──
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as Tab;
+      if (tabParam && VALID_TABS.includes(tabParam)) {
+        setActiveTab(tabParam);
+      }
+    }
+  }, []);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   useEffect(() => {
     const saved = localStorage.getItem('turnos_reception_tab');
@@ -770,6 +781,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
     leaves: 'Leaves & Breaks',
     workflows: 'Workflows',
     analytics: 'Business Analytics',
+    billing: 'Billing & Subscriptions',
   };
 
   return (
@@ -824,6 +836,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                 {[
                   { label: 'Settings', tab: 'settings', icon: GearIcon },
                   ...(user?.role !== 'MANAGER' ? [{ label: 'Locations', tab: 'locations', icon: MapPinIcon }] : []),
+                  ...(user?.role === 'CLINIC_ADMIN' ? [{ label: 'Billing & Subscriptions', tab: 'billing', icon: CoinIcon }] : []),
                   { label: 'Schedules', tab: 'schedule', icon: CalendarIcon },
                   { label: 'Leaves & Breaks', tab: 'leaves', icon: ClockIcon },
                   { label: 'Workflows', tab: 'workflows', icon: RouteIcon },
@@ -904,6 +917,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
             {[
               { label: 'Settings', tab: 'settings', icon: GearIcon },
               ...(user?.role !== 'MANAGER' ? [{ label: 'Locations', tab: 'locations', icon: MapPinIcon }] : []),
+              ...(user?.role === 'CLINIC_ADMIN' ? [{ label: 'Billing & Subscriptions', tab: 'billing', icon: CoinIcon }] : []),
               { label: 'Schedules', tab: 'schedule', icon: CalendarIcon },
               { label: 'Leaves & Breaks', tab: 'leaves', icon: ClockIcon },
               { label: 'Workflows', tab: 'workflows', icon: RouteIcon },
@@ -1526,6 +1540,10 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
         {/* ── Analytics ── */}
         {activeTab === 'analytics' && (
           <AnalyticsTab setToast={setToast} locationId={selectedLocationId} />
+        )}
+
+        {activeTab === 'billing' && user?.role === 'CLINIC_ADMIN' && (
+          <BillingTab setToast={setToast} user={user} />
         )}
       </main>
     </div>
