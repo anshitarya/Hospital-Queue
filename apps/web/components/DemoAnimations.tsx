@@ -155,7 +155,7 @@ export function PatientDemo() {
       {step < 3 && (
         <div className="relative space-y-4">
           <div className="text-center mb-4">
-            <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
+            <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-100 rounded-full px-3 py-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
               Customer sign-in
             </div>
@@ -164,7 +164,7 @@ export function PatientDemo() {
           <div className="relative">
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Mobile number</label>
             <div className="relative rounded-lg border-2 border-brand-400 bg-white px-3 py-2.5 shadow-sm flex items-center gap-2 min-h-[44px]">
-              <span className="text-slate-400 text-sm">+91</span>
+              <span className="text-slate-600 text-sm">+91</span>
               <span className="h-4 w-px bg-slate-300" />
               <span className="text-slate-900 text-sm font-mono tracking-wider">{phoneText}</span>
               {step === 1 && (
@@ -225,9 +225,9 @@ export function PatientDemo() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <div className="font-semibold text-sm text-slate-900">{DEMO_DATA.patient.doctorName}</div>
-                <div className="text-xs text-slate-400">{DEMO_DATA.patient.doctorSpecialty}</div>
+                <div className="text-xs text-slate-600">{DEMO_DATA.patient.doctorSpecialty}</div>
               </div>
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
                 LIVE
               </span>
@@ -235,28 +235,28 @@ export function PatientDemo() {
 
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="rounded-lg bg-brand-50 ring-1 ring-brand-200 p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Your token</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-600">Your token</div>
                 <div className="text-3xl font-bold text-brand-700">#{DEMO_DATA.patient.yourToken}</div>
               </div>
               <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Serving</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-600">Serving</div>
                 <div className="text-3xl font-bold text-slate-800">#{DEMO_DATA.patient.yourToken - ahead}</div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-center">
               <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 p-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Ahead</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-600">Ahead</div>
                 <div className="text-xl font-bold text-amber-700">{ahead}</div>
               </div>
               <div className="rounded-lg bg-purple-50 ring-1 ring-purple-200 p-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">ETA</div>
+                <div className="text-[10px] uppercase tracking-wider text-slate-600">ETA</div>
                 <div className="text-xl font-bold text-purple-700">{ahead === 0 ? 'Now!' : `~${eta}m`}</div>
               </div>
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 text-center">Updates live · No refresh needed</p>
+          <p className="text-[11px] text-slate-600 text-center">Updates live · No refresh needed</p>
         </div>
       )}
     </div>
@@ -300,7 +300,7 @@ export function ReceptionDemo() {
   return (
     <div className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
       <div className="text-center">
-        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-100 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse inline-block" />
           Receptionist dashboard
         </div>
@@ -327,7 +327,7 @@ export function ReceptionDemo() {
           </div>
         </div>
         {step === 3 && (
-          <div className="mt-2 text-xs text-brand-600 font-medium flex items-center gap-1.5">
+          <div className="mt-2 text-xs text-brand-700 font-medium flex items-center gap-1.5">
             <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
               <circle cx="12" cy="12" r="9" strokeOpacity=".3" />
               <path d="M12 3a9 9 0 0 1 9 9" />
@@ -341,7 +341,7 @@ export function ReceptionDemo() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs font-semibold text-slate-700">Live queue</div>
-          <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+          <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-semibold">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
             LIVE
           </span>
@@ -372,7 +372,7 @@ export function ReceptionDemo() {
           ))}
         </div>
         {step >= 4 && (
-          <div className="mt-2 text-[11px] text-brand-600 font-medium text-center animate-fade-in">
+          <div className="mt-2 text-[11px] text-brand-700 font-medium text-center animate-fade-in">
             Token #{DEMO_DATA.reception.newTokenNumber} assigned · All customers notified ✓
           </div>
         )}
@@ -416,7 +416,7 @@ export function DoctorDemo() {
   return (
     <div className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
       <div className="text-center">
-        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-100 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse inline-block" />
           Provider panel
         </div>
@@ -448,9 +448,9 @@ export function DoctorDemo() {
             </div>
           </>
         ) : step === 0 ? (
-          <div className="text-center py-2 text-sm text-slate-500">Ready · {DEMO_DATA.doctor.initialQueue.length} customers waiting</div>
+          <div className="text-center py-2 text-sm text-slate-700">Ready · {DEMO_DATA.doctor.initialQueue.length} customers waiting</div>
         ) : (
-          <div className="text-center py-2 text-sm text-slate-600 font-medium">
+          <div className="text-center py-2 text-sm text-slate-700 font-medium">
             ✓ Completed · Avg consult {DEMO_DATA.doctor.avgConsultMinutes} min
           </div>
         )}
@@ -460,7 +460,7 @@ export function DoctorDemo() {
       <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
           <div className="text-xs font-semibold text-slate-700">Up next</div>
-          <span className="text-[10px] text-slate-500">{remaining.length} waiting</span>
+          <span className="text-[10px] text-slate-700">{remaining.length} waiting</span>
         </div>
         <div className="space-y-1.5">
           {remaining.slice(0, 3).map((p, i) => (
@@ -469,7 +469,7 @@ export function DoctorDemo() {
               className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs transition-all duration-500 ${
                 i === 0
                   ? 'bg-amber-50 ring-1 ring-amber-200 text-amber-800 font-medium'
-                  : 'bg-slate-50 text-slate-600'
+                  : 'bg-slate-50 text-slate-700'
               }`}
             >
               <span>
@@ -477,7 +477,7 @@ export function DoctorDemo() {
                 {p.name}
               </span>
               {i === 0 && (
-                <span className="text-[10px] text-amber-600 font-semibold">Next up</span>
+                <span className="text-[10px] text-amber-700 font-semibold">Next up</span>
               )}
             </div>
           ))}
@@ -492,7 +492,7 @@ export function DoctorDemo() {
           </div>
         )}
         {step === 5 && (
-          <div className="mt-2 text-[11px] text-emerald-600 font-medium text-center animate-fade-in">
+          <div className="mt-2 text-[11px] text-emerald-700 font-medium text-center animate-fade-in">
             All screens updated · Avg consult: {DEMO_DATA.doctor.avgConsultMinutes} min ✓
           </div>
         )}

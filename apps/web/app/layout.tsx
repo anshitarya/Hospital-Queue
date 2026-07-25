@@ -1,6 +1,13 @@
 import type { Metadata, Viewport } from 'next';
 import { ThemeProvider } from 'next-themes';
+import { Inter } from 'next/font/google';
 import './globals.css';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://turnos.in'),
@@ -57,11 +64,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head />
       <body>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}

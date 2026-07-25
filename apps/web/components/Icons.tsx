@@ -65,12 +65,16 @@ export function TurnosIcon({ className = 'h-12 sm:h-14' }: { className?: string 
       <img
         src="/logo-light.png"
         alt="Turnos Logo"
+        width={256}
+        height={256}
         className="h-full w-auto object-contain dark:hidden rounded-2xl"
       />
       {/* Dark mode logo (2nd image) */}
       <img
         src="/logo-dark.png"
         alt="Turnos Logo"
+        width={256}
+        height={256}
         className="h-full w-auto object-contain hidden dark:block rounded-2xl"
       />
     </div>

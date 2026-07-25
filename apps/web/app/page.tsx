@@ -491,7 +491,7 @@ function HeroMock() {
   return (
     <div className="relative max-w-md mx-auto lg:ml-auto lg:mr-0">
       {/* Floating "in consultation" badge */}
-      <div className="absolute -top-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-500 text-white px-3 py-1 text-xs font-semibold shadow-lg">
+      <div className="absolute -top-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-700 text-white px-3 py-1 text-xs font-semibold shadow-lg">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
         Live · It&apos;s your turn
       </div>
@@ -501,7 +501,7 @@ function HeroMock() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="font-semibold text-slate-900">Anjali Sharma</div>
-            <div className="text-xs text-slate-500">Serving now</div>
+            <div className="text-xs text-slate-600">Serving now</div>
           </div>
           <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
             <span className="live-dot" /> Live
@@ -510,11 +510,11 @@ function HeroMock() {
 
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-brand-50 ring-1 ring-brand-200 p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Your token</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-600">Your token</div>
             <div className="text-4xl font-bold text-brand-700 mt-1">#12</div>
           </div>
           <div className="rounded-xl bg-slate-50 p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Now serving</div>
+            <div className="text-[10px] uppercase tracking-wider text-slate-600">Now serving</div>
             <div className="text-4xl font-bold mt-1">#12</div>
           </div>
         </div>
@@ -541,7 +541,7 @@ function HeroMock() {
               }
             >
               <span>#{r.n} · {r.name}</span>
-              {r.tag && <span className="text-[10px] text-brand-600 font-semibold">{r.tag}</span>}
+              {r.tag && <span className="text-[10px] text-brand-700 font-semibold">{r.tag}</span>}
             </div>
           ))}
         </div>
