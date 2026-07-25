@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { MetadataRoute } from 'next';
+import { SOLUTIONS } from '../lib/solutions';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = 'https://turnos.in';
@@ -42,6 +43,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     appDir = path.resolve(__dirname, '..');
   }
 
+  // Add static landing pages if they exist
   for (const route of routes) {
     const possibleFiles = [
       route.path === '' ? 'page.tsx' : `${route.path}/page.tsx`,
@@ -73,6 +75,26 @@ export default function sitemap(): MetadataRoute.Sitemap {
         priority: route.priority,
       });
     }
+  }
+
+  // Add solutions dynamic landing pages
+  let solutionsLastModified = new Date();
+  try {
+    const solutionsFilePath = path.join(appDir, '../lib/solutions.ts');
+    if (fs.existsSync(solutionsFilePath)) {
+      solutionsLastModified = fs.statSync(solutionsFilePath).mtime;
+    }
+  } catch (e) {
+    // Fallback to current date
+  }
+
+  for (const slug of Object.keys(SOLUTIONS)) {
+    sitemapEntries.push({
+      url: `${baseUrl}/solutions/${slug}`,
+      lastModified: solutionsLastModified,
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    });
   }
 
   return sitemapEntries;
