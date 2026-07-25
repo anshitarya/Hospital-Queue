@@ -39,7 +39,7 @@ export function LandingNav() {
       <div className="mx-auto max-w-6xl px-4 sm:px-6 flex items-center justify-between h-16">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 group">
-          <TurnosIcon className="h-10 w-10 transition-transform group-hover:scale-105 duration-200" />
+          <TurnosIcon priority className="h-10 w-10 transition-transform group-hover:scale-105 duration-200" />
           <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
         </Link>
 

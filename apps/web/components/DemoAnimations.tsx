@@ -363,10 +363,10 @@ export function ReceptionDemo() {
                 {p.name}
               </span>
               {p.status === 'new' && (
-                <span className="text-[10px] rounded-full bg-brand-500 text-white px-2 py-0.5">New</span>
+                <span className="text-[10px] rounded-full bg-brand-700 text-white px-2 py-0.5">New</span>
               )}
               {i === 0 && p.status !== 'new' && (
-                <span className="text-[10px] rounded-full bg-emerald-500 text-white px-2 py-0.5">In consultation</span>
+                <span className="text-[10px] rounded-full bg-emerald-700 text-white px-2 py-0.5">In consultation</span>
               )}
             </div>
           ))}

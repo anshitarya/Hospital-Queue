@@ -58,7 +58,7 @@ export const Icon = {
  * - Renders logo-dark.png (2nd image with white text) in Dark mode.
  * - Styled with smooth curved corners (rounded-2xl) and enlarged dimensions.
  */
-export function TurnosIcon({ className = 'h-12 sm:h-14' }: { className?: string }) {
+export function TurnosIcon({ className = 'h-12 sm:h-14', priority = false }: { className?: string; priority?: boolean }) {
   return (
     <div className={`relative inline-flex items-center shrink-0 rounded-2xl overflow-hidden ${className}`}>
       {/* Light mode logo (1st image) */}
@@ -67,6 +67,7 @@ export function TurnosIcon({ className = 'h-12 sm:h-14' }: { className?: string 
         alt="Turnos Logo"
         width={256}
         height={256}
+        fetchPriority={priority ? 'high' : undefined}
         className="h-full w-auto object-contain dark:hidden rounded-2xl"
       />
       {/* Dark mode logo (2nd image) */}
@@ -75,6 +76,7 @@ export function TurnosIcon({ className = 'h-12 sm:h-14' }: { className?: string 
         alt="Turnos Logo"
         width={256}
         height={256}
+        fetchPriority={priority ? 'high' : undefined}
         className="h-full w-auto object-contain hidden dark:block rounded-2xl"
       />
     </div>

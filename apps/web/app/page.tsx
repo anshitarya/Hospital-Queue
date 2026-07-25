@@ -27,10 +27,11 @@ export default function HomePage() {
 
       <LandingNav />
 
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* HERO                                                                */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <section className="relative">
+      <main id="main-content">
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* HERO                                                                */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        <section className="relative">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
             <div className="space-y-6 animate-fade-in">
@@ -235,7 +236,7 @@ export default function HomePage() {
               href={BRAND.doctorSurveyUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white px-5 py-3 text-sm font-semibold shadow-sm transition-colors"
+              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white px-5 py-3 text-sm font-semibold shadow-sm transition-colors"
             >
               <Icon.ClipboardList className="h-4 w-4" />
               Take the survey
@@ -349,6 +350,8 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      </main>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FOOTER                                                              */}
