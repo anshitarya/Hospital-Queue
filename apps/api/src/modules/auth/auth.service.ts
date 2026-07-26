@@ -42,7 +42,7 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly usageEvents: UsageEventService,
     private readonly googleAuth: GoogleAuthService,
-  ) {}
+  ) { }
 
   async staffLogin(identifier: string, password: string): Promise<AuthResult> {
     if (!FEATURES.ENABLE_DEV_AUTH_BYPASS) {
@@ -359,8 +359,8 @@ export class AuthService {
       data: { pendingEmail: email },
     });
 
-    const { devCode } = await this.otp.issue('email', email);
-    return { sent: true, devCode };
+    await this.otp.issue('email', email);
+    return { sent: true };
   }
 
   async verifyEmail(userId: string, code: string) {
@@ -508,8 +508,8 @@ export class AuthService {
       throw new BadRequestException('This phone number is registered to a staff account');
     }
 
-    const res = await this.otp.issue('phone', normalized);
-    return { sent: true, devCode: res.devCode };
+    await this.otp.issue('phone', normalized);
+    return { sent: true };
   }
 
   async verifyCustomerOtp(phone: string, code: string): Promise<AuthResult> {

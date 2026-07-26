@@ -22,14 +22,14 @@ export default function PatientLoginPage() {
   const router = useRouter();
   const setSession = useAuth((s) => s.setSession);
 
-  const [phone, setPhone]             = useState('');
-  const [e164, setE164]               = useState('');
+  const [phone, setPhone] = useState('');
+  const [e164, setE164] = useState('');
   const [phoneResult, setPhoneResult] = useState<PhoneValidationResult>({ ok: false });
-  const [step, setStep]               = useState<Step>('phone');
-  const [busy, setBusy]               = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [step, setStep] = useState<Step>('phone');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [otpLoginEnabled, setOtpLoginEnabled] = useState(true);
-  const [devCode, setDevCode]         = useState<string | null>(null);
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   useEffect(() => {
     getAuthStatus()
@@ -38,7 +38,7 @@ export default function PatientLoginPage() {
           setOtpLoginEnabled(status.customerOtpLoginEnabled);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   function err(msg: unknown) {
@@ -148,7 +148,7 @@ export default function PatientLoginPage() {
                 </button>
               </form>
               <p className="text-xs text-slate-400 text-center">
-                 Click Forgot PIN / Login with OTP when logging in for the first time.
+                Click Forgot PIN / Login with OTP when logging in for the first time.
               </p>
             </>
           )}
@@ -264,7 +264,7 @@ function PinPad({
     setEntered((p) => p.slice(0, -1));
   }
 
-  const KEYS = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+  const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
   return (
     <div className="space-y-5">
@@ -274,11 +274,10 @@ function PinPad({
         {Array.from({ length: 4 }, (_, i) => (
           <span
             key={i}
-            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${
-              i < entered.length
+            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${i < entered.length
                 ? 'bg-brand-600 border-brand-600 scale-110'
                 : 'bg-transparent border-slate-300'
-            }`}
+              }`}
           />
         ))}
       </div>
@@ -361,11 +360,10 @@ function OtpPad({
         {Array.from({ length: 4 }, (_, i) => (
           <span
             key={i}
-            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${
-              i < entered.length
+            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${i < entered.length
                 ? 'bg-brand-600 border-brand-600 scale-110'
                 : 'bg-transparent border-slate-300'
-            }`}
+              }`}
           />
         ))}
       </div>

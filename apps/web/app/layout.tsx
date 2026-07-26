@@ -66,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head />
-      <body className="relative min-h-screen antialiased">
+      <body className="relative min-h-screen antialiased overflow-x-hidden w-full max-w-[100vw]">
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           {/* Ambient glow mesh — only visible in dark mode */}
           <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden dark:block hidden">
@@ -74,7 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <div className="absolute top-1/3 -right-40 h-[650px] w-[650px] rounded-full bg-purple-600/10 blur-[140px]" />
             <div className="absolute -bottom-40 left-1/3 h-[600px] w-[600px] rounded-full bg-sky-500/10 blur-[130px]" />
           </div>
-          <div className="relative z-10">
+          <div className="relative z-10 w-full overflow-x-hidden">
             {children}
           </div>
         </ThemeProvider>

@@ -61,7 +61,7 @@ export class OtpService {
    * In dev mode the code is logged and returned in the response so testers
    * can read it without an SMS provider.
    */
-  async issue(channel: Channel, target: string): Promise<{ devCode?: string }> {
+  async issue(channel: Channel, target: string): Promise<void> {
     const rk = this.issueRateKey(channel, target);
     const count = await this.redis.client.incr(rk);
     if (count === 1) await this.redis.client.expire(rk, this.LIMIT_WINDOW_SECONDS);
@@ -75,89 +75,128 @@ export class OtpService {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
+    if (channel !== 'phone' || !this.authKey) {
+      this.logger.warn(`[SERVER LOG ONLY - DEV OTP] target=${target} code=${code}`);
+      return;
+    }
+
     const digits = target.replace(/\D/g, '');
     const mobile = digits.startsWith('91') ? digits : `91${digits}`;
-
     let sentRealSms = false;
 
-    // Deliver real SMS via MSG91 when authKey is configured
-    if (channel === 'phone' && this.authKey) {
-      // 1. Try MSG91 Widget API if widgetId is configured
-      if (this.widgetId) {
-        try {
-          const url = `https://control.msg91.com/api/v5/widget/sendOtp?authkey=${encodeURIComponent(this.authKey)}&widgetId=${encodeURIComponent(this.widgetId)}`;
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              authkey: this.authKey,
-              Authkey: this.authKey,
-            },
-            body: JSON.stringify({
-              widgetId: this.widgetId,
-              widget_id: this.widgetId,
-              identifier: mobile,
-              mobile: mobile,
-              authkey: this.authKey,
-            }),
-          });
-
-          const data = await response.json();
-          if (response.ok && data.type !== 'error' && data.status !== 'fail' && data.message) {
-            await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
-            sentRealSms = true;
-          } else {
-            this.logger.warn(`MSG91 Widget sendOtp returned: ${JSON.stringify(data)}. Retrying via MSG91 Direct SMS.`);
-          }
-        } catch (widgetErr) {
-          this.logger.warn('MSG91 Widget sendOtp exception', widgetErr as Error);
-        }
+    // 1. Try MSG91 Dedicated Send OTP API
+    try {
+      const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
+      let otpUrl = `https://control.msg91.com/api/v5/otp?authkey=${encodeURIComponent(this.authKey)}&mobile=${encodeURIComponent(mobile)}&otp=${encodeURIComponent(code)}&otp_length=4&otp_expiry=5`;
+      if (templateId) {
+        otpUrl += `&template_id=${encodeURIComponent(templateId)}`;
       }
 
-      // 2. Fallback to MSG91 Transactional SMS API if Widget sendOtp did not succeed
-      if (!sentRealSms) {
-        try {
-          const smsPayload = {
-            sender: process.env.MSG91_SENDER_ID ?? 'TURNOS',
-            route: '4',
-            country: '91',
-            sms: [
-              {
-                message: `Your Turnos verification code is ${code}. Valid for 5 minutes.`,
-                to: [mobile.replace(/^91/, '')],
-              },
-            ],
-          };
+      const res = await fetch(otpUrl, {
+        method: 'POST',
+        headers: {
+          authkey: this.authKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          authkey: this.authKey,
+          mobile,
+          otp: code,
+          otp_length: 4,
+          otp_expiry: 5,
+          ...(templateId ? { template_id: templateId } : {}),
+        }),
+      });
 
-          const smsRes = await fetch('https://api.msg91.com/api/v5/sms', {
-            method: 'POST',
-            headers: {
-              authkey: this.authKey,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(smsPayload),
-          });
+      const text = await res.text();
+      let data: any;
+      try { data = JSON.parse(text); } catch { data = { message: text }; }
 
-          const smsData = await smsRes.json();
-          if (smsRes.ok && smsData.type !== 'error') {
-            this.logger.log(`Sent OTP SMS via MSG91 to ${mobile}`);
-            sentRealSms = true;
-          } else {
-            this.logger.error(`MSG91 Direct SMS error: ${JSON.stringify(smsData)}`);
-          }
-        } catch (smsErr) {
-          this.logger.error('MSG91 Direct SMS exception', smsErr as Error);
+      if (res.ok && data.type !== 'error' && data.status !== 'fail') {
+        this.logger.log(`Sent OTP via MSG91 Dedicated OTP API to ${mobile}`);
+        sentRealSms = true;
+      } else {
+        this.logger.warn(`MSG91 Dedicated OTP API returned: ${JSON.stringify(data)}. Retrying via Widget API.`);
+      }
+    } catch (err) {
+      this.logger.warn('MSG91 Dedicated OTP API exception', err as Error);
+    }
+
+    // 2. Try MSG91 Widget OTP API if widgetId is set
+    if (!sentRealSms && this.widgetId) {
+      try {
+        const widgetUrl = `https://control.msg91.com/api/v5/widget/sendOtp?authkey=${encodeURIComponent(this.authKey)}&widgetId=${encodeURIComponent(this.widgetId)}`;
+        const res = await fetch(widgetUrl, {
+          method: 'POST',
+          headers: {
+            authkey: this.authKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            widgetId: this.widgetId,
+            widget_id: this.widgetId,
+            identifier: mobile,
+            mobile,
+            authkey: this.authKey,
+          }),
+        });
+
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch { data = { message: text }; }
+
+        if (res.ok && data.type !== 'error' && data.status !== 'fail' && data.message) {
+          await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
+          this.logger.log(`Sent OTP via MSG91 Widget API to ${mobile}`);
+          sentRealSms = true;
+        } else {
+          this.logger.warn(`MSG91 Widget API returned: ${JSON.stringify(data)}. Retrying via Flow/SMS API.`);
         }
+      } catch (err) {
+        this.logger.warn('MSG91 Widget API exception', err as Error);
       }
     }
 
-    // In production mode (devMode = false), NEVER return devCode to the frontend!
-    if (!this.devMode) {
-      return {};
-    }
+    // 3. Fallback to MSG91 Flow/SMS API
+    if (!sentRealSms) {
+      try {
+        const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
+        const smsUrl = templateId ? 'https://api.msg91.com/api/v5/flow/' : 'https://api.msg91.com/api/v5/sms';
 
-    // Only return devCode in local dev mode when devMode = true
-    return { devCode: code };
+        const body = templateId ? {
+          template_id: templateId,
+          short_url: '0',
+          recipients: [{ mobiles: mobile, code, otp: code }],
+        } : {
+          sender: process.env.MSG91_SENDER_ID ?? 'TURNOS',
+          route: '4',
+          country: '91',
+          sms: [{ message: `Your Turnos verification code is ${code}. Valid for 5 minutes.`, to: [mobile.replace(/^91/, '')] }],
+        };
+
+        const res = await fetch(smsUrl, {
+          method: 'POST',
+          headers: {
+            authkey: this.authKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch { data = { message: text }; }
+
+        if (res.ok && data.type !== 'error') {
+          this.logger.log(`Sent OTP via MSG91 Flow/SMS API to ${mobile}`);
+          sentRealSms = true;
+        } else {
+          this.logger.error(`MSG91 Flow/SMS API error: ${JSON.stringify(data)}`);
+        }
+      } catch (err) {
+        this.logger.error('MSG91 Flow/SMS API exception', err as Error);
+      }
+    }
   }
 
   /**

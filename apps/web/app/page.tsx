@@ -17,7 +17,7 @@ const FEATURE_CARDS = FEATURES.map((f) => ({
 
 export default function HomePage() {
   return (
-    <div className="relative">
+    <div className="relative w-full overflow-x-hidden">
       {/* Background mesh */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[480px] w-[480px] rounded-full bg-brand-200/40 blur-3xl" />
@@ -357,38 +357,85 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FOOTER                                                              */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <footer className="border-t border-slate-200 dark:border-white/10 py-10 bg-slate-50/50 dark:bg-slate-950/50">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-400">
-            <TurnosIcon className="h-7 w-7" />
-            <span className="font-medium">Turnos · Built with care in India.</span>
+      <footer className="border-t border-slate-200 dark:border-white/10 py-12 bg-slate-50/60 dark:bg-slate-950/80">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 space-y-8">
+          {/* Main Footer Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            {/* Brand Col */}
+            <div className="md:col-span-2 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <TurnosIcon className="h-8 w-8 text-slate-900 dark:text-white" />
+                <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-sm leading-relaxed">
+                Live queue management and virtual token system. Built with care in India.
+              </p>
+            </div>
+
+            {/* Quick Links */}
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-white">
+                Quick Links
+              </div>
+              <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li>
+                  <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Sign in
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/faq" className="hover:text-slate-900 dark:hover:text-white font-semibold text-brand-600 dark:text-emerald-400 transition-colors">
+                    FAQ
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/terms" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Terms & Conditions
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/privacy" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Privacy Policy
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Contact Col */}
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-white">
+                Contact Us
+              </div>
+              <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li>
+                  <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-2 transition-colors whitespace-nowrap">
+                    <Icon.Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>{BRAND.contact.phone}</span>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-[#25D366] inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                  >
+                    <Icon.Whatsapp className="h-4 w-4 text-[#25D366] shrink-0" />
+                    <span>WhatsApp</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-slate-600 dark:text-slate-400">
-            <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1.5 transition-colors whitespace-nowrap">
-              <Icon.Phone className="h-4 w-4 text-slate-400" /> {BRAND.contact.phone}
-            </a>
-            <a
-              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-[#25D366] inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
-            >
-              <Icon.Whatsapp className="h-4 w-4 text-[#25D366]" /> WhatsApp
-            </a>
-            <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 dark:hover:text-white transition-colors">
-              Sign in
-            </Link>
-            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
-            <Link href="/terms" className="hover:text-slate-900 dark:hover:text-white transition-colors">
-              Terms
-            </Link>
-            <Link href="/privacy" className="hover:text-slate-900 dark:hover:text-white transition-colors">
-              Privacy
-            </Link>
-            <Link href="/faq" className="hover:text-slate-900 font-semibold text-brand-600 dark:text-emerald-400 transition-colors">
-              FAQ
-            </Link>
+          {/* Bottom Bar */}
+          <div className="pt-6 border-t border-slate-200 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-500">
+            <div>© {new Date().getFullYear()} Turnos. All rights reserved.</div>
+            <div className="flex items-center gap-4">
+              <Link href="/terms" className="hover:underline">Terms</Link>
+              <Link href="/privacy" className="hover:underline">Privacy</Link>
+              <Link href="/faq" className="hover:underline">FAQ</Link>
+            </div>
           </div>
         </div>
       </footer>
