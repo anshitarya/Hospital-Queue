@@ -24,10 +24,10 @@ export default () => ({
     redisAdapter: process.env.SOCKET_IO_REDIS_ADAPTER === 'true',
   },
   msg91: {
-    authKey:     process.env.MSG91_AUTH_KEY,
-    senderId:    process.env.MSG91_SENDER_ID ?? 'TURNOS',
-    dltEntityId: process.env.MSG91_DLT_ENTITY_ID,
-    widgetId:    process.env.MSG91_WIDGET_ID,
+    authKey:     process.env.MSG91_AUTH_KEY?.trim(),
+    senderId:    (process.env.MSG91_SENDER_ID ?? 'TURNOS').trim(),
+    dltEntityId: process.env.MSG91_DLT_ENTITY_ID?.trim(),
+    widgetId:    process.env.MSG91_WIDGET_ID?.trim(),
   },
   metaWa: {
     accessToken:   process.env.META_WA_ACCESS_TOKEN,
