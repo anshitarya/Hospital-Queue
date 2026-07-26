@@ -95,11 +95,14 @@ export class OtpService {
           method: 'POST',
           headers: {
             authkey: cleanAuthKey,
+            Authkey: cleanAuthKey,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             widgetId: cleanWidgetId,
             widget_id: cleanWidgetId,
+            tokenAuth: cleanAuthKey,
+            authkey: cleanAuthKey,
             identifier: mobileWith91,
             mobile: mobileWith91,
           }),
