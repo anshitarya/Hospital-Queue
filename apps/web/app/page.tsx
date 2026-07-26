@@ -312,6 +312,7 @@ export default function HomePage() {
                   </div>
 
                   {/* Call */}
+                  {/* Call */}
                   <a
                     href={`tel:${BRAND.contact.phoneTel}`}
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
@@ -321,7 +322,7 @@ export default function HomePage() {
                     </span>
                     <div>
                       <div className="text-xs text-white/70">Call us</div>
-                      <div className="font-semibold text-lg tracking-wide">{BRAND.contact.phone}</div>
+                      <div className="font-semibold text-base sm:text-lg tracking-wide whitespace-nowrap">{BRAND.contact.phone}</div>
                     </div>
                   </a>
 
@@ -337,7 +338,7 @@ export default function HomePage() {
                     </span>
                     <div>
                       <div className="text-xs text-white/70">WhatsApp us</div>
-                      <div className="font-semibold tracking-wide">{BRAND.contact.phone}</div>
+                      <div className="font-semibold text-base sm:text-lg tracking-wide whitespace-nowrap">{BRAND.contact.phone}</div>
                     </div>
                   </a>
 
@@ -356,29 +357,38 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FOOTER                                                              */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <footer className="border-t border-slate-200 py-10">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 text-sm text-slate-500">
+      <footer className="border-t border-slate-200 dark:border-white/10 py-10 bg-slate-50/50 dark:bg-slate-950/50">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-400">
             <TurnosIcon className="h-7 w-7" />
-            <span>Turnos · Built with care in India.</span>
+            <span className="font-medium">Turnos · Built with care in India.</span>
           </div>
-          <div className="flex items-center gap-4 text-sm text-slate-500">
-            <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 inline-flex items-center gap-1.5">
-              <Icon.Phone className="h-4 w-4" /> {BRAND.contact.phone}
+
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-slate-600 dark:text-slate-400">
+            <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-1.5 transition-colors whitespace-nowrap">
+              <Icon.Phone className="h-4 w-4 text-slate-400" /> {BRAND.contact.phone}
             </a>
             <a
               href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-[#25D366] inline-flex items-center gap-1.5"
+              className="hover:text-[#25D366] inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
             >
-              <Icon.Whatsapp className="h-4 w-4" /> WhatsApp
+              <Icon.Whatsapp className="h-4 w-4 text-[#25D366]" /> WhatsApp
             </a>
-            <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900">Sign in</Link>
-            <span className="text-slate-300">|</span>
-            <Link href="/terms" className="hover:text-slate-900">Terms</Link>
-            <Link href="/privacy" className="hover:text-slate-900">Privacy</Link>
-            <Link href="/faq" className="hover:text-slate-900 font-semibold text-brand-600 dark:text-emerald-400">FAQ</Link>
+            <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+              Sign in
+            </Link>
+            <span className="text-slate-300 dark:text-slate-700 hidden sm:inline">|</span>
+            <Link href="/terms" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+              Terms
+            </Link>
+            <Link href="/privacy" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+              Privacy
+            </Link>
+            <Link href="/faq" className="hover:text-slate-900 font-semibold text-brand-600 dark:text-emerald-400 transition-colors">
+              FAQ
+            </Link>
           </div>
         </div>
       </footer>

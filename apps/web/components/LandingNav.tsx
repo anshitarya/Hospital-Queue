@@ -30,10 +30,10 @@ export function LandingNav() {
   return (
     <header
       className={
-        'sticky top-0 z-40 transition-all duration-300 ' +
+        'sticky top-0 z-50 transition-colors duration-300 ' +
         (scrolled
-          ? 'bg-white/80 dark:bg-slate-950/70 backdrop-blur-2xl border-b border-slate-200 dark:border-white/10 shadow-sm dark:shadow-glass py-1'
-          : 'bg-transparent py-2')
+          ? 'bg-white/90 dark:bg-slate-950/85 backdrop-blur-2xl border-b border-slate-200/80 dark:border-white/10 shadow-sm dark:shadow-glass'
+          : 'bg-transparent')
       }
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6 flex items-center justify-between h-16">

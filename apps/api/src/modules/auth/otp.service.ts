@@ -75,7 +75,7 @@ export class OtpService {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
-    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId;
+    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId && !this.devMode;
 
     if (!useRealMsg91) {
       this.logger.warn(`[DEV OTP] channel=${channel} target=${target} code=${code} (expires in ${this.ttl}s)`);
@@ -86,7 +86,7 @@ export class OtpService {
     const mobile = digits.startsWith('91') ? digits : `91${digits}`;
 
     try {
-      const response = await fetch('https://api.msg91.com/api/v5/widget/sendOtp', {
+      const response = await fetch('https://control.msg91.com/api/v5/widget/sendOtp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -99,9 +99,12 @@ export class OtpService {
       });
 
       const data = await response.json();
-      if (!response.ok || data.type === 'error' || !data.message) {
+      if (!response.ok || data.type === 'error' || !data.message || data.status === 'fail') {
         this.logger.error(`MSG91 Widget sendOtp failed: ${JSON.stringify(data)}`);
-        throw new BadRequestException(data.message || 'Failed to send OTP via MSG91 Widget');
+        const errDetail = data.message === 'Invalid request' 
+          ? 'Failed to send OTP SMS via MSG91. Please check MSG91_AUTH_KEY and MSG91_WIDGET_ID in your configuration.'
+          : (data.message || 'Failed to send OTP via MSG91 Widget');
+        throw new BadRequestException(errDetail);
       }
 
       await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
@@ -131,7 +134,7 @@ export class OtpService {
       );
     }
 
-    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId;
+    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId && !this.devMode;
 
     if (!useRealMsg91) {
       const stored = await this.redis.client.get(this.key(channel, target));
@@ -149,7 +152,7 @@ export class OtpService {
     }
 
     try {
-      const response = await fetch('https://api.msg91.com/api/v5/widget/verifyOtp', {
+      const response = await fetch('https://control.msg91.com/api/v5/widget/verifyOtp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
