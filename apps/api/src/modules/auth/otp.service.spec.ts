@@ -242,7 +242,7 @@ describe('OtpService.verify', () => {
     const res = await svc.verify('phone', '+919876543210', '123456');
     expect(res).toBe(true);
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.msg91.com/api/v5/widget/verifyOtp',
+      'https://control.msg91.com/api/v5/widget/verifyOtp',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({

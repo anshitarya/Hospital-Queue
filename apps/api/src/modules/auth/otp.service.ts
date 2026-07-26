@@ -124,11 +124,11 @@ export class OtpService {
           await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
           this.logger.log(`[MSG91 WIDGET SUCCESS] Sent OTP to ${mobileWith91} (reqId: ${data.message})`);
           sentRealSms = true;
-        } else if (data.message === 'Invalid request' || res.status === 403) {
-          this.logger.error(`[MSG91 CONFIG ERROR] MSG91 returned 403/Invalid request. Please verify MSG91_WIDGET_ID on Fly is the Widget Token ID from MSG91 Dashboard.`);
+        } else {
+          this.logger.warn(`[MSG91 WIDGET INFO] Widget sendOtp returned status=${res.status} message="${data.message ?? ''}". Falling back to MSG91 Dedicated OTP API...`);
         }
       } catch (err) {
-        this.logger.error('MSG91 Widget API exception', err as Error);
+        this.logger.warn('MSG91 Widget API exception, falling back to Dedicated OTP API', err as Error);
       }
     }
 
@@ -136,7 +136,7 @@ export class OtpService {
     if (!sentRealSms) {
       try {
         const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
-        let otpUrl = `https://api.msg91.com/api/v5/otp?authkey=${encodeURIComponent(cleanAuthKey)}&mobile=${encodeURIComponent(mobileWith91)}&otp=${encodeURIComponent(code)}&otp_length=4&otp_expiry=5`;
+        let otpUrl = `https://control.msg91.com/api/v5/otp?authkey=${encodeURIComponent(cleanAuthKey)}&mobile=${encodeURIComponent(mobileWith91)}&otp=${encodeURIComponent(code)}&otp_length=4&otp_expiry=5`;
         if (templateId) {
           otpUrl += `&template_id=${encodeURIComponent(templateId)}`;
         }
@@ -216,7 +216,7 @@ export class OtpService {
     const reqId = await this.redis.client.get(`otp:reqId:${target}`);
     if (channel === 'phone' && cleanAuthKey && cleanWidgetId && reqId) {
       try {
-        const response = await fetch('https://api.msg91.com/api/v5/widget/verifyOtp', {
+        const response = await fetch('https://control.msg91.com/api/v5/widget/verifyOtp', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -245,7 +245,7 @@ export class OtpService {
     // 3. MSG91 Dedicated OTP verification (fallback when Dedicated OTP API was used)
     if (channel === 'phone' && cleanAuthKey) {
       try {
-        const verifyUrl = `https://api.msg91.com/api/v5/otp/verify?mobile=${encodeURIComponent(mobileWith91)}&otp=${encodeURIComponent(code)}&authkey=${encodeURIComponent(cleanAuthKey)}`;
+        const verifyUrl = `https://control.msg91.com/api/v5/otp/verify?mobile=${encodeURIComponent(mobileWith91)}&otp=${encodeURIComponent(code)}&authkey=${encodeURIComponent(cleanAuthKey)}`;
         const response = await fetch(verifyUrl, {
           method: 'GET',
           headers: {
@@ -256,7 +256,8 @@ export class OtpService {
 
         const data = await response.json().catch(() => ({}));
         this.logger.log(`MSG91 Dedicated OTP verify response: status=${response.status} body=${JSON.stringify(data)}`);
-        if (response.ok && (data.type === 'success' || data.message?.toLowerCase().includes('success') || data.message === 'OTP verified success')) {
+        const msgLower = (data.message ?? '').toString().toLowerCase();
+        if (response.ok && (data.type === 'success' || msgLower.includes('success') || msgLower.includes('verified') || msgLower.includes('already'))) {
           await this.redis.client.del(this.key(channel, target));
           await this.redis.client.del(`otp:reqId:${target}`);
           await this.redis.client.del(vk);
