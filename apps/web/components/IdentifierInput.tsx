@@ -86,7 +86,7 @@ export function IdentifierInput({
         {/* +91 badge — only visible in phone mode, uses absolute positioning
             so the input width never changes */}
         {mode === 'phone' && (
-          <span className="inline-flex items-center px-3 rounded-l-lg bg-slate-100 border border-r-0 border-slate-200 text-sm text-slate-600 font-medium select-none shrink-0">
+          <span className="inline-flex items-center px-3 rounded-l-2xl bg-slate-100 dark:bg-white/10 border border-r-0 border-slate-200 dark:border-white/10 text-sm text-slate-600 dark:text-slate-300 font-medium select-none shrink-0 backdrop-blur-xl">
             +91
           </span>
         )}
