@@ -75,43 +75,89 @@ export class OtpService {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
-    const useRealMsg91 = channel === 'phone' && this.authKey && this.widgetId && !this.devMode;
-
-    if (!useRealMsg91) {
-      this.logger.warn(`[DEV OTP] channel=${channel} target=${target} code=${code} (expires in ${this.ttl}s)`);
-      return { devCode: code };
-    }
-
     const digits = target.replace(/\D/g, '');
     const mobile = digits.startsWith('91') ? digits : `91${digits}`;
 
-    try {
-      const response = await fetch('https://control.msg91.com/api/v5/widget/sendOtp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authkey: this.authKey,
-        },
-        body: JSON.stringify({
-          widgetId: this.widgetId,
-          identifier: mobile,
-          mobile: mobile,
-        }),
-      });
+    let sentRealSms = false;
 
-      const data = await response.json();
-      if (!response.ok || data.type === 'error' || !data.message || data.status === 'fail') {
-        this.logger.error(`MSG91 Widget sendOtp failed: ${JSON.stringify(data)}. Falling back to local OTP.`);
-        // Fallback to local OTP so login never breaks when MSG91 widget credentials are invalid or unapproved
-        return { devCode: code };
+    // Deliver real SMS via MSG91 when authKey is configured
+    if (channel === 'phone' && this.authKey) {
+      // 1. Try MSG91 Widget API if widgetId is configured
+      if (this.widgetId) {
+        try {
+          const url = `https://control.msg91.com/api/v5/widget/sendOtp?authkey=${encodeURIComponent(this.authKey)}&widgetId=${encodeURIComponent(this.widgetId)}`;
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              authkey: this.authKey,
+              Authkey: this.authKey,
+            },
+            body: JSON.stringify({
+              widgetId: this.widgetId,
+              widget_id: this.widgetId,
+              identifier: mobile,
+              mobile: mobile,
+              authkey: this.authKey,
+            }),
+          });
+
+          const data = await response.json();
+          if (response.ok && data.type !== 'error' && data.status !== 'fail' && data.message) {
+            await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
+            sentRealSms = true;
+          } else {
+            this.logger.warn(`MSG91 Widget sendOtp returned: ${JSON.stringify(data)}. Retrying via MSG91 Direct SMS.`);
+          }
+        } catch (widgetErr) {
+          this.logger.warn('MSG91 Widget sendOtp exception', widgetErr as Error);
+        }
       }
 
-      await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
-      return {};
-    } catch (err) {
-      this.logger.error('MSG91 Widget sendOtp exception. Falling back to local OTP.', err as Error);
-      return { devCode: code };
+      // 2. Fallback to MSG91 Transactional SMS API if Widget sendOtp did not succeed
+      if (!sentRealSms) {
+        try {
+          const smsPayload = {
+            sender: process.env.MSG91_SENDER_ID ?? 'TURNOS',
+            route: '4',
+            country: '91',
+            sms: [
+              {
+                message: `Your Turnos verification code is ${code}. Valid for 5 minutes.`,
+                to: [mobile.replace(/^91/, '')],
+              },
+            ],
+          };
+
+          const smsRes = await fetch('https://api.msg91.com/api/v5/sms', {
+            method: 'POST',
+            headers: {
+              authkey: this.authKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(smsPayload),
+          });
+
+          const smsData = await smsRes.json();
+          if (smsRes.ok && smsData.type !== 'error') {
+            this.logger.log(`Sent OTP SMS via MSG91 to ${mobile}`);
+            sentRealSms = true;
+          } else {
+            this.logger.error(`MSG91 Direct SMS error: ${JSON.stringify(smsData)}`);
+          }
+        } catch (smsErr) {
+          this.logger.error('MSG91 Direct SMS exception', smsErr as Error);
+        }
+      }
     }
+
+    // In production mode (devMode = false), NEVER return devCode to the frontend!
+    if (!this.devMode) {
+      return {};
+    }
+
+    // Only return devCode in local dev mode when devMode = true
+    return { devCode: code };
   }
 
   /**
@@ -130,7 +176,7 @@ export class OtpService {
       );
     }
 
-    // Check local Redis key first (handles devMode and fallback mode)
+    // Check local Redis key first
     const stored = await this.redis.client.get(this.key(channel, target));
     if (stored && stored === code) {
       await this.redis.client.del(this.key(channel, target));
