@@ -75,69 +75,31 @@ export class OtpService {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
     await this.redis.client.set(this.key(channel, target), code, 'EX', this.ttl);
 
-    if (channel !== 'phone' || !this.authKey) {
-      this.logger.warn(`[SERVER LOG ONLY - DEV OTP] target=${target} code=${code}`);
+    const cleanAuthKey = (this.authKey ?? '').trim();
+    const cleanWidgetId = (this.widgetId ?? '').trim();
+
+    if (channel !== 'phone' || !cleanAuthKey) {
+      this.logger.warn(`[DEV OTP LOG] target=${target} code=${code}`);
       return;
     }
 
     const digits = target.replace(/\D/g, '');
-    const mobile = digits.startsWith('91') ? digits : `91${digits}`;
+    const mobileWith91 = digits.startsWith('91') ? digits : `91${digits}`;
     let sentRealSms = false;
 
-    // 1. Try MSG91 Dedicated Send OTP API
-    try {
-      const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
-      let otpUrl = `https://control.msg91.com/api/v5/otp?authkey=${encodeURIComponent(this.authKey)}&mobile=${encodeURIComponent(mobile)}&otp=${encodeURIComponent(code)}&otp_length=4&otp_expiry=5`;
-      if (templateId) {
-        otpUrl += `&template_id=${encodeURIComponent(templateId)}`;
-      }
-
-      const res = await fetch(otpUrl, {
-        method: 'POST',
-        headers: {
-          authkey: this.authKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          authkey: this.authKey,
-          mobile,
-          otp: code,
-          otp_length: 4,
-          otp_expiry: 5,
-          ...(templateId ? { template_id: templateId } : {}),
-        }),
-      });
-
-      const text = await res.text();
-      let data: any;
-      try { data = JSON.parse(text); } catch { data = { message: text }; }
-
-      if (res.ok && data.type !== 'error' && data.status !== 'fail') {
-        this.logger.log(`Sent OTP via MSG91 Dedicated OTP API to ${mobile}`);
-        sentRealSms = true;
-      } else {
-        this.logger.warn(`MSG91 Dedicated OTP API returned: ${JSON.stringify(data)}. Retrying via Widget API.`);
-      }
-    } catch (err) {
-      this.logger.warn('MSG91 Dedicated OTP API exception', err as Error);
-    }
-
-    // 2. Try MSG91 Widget OTP API if widgetId is set
-    if (!sentRealSms && this.widgetId) {
+    // Primary & Exclusive: MSG91 OTP Widget API (v5) — handles DLT automatically
+    if (cleanWidgetId) {
       try {
-        const widgetUrl = `https://control.msg91.com/api/v5/widget/sendOtp?authkey=${encodeURIComponent(this.authKey)}&widgetId=${encodeURIComponent(this.widgetId)}`;
+        const widgetUrl = 'https://control.msg91.com/api/v5/widget/sendOtp';
         const res = await fetch(widgetUrl, {
           method: 'POST',
           headers: {
-            authkey: this.authKey,
+            authkey: cleanAuthKey,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            widgetId: this.widgetId,
-            widget_id: this.widgetId,
-            identifier: mobile,
-            mobile,
-            authkey: this.authKey,
+            widgetId: cleanWidgetId,
+            identifier: mobileWith91,
           }),
         });
 
@@ -145,58 +107,24 @@ export class OtpService {
         let data: any;
         try { data = JSON.parse(text); } catch { data = { message: text }; }
 
-        if (res.ok && data.type !== 'error' && data.status !== 'fail' && data.message) {
+        this.logger.log(`MSG91 Widget sendOtp response: status=${res.status} body=${JSON.stringify(data)}`);
+
+        if (res.ok && data.type !== 'error' && data.status !== 'fail' && data.message && data.message !== 'Invalid request') {
           await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
-          this.logger.log(`Sent OTP via MSG91 Widget API to ${mobile}`);
+          this.logger.log(`[MSG91 WIDGET SUCCESS] Sent OTP to ${mobileWith91} (reqId: ${data.message})`);
           sentRealSms = true;
-        } else {
-          this.logger.warn(`MSG91 Widget API returned: ${JSON.stringify(data)}. Retrying via Flow/SMS API.`);
+        } else if (data.message === 'Invalid request') {
+          this.logger.error(`[MSG91 CONFIG ERROR] MSG91 returned 'Invalid request'. Please verify that MSG91_WIDGET_ID is the Widget Token ID from MSG91 Dashboard -> Tokens / Server Side Integration (not the widget display name).`);
         }
       } catch (err) {
-        this.logger.warn('MSG91 Widget API exception', err as Error);
+        this.logger.error('MSG91 Widget API exception', err as Error);
       }
+    } else {
+      this.logger.warn('MSG91_WIDGET_ID is not configured — MSG91 Widget OTP skipped.');
     }
 
-    // 3. Fallback to MSG91 Flow/SMS API
-    if (!sentRealSms) {
-      try {
-        const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
-        const smsUrl = templateId ? 'https://api.msg91.com/api/v5/flow/' : 'https://api.msg91.com/api/v5/sms';
-
-        const body = templateId ? {
-          template_id: templateId,
-          short_url: '0',
-          recipients: [{ mobiles: mobile, code, otp: code }],
-        } : {
-          sender: process.env.MSG91_SENDER_ID ?? 'TURNOS',
-          route: '4',
-          country: '91',
-          sms: [{ message: `Your Turnos verification code is ${code}. Valid for 5 minutes.`, to: [mobile.replace(/^91/, '')] }],
-        };
-
-        const res = await fetch(smsUrl, {
-          method: 'POST',
-          headers: {
-            authkey: this.authKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        });
-
-        const text = await res.text();
-        let data: any;
-        try { data = JSON.parse(text); } catch { data = { message: text }; }
-
-        if (res.ok && data.type !== 'error') {
-          this.logger.log(`Sent OTP via MSG91 Flow/SMS API to ${mobile}`);
-          sentRealSms = true;
-        } else {
-          this.logger.error(`MSG91 Flow/SMS API error: ${JSON.stringify(data)}`);
-        }
-      } catch (err) {
-        this.logger.error('MSG91 Flow/SMS API exception', err as Error);
-      }
-    }
+    // Audit log in fly logs for admin troubleshooting
+    this.logger.log(`[OTP DISPATCH AUDIT] target=${target} code=${code} msg91_delivered=${sentRealSms}`);
   }
 
   /**
