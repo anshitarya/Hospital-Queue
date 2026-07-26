@@ -100,6 +100,7 @@ describe('OtpService.issue', () => {
         body: JSON.stringify({
           widgetId: 'test-widget-id',
           identifier: '919876543210',
+          otp_length: 4,
         }),
       }),
     );

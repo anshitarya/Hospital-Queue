@@ -4,7 +4,7 @@ import { RedisService } from '../../common/redis/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 /**
- * OtpService issues and verifies 6-digit one-time codes.
+ * OtpService issues and verifies 4-digit one-time codes.
  *
  * Codes are stored in Redis with a TTL (default 5 min) and per-target rate
  * limits (5 issuances / 10 min, 5 verify attempts / 10 min). The same
@@ -104,6 +104,7 @@ export class OtpService {
           body: JSON.stringify({
             widgetId: cleanWidgetId,
             identifier: mobileWith91,
+            otp_length: 4, // Explicitly request 4-digit OTP for Turnos template
             ...(cleanTokenAuth ? { tokenAuth: cleanTokenAuth } : {}),
           }),
         });

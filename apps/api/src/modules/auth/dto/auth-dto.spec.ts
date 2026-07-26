@@ -133,8 +133,8 @@ describe('OtpRequestDto', () => {
   });
 
   it('rejects bad phone via transform', async () => {
-    const { transformError } = await runValidate(OtpRequestDto, { phone: 'xx' });
-    expect(transformError).toBeDefined();
+    const { errors } = await runValidate(OtpRequestDto, { phone: 'xx' });
+    expect(errors.some((e) => e.property === 'phone')).toBe(true);
   });
 });
 
