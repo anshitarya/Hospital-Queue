@@ -10,7 +10,6 @@ import { HOSPITAL_DEPARTMENTS, FORMS } from '@/lib/config';
 import { useRequireRole } from '@/lib/useRequireRole';
 import { PageLoader } from '@/components/PageLoader';
 import { ReceptionPageSkeleton } from '@/components/Skeleton';
-import { QueueManager } from '@/components/QueueManager';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import dynamic from 'next/dynamic';
 import { DepartmentPicker, type DepartmentOption } from '@/components/DepartmentPicker';
@@ -35,6 +34,7 @@ const WorkflowTab = dynamic(() => import('@/components/WorkflowTab').then((m) =>
 const AnalyticsTab = dynamic(() => import('@/components/AnalyticsTab').then((m) => m.AnalyticsTab), { loading: TabSkeleton });
 const ReceptionistAssignmentsTab = dynamic(() => import('@/components/ReceptionistAssignmentsTab').then((m) => m.ReceptionistAssignmentsTab), { loading: TabSkeleton });
 const BillingTab = dynamic(() => import('@/components/BillingTab').then((m) => m.BillingTab), { loading: TabSkeleton });
+const QueueManager = dynamic(() => import('@/components/QueueManager').then((m) => m.QueueManager), { loading: TabSkeleton });
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────

@@ -90,6 +90,9 @@ function auditBundleSizes() {
   }
 }
 
+const httpAgent = new http.Agent({ keepAlive: true });
+const httpsAgent = new https.Agent({ keepAlive: true });
+
 function fetchTimed(urlStr, redirectCount = 0) {
   return new Promise((resolve) => {
     if (redirectCount > 5) {
@@ -98,12 +101,14 @@ function fetchTimed(urlStr, redirectCount = 0) {
     }
 
     const url = new URL(urlStr);
-    const client = url.protocol === 'https:' ? https : http;
+    const isHttps = url.protocol === 'https:';
+    const client = isHttps ? https : http;
+    const agent = isHttps ? httpsAgent : httpAgent;
 
     const startTime = process.hrtime.bigint();
     let ttfbTime = 0;
 
-    const req = client.get(urlStr, { timeout: 5000 }, (res) => {
+    const req = client.get(urlStr, { agent, timeout: 5000 }, (res) => {
       ttfbTime = Number(process.hrtime.bigint() - startTime) / 1e6;
 
       // Handle HTTP redirects (301, 302, 307, 308)

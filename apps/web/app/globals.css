@@ -165,7 +165,7 @@
     @apply bg-brand-600 text-white shadow-sm font-semibold;
   }
   .dark .tab-active {
-    @apply bg-white/20 text-white shadow-soft backdrop-blur-2xl border border-white/25 font-semibold;
+    @apply bg-brand-600 text-white shadow-soft backdrop-blur-2xl border border-brand-500/50 font-semibold;
   }
   .tab-inactive {
     @apply text-slate-500 hover:text-slate-900 hover:bg-slate-100 font-medium;
@@ -448,6 +448,14 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+@keyframes warp-vibrate {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-1px, 1px); }
+  40% { transform: translate(-1px, -1px); }
+  60% { transform: translate(1px, 1px); }
+  80% { transform: translate(1px, -1px); }
+  100% { transform: translate(0, 0); }
+}
 
 .animate-spin-slow {
   animation: spin-slow 8s linear infinite;
@@ -463,4 +471,7 @@
 }
 .animate-shimmer-progress {
   animation: shimmer-progress 1.5s ease-in-out infinite;
+}
+.animate-warp-vibrate {
+  animation: warp-vibrate 0.1s linear infinite;
 }

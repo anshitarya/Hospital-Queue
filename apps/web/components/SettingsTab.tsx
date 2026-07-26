@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
 import { type ToastMessage } from './Toast';
-import { QRCodePanel } from './QRCodePanel';
+import dynamic from 'next/dynamic';
+const QRCodePanel = dynamic(() => import('./QRCodePanel').then(m => m.QRCodePanel), { ssr: false });
 import { FormSkeleton } from './Skeleton';
 
 interface SettingsData {

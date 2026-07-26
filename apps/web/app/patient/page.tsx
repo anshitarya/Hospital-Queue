@@ -16,7 +16,8 @@ import { getLabels } from '@/lib/labels';
 import { formatTimeIst, serviceDay, serviceDaysAgo, entryServiceDay, formatDateIst, formatRelativeTimeIst } from '@/lib/datetime';
 import { resolveAvgMinutes, formatAvgMinutes } from '@/lib/queueAvg';
 import { Icon } from '@/components/Icons';
-import { BookingDirectory } from '@/components/BookingDirectory';
+import dynamic from 'next/dynamic';
+const BookingDirectory = dynamic(() => import('@/components/BookingDirectory').then((m) => m.BookingDirectory), { ssr: false });
 import { FORMS } from '@/lib/config';
 import { useWebPush } from '@/lib/useWebPush';
 
