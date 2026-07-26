@@ -328,7 +328,7 @@ export default function HomePage() {
 
                   {/* WhatsApp */}
                   <a
-                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Turnos`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
@@ -415,7 +415,7 @@ export default function HomePage() {
                 </li>
                 <li>
                   <a
-                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Turnos`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-[#25D366] inline-flex items-center gap-2 transition-colors whitespace-nowrap"

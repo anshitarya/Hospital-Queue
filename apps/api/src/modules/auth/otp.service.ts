@@ -87,10 +87,10 @@ export class OtpService {
     const mobileWith91 = digits.startsWith('91') ? digits : `91${digits}`;
     let sentRealSms = false;
 
-    // Primary & Exclusive: MSG91 OTP Widget API (v5) — handles DLT automatically
+    // 1. Primary: MSG91 OTP Widget API (v5) — handles DLT automatically
     if (cleanWidgetId) {
       try {
-        const widgetUrl = 'https://control.msg91.com/api/v5/widget/sendOtp';
+        const widgetUrl = `https://control.msg91.com/api/v5/widget/sendOtp`;
         const res = await fetch(widgetUrl, {
           method: 'POST',
           headers: {
@@ -99,7 +99,9 @@ export class OtpService {
           },
           body: JSON.stringify({
             widgetId: cleanWidgetId,
+            widget_id: cleanWidgetId,
             identifier: mobileWith91,
+            mobile: mobileWith91,
           }),
         });
 
@@ -113,14 +115,52 @@ export class OtpService {
           await this.redis.client.set(`otp:reqId:${target}`, data.message, 'EX', this.ttl);
           this.logger.log(`[MSG91 WIDGET SUCCESS] Sent OTP to ${mobileWith91} (reqId: ${data.message})`);
           sentRealSms = true;
-        } else if (data.message === 'Invalid request') {
-          this.logger.error(`[MSG91 CONFIG ERROR] MSG91 returned 'Invalid request'. Please verify that MSG91_WIDGET_ID is the Widget Token ID from MSG91 Dashboard -> Tokens / Server Side Integration (not the widget display name).`);
+        } else if (data.message === 'Invalid request' || res.status === 403) {
+          this.logger.error(`[MSG91 CONFIG ERROR] MSG91 returned 403 'Invalid request'. Please verify MSG91_WIDGET_ID on Fly is the Widget Token ID from MSG91 Dashboard -> Tokens (not display name 'SecureOTPWidget1ZGN').`);
         }
       } catch (err) {
         this.logger.error('MSG91 Widget API exception', err as Error);
       }
-    } else {
-      this.logger.warn('MSG91_WIDGET_ID is not configured — MSG91 Widget OTP skipped.');
+    }
+
+    // 2. Secondary Fallback: MSG91 Dedicated OTP API
+    if (!sentRealSms) {
+      try {
+        const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
+        let otpUrl = `https://control.msg91.com/api/v5/otp?authkey=${encodeURIComponent(cleanAuthKey)}&mobile=${encodeURIComponent(mobileWith91)}&otp=${encodeURIComponent(code)}&otp_length=4&otp_expiry=5`;
+        if (templateId) {
+          otpUrl += `&template_id=${encodeURIComponent(templateId)}`;
+        }
+
+        const res = await fetch(otpUrl, {
+          method: 'POST',
+          headers: {
+            authkey: cleanAuthKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            authkey: cleanAuthKey,
+            mobile: mobileWith91,
+            otp: code,
+            otp_length: 4,
+            otp_expiry: 5,
+            ...(templateId ? { template_id: templateId } : {}),
+          }),
+        });
+
+        const text = await res.text();
+        let data: any;
+        try { data = JSON.parse(text); } catch { data = { message: text }; }
+
+        this.logger.log(`MSG91 Dedicated OTP fallback response: status=${res.status} body=${JSON.stringify(data)}`);
+
+        if (res.ok && data.type !== 'error' && data.status !== 'fail' && (data.type === 'success' || data.message?.includes('success') || data.message?.includes('sent') || data.request_id)) {
+          this.logger.log(`[MSG91 DEDICATED SUCCESS] Sent OTP to ${mobileWith91}`);
+          sentRealSms = true;
+        }
+      } catch (err) {
+        this.logger.warn('MSG91 Dedicated OTP fallback exception', err as Error);
+      }
     }
 
     // Audit log in fly logs for admin troubleshooting
