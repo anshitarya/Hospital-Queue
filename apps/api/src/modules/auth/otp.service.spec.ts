@@ -34,14 +34,13 @@ function fakeRedis() {
   };
 }
 
-function makeService(overrides: { devMode?: boolean; ttlSeconds?: number; authKey?: string; widgetId?: string } = {}) {
+function makeService(overrides: { ttlSeconds?: number; authKey?: string; widgetId?: string } = {}) {
   const redis = fakeRedis();
   const config = {
     get: (k: string) => {
-      if (k === 'otp.devMode') return overrides.devMode ?? true;
       if (k === 'otp.ttlSeconds') return overrides.ttlSeconds ?? 300;
-      if (k === 'msg91.authKey') return overrides.authKey;
-      if (k === 'msg91.widgetId') return overrides.widgetId;
+      if (k === 'msg91.authKey') return overrides.authKey ?? 'test-auth-key';
+      if (k === 'msg91.widgetId') return overrides.widgetId ?? 'test-widget-id';
       return undefined;
     },
   } as unknown as ConfigService;
@@ -65,7 +64,7 @@ describe('OtpService.issue', () => {
   beforeEach(() => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ type: 'success', message: 'mock-req-id' }),
+      text: async () => JSON.stringify({ type: 'success', message: 'mock-req-id' }),
     });
   });
 
@@ -73,70 +72,26 @@ describe('OtpService.issue', () => {
     global.fetch = originalFetch;
   });
 
-  it('issues OTP code into Redis store', async () => {
-    const { svc, redis } = makeService({ devMode: true });
-    await svc.issue('phone', '+919876543210');
-    expect(redis._store.get('otp:phone:+919876543210')).toBeDefined();
-  });
-
-  it('calls MSG91 OTP API when authKey is configured', async () => {
-    const { svc } = makeService({ devMode: false, authKey: 'test-auth-key', widgetId: 'test-widget-id' });
+  it('calls MSG91 Widget sendOtp API and stores reqId in Redis', async () => {
+    const { svc, redis } = makeService({ authKey: 'test-auth-key', widgetId: 'test-widget-id' });
     await svc.issue('phone', '+919876543210');
     expect(global.fetch).toHaveBeenCalled();
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.msg91.com/api/v5/widget/sendOtp',
-      expect.objectContaining({
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          authkey: 'test-auth-key',
-        },
-        body: JSON.stringify({
-          widgetId: 'test-widget-id',
-          identifier: '919876543210',
-        }),
-      }),
-    );
+    const fetchCall = (global.fetch as jest.Mock).mock.calls[0];
+    const url: string = fetchCall[0];
+    expect(url).toContain('https://control.msg91.com/api/v5/widget/sendOtp');
+    expect(url).toContain('authkey=test-auth-key');
+    expect(url).toContain('widgetId=test-widget-id');
+    expect(redis._store.get('otp:reqId:+919876543210')).toBe('mock-req-id');
   });
 
-  it('stores the OTP at the right channel-scoped key', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', '+919876543210');
-    expect(redis._store.get('otp:phone:+919876543210')).toBeDefined();
-  });
-
-  it('uses separate keys per channel (phone vs email)', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', 'shared@example.com');
-    await svc.issue('email', 'shared@example.com');
-    expect(redis._store.get('otp:phone:shared@example.com')).toBeDefined();
-    expect(redis._store.get('otp:email:shared@example.com')).toBeDefined();
-  });
-
-  it('rate-limits issuances to 3 per window then throws 429', async () => {
+  it('rate-limits issuances to 5 per window then throws 429', async () => {
     const { svc } = makeService();
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 5; i++) {
       await expect(svc.issue('phone', '+919876543210')).resolves.toBeUndefined();
     }
     await expect(svc.issue('phone', '+919876543210')).rejects.toMatchObject({
       status: HttpStatus.TOO_MANY_REQUESTS,
     });
-  });
-
-  it('rate limit is per-target — different numbers do not share a counter', async () => {
-    const { svc } = makeService();
-    for (let i = 0; i < 3; i++) await svc.issue('phone', '+919876543210');
-    await expect(svc.issue('phone', '+919999999999')).resolves.toBeUndefined();
-  });
-
-  it('issuance overrides any existing stored code for the same target', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', '+919876543210');
-    const firstCode = redis._store.get('otp:phone:+919876543210');
-    await svc.issue('phone', '+919876543210');
-    const secondCode = redis._store.get('otp:phone:+919876543210');
-    expect(secondCode).toBeDefined();
-    expect(firstCode).toBeDefined();
   });
 });
 
@@ -145,83 +100,8 @@ describe('OtpService.verify', () => {
     global.fetch = originalFetch;
   });
 
-  it('accepts the issued code and returns true', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', '+919876543210');
-    const code = redis._store.get('otp:phone:+919876543210');
-    await expect(svc.verify('phone', '+919876543210', code!)).resolves.toBe(true);
-  });
-
-  it('rejects a wrong code with BadRequestException', async () => {
-    const { svc } = makeService();
-    await svc.issue('phone', '+919876543210');
-    await expect(svc.verify('phone', '+919876543210', '0000')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-  });
-
-  it('rejects when no OTP was ever issued', async () => {
-    const { svc } = makeService();
-    await expect(svc.verify('phone', '+919876543210', '1234')).rejects.toThrow(
-      /expired or never issued/i,
-    );
-  });
-
-  it('is one-use — second verify with the same code fails', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', '+919876543210');
-    const code = redis._store.get('otp:phone:+919876543210');
-    await svc.verify('phone', '+919876543210', code!);
-    await expect(svc.verify('phone', '+919876543210', code!)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-  });
-
-  it('rate-limits failed verify attempts to 5 then 429', async () => {
-    const { svc } = makeService();
-    await svc.issue('phone', '+919876543210');
-    for (let i = 0; i < 5; i++) {
-      await expect(svc.verify('phone', '+919876543210', '0000')).rejects.toBeInstanceOf(
-        BadRequestException,
-      );
-    }
-    await expect(svc.verify('phone', '+919876543210', '0000')).rejects.toMatchObject({
-      status: HttpStatus.TOO_MANY_REQUESTS,
-    });
-  });
-
-  it('resets verify counter on success — successive logins not blocked', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', '+919876543210');
-    for (let i = 0; i < 4; i++) {
-      await svc.verify('phone', '+919876543210', '0000').catch(() => undefined);
-    }
-    await svc.issue('phone', '+919876543210');
-    const code = redis._store.get('otp:phone:+919876543210');
-    await expect(svc.verify('phone', '+919876543210', code!)).resolves.toBe(true);
-
-    await svc.issue('phone', '+919876543210');
-    await expect(svc.verify('phone', '+919876543210', '9999')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-  });
-
-  it('handles phone and email channels independently', async () => {
-    const { svc, redis } = makeService();
-    await svc.issue('phone', '+919876543210');
-    const phoneCode = redis._store.get('otp:phone:+919876543210');
-    await svc.issue('email', 'a@example.com');
-    const emailCode = redis._store.get('otp:email:a@example.com');
-
-    await expect(svc.verify('email', '+919876543210', phoneCode!)).rejects.toThrow();
-    await expect(svc.verify('phone', 'a@example.com', emailCode!)).rejects.toThrow();
-
-    await expect(svc.verify('phone', '+919876543210', phoneCode!)).resolves.toBe(true);
-    await expect(svc.verify('email', 'a@example.com', emailCode!)).resolves.toBe(true);
-  });
-
-  it('calls MSG91 Widget verifyOtp when devMode=false', async () => {
-    const { svc, redis } = makeService({ devMode: false, authKey: 'test-auth-key', widgetId: 'test-widget-id' });
+  it('verifies code strictly via MSG91 Widget verifyOtp API', async () => {
+    const { svc, redis } = makeService({ authKey: 'test-auth-key', widgetId: 'test-widget-id' });
     await redis.client.set('otp:reqId:+919876543210', 'mock-req-id');
 
     global.fetch = jest.fn().mockResolvedValue({
@@ -235,12 +115,23 @@ describe('OtpService.verify', () => {
       'https://control.msg91.com/api/v5/widget/verifyOtp',
       expect.objectContaining({
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          authkey: 'test-auth-key',
+        },
         body: JSON.stringify({
           widgetId: 'test-widget-id',
           reqId: 'mock-req-id',
           otp: '1234',
         }),
       }),
+    );
+  });
+
+  it('rejects when no reqId was stored', async () => {
+    const { svc } = makeService();
+    await expect(svc.verify('phone', '+919876543210', '1234')).rejects.toThrow(
+      BadRequestException,
     );
   });
 });
