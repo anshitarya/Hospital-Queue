@@ -15,7 +15,25 @@ const nextConfig = {
       ],
     },
     {
-      source: '/(faq|terms|privacy|login/choose)',
+      source: '/(faq|terms|privacy|login/choose|get-started)',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=3600, stale-while-revalidate=86400',
+        },
+      ],
+    },
+    {
+      source: '/',
+      headers: [
+        {
+          key: 'Cache-Control',
+          value: 'public, max-age=3600, stale-while-revalidate=86400',
+        },
+      ],
+    },
+    {
+      source: '/solutions/:slug*',
       headers: [
         {
           key: 'Cache-Control',

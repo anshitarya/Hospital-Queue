@@ -12,15 +12,23 @@ import { Header } from '@/components/Header';
 import { PageLoader } from '@/components/PageLoader';
 import { DoctorPageSkeleton } from '@/components/Skeleton';
 import { Toast, type ToastMessage } from '@/components/Toast';
-import { QueueHistoryTable } from '@/components/QueueHistoryTable';
-import { LeavesTab } from '@/components/LeavesTab';
 import { EntryStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
-import {
-  DoctorCredentialsModal,
-  type DoctorCredentials,
-} from '@/components/DoctorCredentialsModal';
+import { type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst, fmtWait } from '@/lib/datetime';
+
+import dynamic from 'next/dynamic';
+
+const TabSkeleton = () => (
+  <div className="p-8 space-y-4 animate-pulse">
+    <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-1/4" />
+    <div className="h-64 bg-slate-100 dark:bg-slate-800 rounded-xl w-full" />
+  </div>
+);
+
+const LeavesTab = dynamic(() => import('@/components/LeavesTab').then((m) => m.LeavesTab), { loading: TabSkeleton });
+const QueueHistoryTable = dynamic(() => import('@/components/QueueHistoryTable').then((m) => m.QueueHistoryTable), { loading: TabSkeleton });
+const DoctorCredentialsModal = dynamic(() => import('@/components/DoctorCredentialsModal').then((m) => m.DoctorCredentialsModal));
 import { DatePicker } from '@/components/DatePicker';
 import { getLabels } from '@/lib/labels';
 

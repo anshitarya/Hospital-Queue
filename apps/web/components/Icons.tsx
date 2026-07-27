@@ -1,6 +1,7 @@
 // Inline SVG icons (lucide-style). No external dependency.
 // Pass standard SVG props for size/color: <Icon.Bell className="h-5 w-5" />
 import { SVGProps } from 'react';
+import Image from 'next/image';
 
 const base: SVGProps<SVGSVGElement> = {
   width: 20,
@@ -62,21 +63,21 @@ export function TurnosIcon({ className = 'h-12 sm:h-14', priority = false }: { c
   return (
     <div className={`relative inline-flex items-center shrink-0 rounded-2xl overflow-hidden ${className}`}>
       {/* Light mode logo (1st image) */}
-      <img
+      <Image
         src="/logo-light.png"
         alt="Turnos Logo"
-        width={256}
-        height={256}
-        fetchPriority={priority ? 'high' : undefined}
+        width={48}
+        height={48}
+        priority={priority}
         className="h-full w-auto object-contain dark:hidden rounded-2xl"
       />
       {/* Dark mode logo (2nd image) */}
-      <img
+      <Image
         src="/logo-dark.png"
         alt="Turnos Logo"
-        width={256}
-        height={256}
-        fetchPriority={priority ? 'high' : undefined}
+        width={48}
+        height={48}
+        priority={priority}
         className="h-full w-auto object-contain hidden dark:block rounded-2xl"
       />
     </div>
