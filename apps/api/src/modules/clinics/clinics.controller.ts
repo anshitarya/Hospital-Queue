@@ -10,7 +10,9 @@ import {
   Post,
   Put,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import { Role } from '@prisma/client';
 import { ClinicsService } from './clinics.service';
 import { serviceDay, serviceDaysAgo } from '../../common/utils/timezone';
@@ -48,6 +50,7 @@ export class ClinicsController {
 
   /** Returns clinics that have self-booking enabled, with doctor queue info. */
   @Public()
+  @UseInterceptors(CacheInterceptor)
   @Get('public/businesses')
   listPublicBusinesses(@Query('search') search?: string) {
     return this.clinics.listPublicBusinesses(search);

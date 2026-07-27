@@ -30,28 +30,28 @@ export function LandingNav() {
   return (
     <header
       className={
-        'sticky top-0 z-40 transition-all duration-300 ' +
+        'sticky top-0 z-50 transition-colors duration-300 ' +
         (scrolled
-          ? 'bg-white/90 dark:bg-[#0a0a0b]/90 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 shadow-sm'
+          ? 'bg-white/90 dark:bg-slate-950/85 backdrop-blur-2xl border-b border-slate-200/80 dark:border-white/10 shadow-sm dark:shadow-glass'
           : 'bg-transparent')
       }
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6 flex items-center justify-between h-16">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 group">
-          <TurnosIcon className="h-10 w-10 transition-transform group-hover:scale-105 duration-200" />
+          <TurnosIcon priority className="h-10 w-10 transition-transform group-hover:scale-105 duration-200" />
           <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
         </Link>
 
         {/* Desktop nav links */}
-        <nav className="hidden md:flex items-center gap-0.5">
+        <nav className="hidden md:flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-white/5 backdrop-blur-xl border border-slate-200 dark:border-white/10">
           {SECTIONS.map((s) => (
             <a
               key={s.id}
               href={`#${s.id}`}
-              className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 rounded-xl
-                         hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100/70 dark:hover:bg-slate-800/60
-                         transition-colors font-medium"
+              className="px-4 py-1.5 text-sm text-slate-600 dark:text-slate-300 rounded-xl
+                         hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10
+                         transition-all duration-200 ease-apple font-medium"
             >
               {s.label}
             </a>
@@ -65,8 +65,8 @@ export function LandingNav() {
             href="/login/choose"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100
-                       px-3.5 py-2 rounded-xl hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-colors font-medium"
+            className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white
+                       px-4 py-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-white/10 transition-all duration-200 font-medium"
           >
             Sign in
           </Link>
@@ -74,7 +74,7 @@ export function LandingNav() {
             href="/get-started"
             target="_blank"
             rel="noopener noreferrer"
-            className="btn-primary text-sm !py-2 !px-4"
+            className="btn-primary text-sm !py-2 !px-4 !rounded-2xl"
           >
             Get started
             <Icon.ArrowRight className="h-3.5 w-3.5" />
@@ -84,7 +84,7 @@ export function LandingNav() {
         {/* Mobile hamburger */}
         <button
           type="button"
-          className="md:hidden btn-icon"
+          className="md:hidden btn-icon !rounded-2xl"
           onClick={() => setMobileOpen((o) => !o)}
           aria-label="Toggle menu"
         >
@@ -94,26 +94,26 @@ export function LandingNav() {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-slate-200/60 dark:border-slate-800/60 bg-white/95 dark:bg-[#0a0a0b]/95 backdrop-blur-sm animate-slide-up">
-          <nav className="px-4 py-3 space-y-0.5">
+        <div className="md:hidden border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-slate-950/90 backdrop-blur-2xl animate-slide-up shadow-lg dark:shadow-modal">
+          <nav className="px-4 py-4 space-y-1">
             {SECTIONS.map((s) => (
               <a
                 key={s.id}
                 href={`#${s.id}`}
                 onClick={() => setMobileOpen(false)}
-                className="block px-3 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300
-                           rounded-xl hover:bg-slate-100/70 dark:hover:bg-slate-800/60 transition-colors"
+                className="block px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200
+                           rounded-2xl hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
               >
                 {s.label}
               </a>
             ))}
-            <div className="pt-3 mt-2 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+            <div className="pt-3 mt-2 border-t border-slate-200 dark:border-white/10 flex flex-col gap-2">
               <Link
                 href="/login/choose"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMobileOpen(false)}
-                className="btn-secondary text-sm justify-center"
+                className="btn-secondary text-sm justify-center !rounded-2xl"
               >
                 Sign in
               </Link>
@@ -122,7 +122,7 @@ export function LandingNav() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMobileOpen(false)}
-                className="btn-primary text-sm justify-center"
+                className="btn-primary text-sm justify-center !rounded-2xl"
               >
                 For business owners
               </Link>

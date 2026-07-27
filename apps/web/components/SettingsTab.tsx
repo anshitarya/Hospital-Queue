@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { BUSINESS_TYPE_OPTIONS } from '@/lib/labels';
 import { type ToastMessage } from './Toast';
-import { QRCodePanel } from './QRCodePanel';
+import dynamic from 'next/dynamic';
+const QRCodePanel = dynamic(() => import('./QRCodePanel').then(m => m.QRCodePanel), { ssr: false });
 import { FormSkeleton } from './Skeleton';
 
 interface SettingsData {
@@ -153,22 +154,22 @@ export function SettingsTab({
     <div className="p-5 sm:p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Business Configuration Engine</h2>
-          <p className="text-xs text-slate-400 mt-0.5">Control queue routing, modes, and behavior dynamically</p>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Business Configuration Engine</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">Control queue routing, modes, and behavior dynamically</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Mode Settings */}
-        <div className="card p-5 space-y-4">
-          <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">Queue & Appointment Modes</h3>
+        <div className="card p-6 space-y-4">
+          <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Queue & Appointment Modes</h3>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="label text-xs font-semibold text-slate-500 uppercase">Business Type</label>
+              <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Business Type</label>
               <select className="input mt-1 w-full" value={settings.businessType}
                 onChange={(e) => setSettings({ ...settings, businessType: e.target.value })}>
                 {BUSINESS_TYPE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{o.label}</option>
                 ))}
               </select>
             </div>

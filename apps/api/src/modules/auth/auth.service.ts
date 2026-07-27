@@ -42,7 +42,7 @@ export class AuthService {
     private readonly redis: RedisService,
     private readonly usageEvents: UsageEventService,
     private readonly googleAuth: GoogleAuthService,
-  ) {}
+  ) { }
 
   async staffLogin(identifier: string, password: string): Promise<AuthResult> {
     if (!FEATURES.ENABLE_DEV_AUTH_BYPASS) {
@@ -217,11 +217,51 @@ export class AuthService {
   }
 
   /**
+   * Robust phone lookup helper — matches exact raw phone, E.164 ("+919876543210"),
+   * or local 10-digit ("9876543210") formats. Self-heals existing DB rows to
+   * canonical E.164 so legacy user registrations continue working seamlessly.
+   */
+  private async findUserByPhone(phone: string): Promise<User | null> {
+    const raw = phone.trim();
+    if (!raw) return null;
+
+    let user = await this.prisma.user.findFirst({ where: { phone: raw } });
+    if (user) return user;
+
+    if (isValidIndianMobile(raw)) {
+      const { e164, local } = normalizeIndianMobile(raw);
+      user = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { phone: e164 },
+            { phone: local },
+            { phone: `+91 ${local.slice(0, 5)} ${local.slice(5)}` },
+            { phone: `+91-${local.slice(0, 5)}-${local.slice(5)}` },
+          ],
+        },
+      });
+
+      if (user && user.phone !== e164) {
+        try {
+          await this.prisma.user.update({
+            where: { id: user.id },
+            data: { phone: e164 },
+          });
+          user.phone = e164;
+        } catch {
+          // ignore unique constraint collisions if duplicate exists
+        }
+      }
+    }
+    return user;
+  }
+
+  /**
    * Customer login with mobile number + permanent 4-digit Customer PIN.
    * Rate-limited: 5 failures → 15-min lockout per customer.
    */
   async loginCustomer(phone: string, pin: string): Promise<AuthResult> {
-    const user = await this.prisma.user.findUnique({ where: { phone } });
+    const user = await this.findUserByPhone(phone);
 
     if (!user || user.role !== Role.PATIENT || !user.customerPin) {
       await new Promise((r) => setTimeout(r, 300));
@@ -319,8 +359,8 @@ export class AuthService {
       data: { pendingEmail: email },
     });
 
-    const { devCode } = await this.otp.issue('email', email);
-    return { sent: true, devCode };
+    await this.otp.issue('email', email);
+    return { sent: true };
   }
 
   async verifyEmail(userId: string, code: string) {
@@ -462,14 +502,14 @@ export class AuthService {
       throw new BadRequestException('OTP login is disabled');
     }
 
-    const normalized = phone.trim();
-    const user = await this.prisma.user.findUnique({ where: { phone: normalized } });
+    const normalized = isValidIndianMobile(phone) ? normalizeIndianMobile(phone).e164 : phone.trim();
+    const user = await this.findUserByPhone(phone);
     if (user && user.role !== Role.PATIENT) {
       throw new BadRequestException('This phone number is registered to a staff account');
     }
 
-    const res = await this.otp.issue('phone', normalized);
-    return { sent: true, devCode: res.devCode };
+    await this.otp.issue('phone', normalized);
+    return { sent: true };
   }
 
   async verifyCustomerOtp(phone: string, code: string): Promise<AuthResult> {
@@ -477,8 +517,8 @@ export class AuthService {
       throw new BadRequestException('OTP login is disabled');
     }
 
-    const normalized = phone.trim();
-    let user = await this.prisma.user.findUnique({ where: { phone: normalized } });
+    const normalized = isValidIndianMobile(phone) ? normalizeIndianMobile(phone).e164 : phone.trim();
+    let user = await this.findUserByPhone(phone);
     if (user && user.role !== Role.PATIENT) {
       throw new BadRequestException('This phone number is registered to a staff account');
     }

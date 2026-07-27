@@ -17,7 +17,7 @@ const FEATURE_CARDS = FEATURES.map((f) => ({
 
 export default function HomePage() {
   return (
-    <div className="relative">
+    <div className="relative w-full overflow-x-hidden">
       {/* Background mesh */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[480px] w-[480px] rounded-full bg-brand-200/40 blur-3xl" />
@@ -27,26 +27,27 @@ export default function HomePage() {
 
       <LandingNav />
 
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* HERO                                                                */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <section className="relative">
+      <main id="main-content">
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        {/* HERO                                                                */}
+        {/* ═══════════════════════════════════════════════════════════════════ */}
+        <section className="relative">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16 sm:pb-24">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-8 items-center">
             <div className="space-y-6 animate-fade-in">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 dark:bg-slate-800/70 backdrop-blur ring-1 ring-slate-200 dark:ring-slate-600 px-3 py-1 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-sm">
+              <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 dark:bg-white/10 backdrop-blur-xl border border-slate-200 dark:border-white/15 px-3.5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 shadow-sm">
                 <span className="live-dot" />
                 Live ETA · No app needed
               </div>
 
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 leading-[1.05]">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 dark:text-white leading-[1.05]">
                 Stop waiting blindly.{' '}
-                <span className="bg-gradient-to-r from-brand-600 to-purple-600 bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-emerald-600 via-brand-600 to-purple-600 dark:from-emerald-400 dark:via-brand-400 dark:to-purple-400 bg-clip-text text-transparent">
                   Know exactly when it&apos;s your turn.
                 </span>
               </h1>
 
-              <p className="text-lg text-slate-600 max-w-xl leading-relaxed">
+              <p className="text-lg text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed font-normal">
                 Turnos lets customers see their live position and wait time on their
                 phone — without downloading any app. Providers call the next customer in one tap.
                 Staff manages everything from a single screen.
@@ -57,7 +58,7 @@ export default function HomePage() {
                   href="/get-started"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-primary !px-5 !py-3 text-base shadow-md hover:shadow-lg"
+                  className="btn-primary !px-6 !py-3.5 text-base shadow-glow hover:shadow-xl !rounded-2xl"
                 >
                   Business owners — get started
                   <Icon.ArrowRight className="h-4 w-4" />
@@ -66,21 +67,21 @@ export default function HomePage() {
                   href="/login/choose"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-secondary !px-5 !py-3 text-base"
+                  className="btn-secondary !px-6 !py-3.5 text-base !rounded-2xl"
                 >
                   Sign in
                 </Link>
               </div>
 
-              <div className="flex items-center gap-6 text-sm text-slate-500 pt-2">
+              <div className="flex items-center gap-6 text-sm text-slate-600 dark:text-slate-400 pt-2 font-medium">
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-600" /> Free for customers
+                  <Icon.Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Free for customers
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-600" /> No app to install
+                  <Icon.Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> No app to install
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Icon.Check className="h-4 w-4 text-emerald-600" /> Ready in minutes
+                  <Icon.Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" /> Ready in minutes
                 </div>
               </div>
             </div>
@@ -94,11 +95,11 @@ export default function HomePage() {
           {/* Stats strip */}
           <div className="mt-16 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {HERO_STATS.map((s) => (
-              <div key={s.l} className="card p-4 text-center">
-                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-brand-600 to-purple-600 bg-clip-text text-transparent">
+              <div key={s.l} className="card p-5 text-center shadow-sm">
+                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-br from-emerald-600 to-brand-600 dark:from-emerald-400 dark:to-brand-300 bg-clip-text text-transparent">
                   {s.v}
                 </div>
-                <div className="text-xs text-slate-500 mt-1">{s.l}</div>
+                <div className="text-xs text-slate-600 dark:text-slate-400 mt-1.5 font-semibold">{s.l}</div>
               </div>
             ))}
           </div>
@@ -235,7 +236,7 @@ export default function HomePage() {
               href={BRAND.doctorSurveyUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white px-5 py-3 text-sm font-semibold shadow-sm transition-colors"
+              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white px-5 py-3 text-sm font-semibold shadow-sm transition-colors"
             >
               <Icon.ClipboardList className="h-4 w-4" />
               Take the survey
@@ -311,6 +312,7 @@ export default function HomePage() {
                   </div>
 
                   {/* Call */}
+                  {/* Call */}
                   <a
                     href={`tel:${BRAND.contact.phoneTel}`}
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
@@ -320,13 +322,13 @@ export default function HomePage() {
                     </span>
                     <div>
                       <div className="text-xs text-white/70">Call us</div>
-                      <div className="font-semibold text-lg tracking-wide">{BRAND.contact.phone}</div>
+                      <div className="font-semibold text-base sm:text-lg tracking-wide whitespace-nowrap">{BRAND.contact.phone}</div>
                     </div>
                   </a>
 
                   {/* WhatsApp */}
                   <a
-                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Turnos`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-3 hover:opacity-90 transition-opacity group"
@@ -336,7 +338,7 @@ export default function HomePage() {
                     </span>
                     <div>
                       <div className="text-xs text-white/70">WhatsApp us</div>
-                      <div className="font-semibold tracking-wide">{BRAND.contact.phone}</div>
+                      <div className="font-semibold text-base sm:text-lg tracking-wide whitespace-nowrap">{BRAND.contact.phone}</div>
                     </div>
                   </a>
 
@@ -350,32 +352,90 @@ export default function HomePage() {
         </div>
       </section>
 
+      </main>
+
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FOOTER                                                              */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <footer className="border-t border-slate-200 py-10">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5 text-sm text-slate-500">
-            <TurnosIcon className="h-7 w-7" />
-            <span>Turnos · Built with care in India.</span>
+      <footer className="border-t border-slate-200 dark:border-white/10 py-12 bg-slate-50/60 dark:bg-slate-950/80">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 space-y-8">
+          {/* Main Footer Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            {/* Brand Col */}
+            <div className="md:col-span-2 space-y-3">
+              <div className="flex items-center gap-2.5">
+                <TurnosIcon className="h-8 w-8 text-slate-900 dark:text-white" />
+                <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-sm leading-relaxed">
+                Live queue management and virtual token system. Built with care in India.
+              </p>
+            </div>
+
+            {/* Quick Links */}
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-white">
+                Quick Links
+              </div>
+              <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li>
+                  <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Sign in
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/faq" className="hover:text-slate-900 dark:hover:text-white font-semibold text-brand-600 dark:text-emerald-400 transition-colors">
+                    FAQ
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/terms" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Terms & Conditions
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/privacy" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Privacy Policy
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Contact Col */}
+            <div className="space-y-3">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-900 dark:text-white">
+                Contact Us
+              </div>
+              <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
+                <li>
+                  <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 dark:hover:text-white inline-flex items-center gap-2 transition-colors whitespace-nowrap">
+                    <Icon.Phone className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>{BRAND.contact.phone}</span>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Turnos`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-[#25D366] inline-flex items-center gap-2 transition-colors whitespace-nowrap"
+                  >
+                    <Icon.Whatsapp className="h-4 w-4 text-[#25D366] shrink-0" />
+                    <span>WhatsApp</span>
+                  </a>
+                </li>
+              </ul>
+            </div>
           </div>
-          <div className="flex items-center gap-4 text-sm text-slate-500">
-            <a href={`tel:${BRAND.contact.phoneTel}`} className="hover:text-slate-900 inline-flex items-center gap-1.5">
-              <Icon.Phone className="h-4 w-4" /> {BRAND.contact.phone}
-            </a>
-            <a
-              href={`https://wa.me/${BRAND.contact.phoneWhatsapp}?text=Hi%2C%20I%20want%20to%20know%20more%20about%20Queue%20HQ`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-[#25D366] inline-flex items-center gap-1.5"
-            >
-              <Icon.Whatsapp className="h-4 w-4" /> WhatsApp
-            </a>
-            <Link href="/login/choose" target="_blank" rel="noopener noreferrer" className="hover:text-slate-900">Sign in</Link>
-            <span className="text-slate-300">|</span>
-            <Link href="/terms" className="hover:text-slate-900">Terms</Link>
-            <Link href="/privacy" className="hover:text-slate-900">Privacy</Link>
-            <Link href="/faq" className="hover:text-slate-900 font-semibold text-brand-600 dark:text-emerald-400">FAQ</Link>
+
+          {/* Bottom Bar */}
+          <div className="pt-6 border-t border-slate-200 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-500">
+            <div>© {new Date().getFullYear()} Turnos. All rights reserved.</div>
+            <div className="flex items-center gap-4">
+              <Link href="/terms" className="hover:underline">Terms</Link>
+              <Link href="/privacy" className="hover:underline">Privacy</Link>
+              <Link href="/faq" className="hover:underline">FAQ</Link>
+            </div>
           </div>
         </div>
       </footer>
@@ -491,42 +551,42 @@ function HeroMock() {
   return (
     <div className="relative max-w-md mx-auto lg:ml-auto lg:mr-0">
       {/* Floating "in consultation" badge */}
-      <div className="absolute -top-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-500 text-white px-3 py-1 text-xs font-semibold shadow-lg">
-        <span className="inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+      <div className="absolute -top-4 left-4 z-20 inline-flex items-center gap-2 rounded-full bg-emerald-100 dark:bg-emerald-500/20 border border-emerald-300 dark:border-emerald-400/40 text-emerald-800 dark:text-emerald-300 px-3.5 py-1 text-xs font-bold shadow-sm">
+        <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
         Live · It&apos;s your turn
       </div>
 
       {/* Main patient card */}
-      <div className="relative card p-6 shadow-xl ring-2 ring-brand-200/60 z-10 rotate-[-1deg]">
+      <div className="relative card p-6 shadow-xl z-10 rotate-[-1deg]">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <div className="font-semibold text-slate-900">Anjali Sharma</div>
-            <div className="text-xs text-slate-500">Serving now</div>
+            <div className="font-bold text-slate-900 dark:text-white text-base">Anjali Sharma</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">Serving now</div>
           </div>
-          <span className="inline-flex items-center gap-1 text-xs text-emerald-700">
+          <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
             <span className="live-dot" /> Live
           </span>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-brand-50 ring-1 ring-brand-200 p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Your token</div>
-            <div className="text-4xl font-bold text-brand-700 mt-1">#12</div>
+          <div className="rounded-2xl bg-emerald-50 dark:bg-brand-500/10 border border-emerald-200 dark:border-brand-400/20 p-4 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Your token</div>
+            <div className="text-4xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">#12</div>
           </div>
-          <div className="rounded-xl bg-slate-50 p-4 text-center">
-            <div className="text-[10px] uppercase tracking-wider text-slate-500">Now serving</div>
-            <div className="text-4xl font-bold mt-1">#12</div>
+          <div className="rounded-2xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 p-4 text-center">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-semibold">Now serving</div>
+            <div className="text-4xl font-bold text-slate-900 dark:text-white mt-1">#12</div>
           </div>
         </div>
 
-        <div className="mt-4 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-emerald-800 text-sm text-center font-medium animate-pulse-slow">
+        <div className="mt-4 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 border border-emerald-300 dark:border-emerald-400/30 px-3.5 py-2.5 text-emerald-800 dark:text-emerald-300 text-sm text-center font-medium animate-pulse-slow shadow-sm">
           It&apos;s your turn — head to the service area
         </div>
       </div>
 
       {/* Secondary card peeking behind */}
-      <div className="absolute -bottom-6 -right-2 lg:-right-6 w-64 card p-4 shadow-lg rotate-[3deg] z-0 hidden sm:block">
-        <div className="text-xs font-semibold text-slate-700 mb-2">Reception · Live queue</div>
+      <div className="absolute -bottom-6 -right-2 lg:-right-6 w-64 rounded-3xl bg-slate-900/60 backdrop-blur-xl p-4 border border-white/10 shadow-modal rotate-[3deg] z-0 hidden sm:block">
+        <div className="text-xs font-semibold text-slate-300 mb-2">Reception · Live queue</div>
         <div className="space-y-2">
           {[
             { n: 12, name: 'You', highlight: true },
@@ -536,12 +596,12 @@ function HeroMock() {
             <div
               key={r.n}
               className={
-                'flex items-center justify-between text-xs rounded-md px-2 py-1.5 ' +
-                (r.highlight ? 'bg-emerald-100 text-emerald-800 font-semibold' : 'bg-slate-50')
+                'flex items-center justify-between text-xs rounded-xl px-3 py-2 transition-all ' +
+                (r.highlight ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 font-semibold' : 'bg-white/5 text-slate-300 border border-white/5')
               }
             >
               <span>#{r.n} · {r.name}</span>
-              {r.tag && <span className="text-[10px] text-brand-600 font-semibold">{r.tag}</span>}
+              {r.tag && <span className="text-[10px] text-brand-300 font-semibold uppercase tracking-wider">{r.tag}</span>}
             </div>
           ))}
         </div>

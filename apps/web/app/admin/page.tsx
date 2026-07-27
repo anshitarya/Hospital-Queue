@@ -17,7 +17,8 @@ import {
 import { formatDateIst, formatDateTimeIst, formatTimeIst } from '@/lib/datetime';
 import { BUSINESS_TYPE_OPTIONS, getLabels, departmentPresetsFor, normalizeBusinessType, type BusinessType } from '@/lib/labels';
 import { HOSPITAL_DEPARTMENTS } from '@/lib/config';
-import LocationPickerModal from '@/components/LocationPickerModal';
+import dynamic from 'next/dynamic';
+const LocationPickerModal = dynamic(() => import('@/components/LocationPickerModal'), { ssr: false });
 import { Icon } from '@/components/Icons';
 
 export default function AdminPage() {
@@ -965,11 +966,11 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setTab('requests')}
-            className={'tab ' + (tab === 'requests' ? 'tab-active' : 'tab-inactive')}
+            className={'tab rounded-xl !py-2 !px-4 ' + (tab === 'requests' ? 'tab-active' : 'tab-inactive')}
           >
             Signup requests
             {pendingSignupCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5">
+              <span className="ml-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 shadow-glow">
                 {pendingSignupCount}
               </span>
             )}
@@ -977,7 +978,7 @@ export default function AdminPage() {
           <button
             type="button"
             onClick={() => setTab('manage')}
-            className={'tab ' + (tab === 'manage' ? 'tab-active' : 'tab-inactive')}
+            className={'tab rounded-xl !py-2 !px-4 ' + (tab === 'manage' ? 'tab-active' : 'tab-inactive')}
           >
             Manage businesses
             <span className="ml-1.5 opacity-70 text-xs">({clinics.length})</span>
@@ -1000,7 +1001,7 @@ export default function AdminPage() {
 
         {tab === 'requests' && (
           <section className="card overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+            <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="section-title">Business signup requests</h2>
                 <p className="text-xs text-slate-500 mt-0.5">Submissions from the Get Started page</p>
@@ -1027,14 +1028,14 @@ export default function AdminPage() {
             ) : (
               <div className="divide-y divide-slate-100">
                 {signupRequests.map((req, idx) => (
-                  <div key={req.id} className={'px-5 py-4 ' + (idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40')}>
+                  <div key={req.id} className={'px-5 py-4 transition-colors ' + (idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/40 dark:bg-white/5')}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="font-semibold text-slate-900">{req.businessName}</h3>
+                          <h3 className="font-semibold text-slate-900 dark:text-slate-100">{req.businessName}</h3>
                           <span className={'pill text-[10px] ' + STATUS_PILL[req.status]}>{req.status}</span>
                         </div>
-                        <p className="text-sm text-slate-600 mt-1">
+                        <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
                           {req.contactName} · {req.email} · {req.phone}
                         </p>
                         <p className="text-xs text-slate-400 mt-1">
@@ -1091,25 +1092,25 @@ export default function AdminPage() {
 
             {stats && stats.perClinic.length > 0 && (
               <section className="card overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between">
                   <h2 className="section-title">Per-business breakdown</h2>
-                  <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{stats.perClinic.length} business(es)</span>
+                  <span className="text-xs text-slate-400 bg-slate-100 dark:bg-white/10 rounded-full px-2 py-0.5">{stats.perClinic.length} business(es)</span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100 bg-slate-50/50">
+                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-white/10 bg-slate-50/50 dark:bg-white/5">
                         <th className="px-5 py-2.5 font-medium">Business</th>
                         <th className="px-5 py-2.5 font-medium">Providers</th>
                         <th className="px-5 py-2.5 font-medium">Staff</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/10">
                       {stats.perClinic.map((c, idx) => (
-                        <tr key={c.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
-                          <td className="px-5 py-3 font-medium text-slate-800">{c.name}</td>
-                          <td className="px-5 py-3 text-slate-600 tabular-nums">{c.doctors}</td>
-                          <td className="px-5 py-3 text-slate-600 tabular-nums">{c.receptionists}</td>
+                        <tr key={c.id} className={'transition-colors ' + (idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/40 dark:bg-white/5')}>
+                          <td className="px-5 py-3 font-medium text-slate-800 dark:text-slate-100">{c.name}</td>
+                          <td className="px-5 py-3 text-slate-600 dark:text-slate-300 tabular-nums">{c.doctors}</td>
+                          <td className="px-5 py-3 text-slate-600 dark:text-slate-300 tabular-nums">{c.receptionists}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1125,7 +1126,7 @@ export default function AdminPage() {
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
               {/* Create clinic */}
               <section className="card overflow-hidden lg:col-span-2 h-fit">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center gap-2">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center gap-2">
                   <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-brand-100 text-brand-700 text-xs font-bold">+</span>
                   <h2 className="section-title">New business</h2>
                 </div>
@@ -1168,9 +1169,9 @@ export default function AdminPage() {
 
               {/* Clinic list */}
               <section className="card overflow-hidden lg:col-span-3">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between">
                   <h2 className="section-title">All businesses</h2>
-                  <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">{clinics.length}</span>
+                  <span className="text-xs text-slate-400 bg-slate-100 dark:bg-white/10 rounded-full px-2 py-0.5">{clinics.length}</span>
                 </div>
 
                 {loadingClinics ? (
@@ -1181,16 +1182,16 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">No businesses yet. Create one to get started.</p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100 dark:divide-white/10">
                     {clinics.map((c, idx) => {
                       const isSelected = selectedClinic?.id === c.id;
                       const isEditing = editingClinicId === c.id;
                       return (
-                        <div
-                          key={c.id}
-                          className={`px-5 py-4 transition-colors ${isSelected ? 'bg-brand-50 border-l-4 border-l-brand-500' : idx % 2 === 0 ? 'bg-white hover:bg-slate-50' : 'bg-slate-50/40 hover:bg-slate-50'
-                            }`}
-                        >
+                          <div
+                            key={c.id}
+                            className={`px-5 py-4 transition-colors ${isSelected ? 'bg-brand-50 dark:bg-brand-500/10 border-l-4 border-l-brand-500' : idx % 2 === 0 ? 'bg-white dark:bg-transparent hover:bg-slate-50 dark:hover:bg-white/5' : 'bg-slate-50/40 dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10'
+                              }`}
+                          >
                           {isEditing ? (
                             /* Inline edit form */
                             <div className="flex flex-col gap-2">
@@ -1233,25 +1234,25 @@ export default function AdminPage() {
                             </div>
                           ) : (
                             <div className="flex items-center gap-3">
-                              <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-brand-100 text-brand-700' : 'bg-slate-100 text-slate-600'}`}>
+                              <div className={`h-9 w-9 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${isSelected ? 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300' : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-200'}`}>
                                 {c.name.charAt(0).toUpperCase()}
                               </div>
                               <div className="min-w-0 flex-1">
-                                <div className={`font-semibold truncate ${isSelected ? 'text-brand-800' : 'text-slate-800'}`}>
+                                <div className={`font-semibold truncate ${isSelected ? 'text-brand-800 dark:text-brand-300' : 'text-slate-800 dark:text-slate-100'}`}>
                                   {c.name}
                                   {isSelected && (
-                                    <span className="ml-2 text-[10px] font-medium text-brand-600 bg-brand-100 rounded-full px-1.5 py-0.5 uppercase tracking-wider">
+                                    <span className="ml-2 text-[10px] font-medium text-brand-600 dark:text-brand-300 bg-brand-100 dark:bg-brand-500/20 rounded-full px-1.5 py-0.5 uppercase tracking-wider">
                                       active
                                     </span>
                                   )}
                                 </div>
-                                {c.address && <div className="text-xs text-slate-500 truncate mt-0.5">{c.address}</div>}
-                                <div className="text-xs text-slate-400 mt-0.5 flex gap-2 items-center">
+                                {c.address && <div className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{c.address}</div>}
+                                <div className="text-xs text-slate-400 dark:text-slate-400 mt-0.5 flex gap-2 items-center">
                                   <span>{c._count?.users ?? 0} rcp</span>
                                   <span>·</span>
                                   <span>{c._count?.doctors ?? 0} dr</span>
                                   {c.businessType && c.businessType !== 'CLINIC' && (
-                                    <span className="pill bg-violet-100 text-violet-700 ring-violet-200 text-[10px]">
+                                    <span className="pill bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 ring-violet-200 dark:ring-violet-500/30 text-[10px]">
                                       {BUSINESS_TYPE_OPTIONS.find((o) => o.value === c.businessType)?.label ?? c.businessType}
                                     </span>
                                   )}
@@ -1295,7 +1296,7 @@ export default function AdminPage() {
             {/* Invite codes for selected clinic */}
             {selectedClinic && (
               <section className="card overflow-hidden animate-fade-in">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <h2 className="section-title">
                       Invite codes — <span className="text-brand-700">{selectedClinic.name}</span>
@@ -1324,7 +1325,7 @@ export default function AdminPage() {
                       const used = !!ic.usedById;
                       const active = !used && !expired;
                       return (
-                        <div key={ic.id} className={`px-5 py-4 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                        <div key={ic.id} className={`px-5 py-4 flex items-center justify-between gap-3 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/40 dark:bg-white/5'}`}>
                           <div className="min-w-0">
                             <div className={`font-mono font-bold text-lg tracking-widest ${active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
                               {ic.code}
@@ -1352,7 +1353,7 @@ export default function AdminPage() {
             {/* Business admins — full reception portal access */}
             {selectedClinic && (
               <section className="card overflow-hidden animate-fade-in">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <h2 className="section-title">
                       Business admins — <span className="text-brand-700">{selectedClinic.name}</span>
@@ -1384,7 +1385,7 @@ export default function AdminPage() {
                       ) : (
                         <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
                           {clinicAdmins.map((a, idx) => (
-                            <div key={a.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                            <div key={a.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/50 dark:bg-white/5'}`}>
                               <div className="min-w-0">
                                 <div className="font-medium text-slate-800 truncate">{a.name}</div>
                                 <div className="text-xs text-slate-400 flex flex-wrap gap-x-2 mt-0.5">
@@ -1419,7 +1420,7 @@ export default function AdminPage() {
             {/* Branch managers — location-scoped day-to-day operators */}
             {selectedClinic && (
               <section className="card overflow-hidden animate-fade-in">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between flex-wrap gap-2">
                   <div>
                     <h2 className="section-title">
                       Branch managers — <span className="text-brand-700">{selectedClinic.name}</span>
@@ -1451,7 +1452,7 @@ export default function AdminPage() {
                       ) : (
                         <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
                           {clinicManagers.map((m, idx) => (
-                            <div key={m.id} className={`px-4 py-3.5 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                            <div key={m.id} className={`px-4 py-3.5 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/50 dark:bg-white/5'}`}>
                               <div className="flex items-center justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-medium text-slate-800 truncate">{m.name}</div>
@@ -1502,7 +1503,7 @@ export default function AdminPage() {
               const RL = getLabels(selectedClinic.businessType);
               return (
                 <section className="card overflow-hidden animate-fade-in">
-                  <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                  <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <h2 className="section-title">{RL.staff}s — <span className="text-brand-700">{selectedClinic.name}</span></h2>
                       <p className="section-sub">Add directly with a temp password, or share an invite code above.</p>
@@ -1530,7 +1531,7 @@ export default function AdminPage() {
                         ) : (
                           <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
                             {clinicReceptionists.map((r, idx) => (
-                              <div key={r.id} className={`px-4 py-3.5 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                              <div key={r.id} className={`px-4 py-3.5 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/50 dark:bg-white/5'}`}>
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="font-medium text-slate-800 truncate">{r.name}</div>
@@ -1591,7 +1592,7 @@ export default function AdminPage() {
               const SL = getLabels(selectedClinic.businessType);
               return (
                 <section className="card overflow-hidden animate-fade-in">
-                  <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+                  <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between flex-wrap gap-2">
                     <div>
                       <h2 className="section-title">{SL.providerPlural} — <span className="text-brand-700">{selectedClinic.name}</span></h2>
                       <p className="section-sub">Temporary password is generated and shown once — copy before closing.</p>
@@ -1634,7 +1635,7 @@ export default function AdminPage() {
                         ) : (
                           <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
                             {clinicDoctors.map((d, idx) => (
-                              <div key={d.id} className={`px-4 py-3.5 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                              <div key={d.id} className={`px-4 py-3.5 transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/50 dark:bg-white/5'}`}>
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
                                     <div className="font-medium text-slate-800 truncate">{d.user.name}</div>
@@ -1722,7 +1723,7 @@ export default function AdminPage() {
             </section>
 
             {/* Billing Filter and Create Plan */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-white/10 shadow-sm">
               <div className="flex flex-wrap items-center gap-3">
                 <input
                   type="text"
@@ -1762,9 +1763,9 @@ export default function AdminPage() {
 
             {/* Businesses Billing Table */}
             <section className="card overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between">
                 <h2 className="section-title">Business Invoicing & Pricing</h2>
-                <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
+                <span className="text-xs text-slate-400 bg-slate-100 dark:bg-white/10 rounded-full px-2 py-0.5">
                   {billingBusinesses.length} Business(es)
                 </span>
               </div>
@@ -1777,7 +1778,7 @@ export default function AdminPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-slate-100 bg-slate-50/55">
+                      <tr className="text-left text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-white/10 bg-slate-50/55 dark:bg-white/5">
                         <th className="px-5 py-2.5 font-medium">Business</th>
                         <th className="px-5 py-2.5 font-medium">Plan / Price</th>
                         <th className="px-5 py-2.5 font-medium">Cycle</th>
@@ -1787,7 +1788,7 @@ export default function AdminPage() {
                         <th className="px-5 py-2.5 font-medium text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 dark:divide-white/10">
                       {billingBusinesses
                         .filter((b) => {
                           const matchesSearch = b.name.toLowerCase().includes(billingSearch.toLowerCase());
@@ -1796,7 +1797,7 @@ export default function AdminPage() {
                           return matchesSearch && matchesPlan && matchesCycle;
                         })
                         .map((b, idx) => (
-                          <tr key={b.id} className={idx % 2 === 0 ? 'bg-white hover:bg-slate-50/40' : 'bg-slate-50/40 hover:bg-slate-50/60'}>
+                          <tr key={b.id} className={`transition-colors ${idx % 2 === 0 ? 'bg-white dark:bg-transparent hover:bg-slate-50/40 dark:hover:bg-white/5' : 'bg-slate-50/40 dark:bg-white/5 hover:bg-slate-50/60 dark:hover:bg-white/10'}`}>
                             <td className="px-5 py-3.5">
                               <div className="flex items-center gap-3">
                                 <button
@@ -1821,12 +1822,12 @@ export default function AdminPage() {
                               </div>
                             </td>
                             <td className="px-5 py-3.5">
-                              <span className="font-medium text-slate-800">{b.planName}</span>
-                              <span className="text-[10px] text-slate-500 block mt-0.5">₹{b.pricePerToken} per TOKEN_COMPLETED</span>
+                              <span className="font-medium text-slate-800 dark:text-slate-100">{b.planName}</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">₹{b.pricePerToken} per TOKEN_COMPLETED</span>
                             </td>
-                            <td className="px-5 py-3.5 font-mono text-xs text-slate-600 uppercase">{b.billingCycle}</td>
-                            <td className="px-5 py-3.5 text-center font-mono tabular-nums text-slate-700">{b.tokenCompleted}</td>
-                            <td className="px-5 py-3.5 text-center font-mono tabular-nums text-slate-700 font-medium">₹{b.currentBill}</td>
+                            <td className="px-5 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-300 uppercase">{b.billingCycle}</td>
+                            <td className="px-5 py-3.5 text-center font-mono tabular-nums text-slate-700 dark:text-slate-200">{b.tokenCompleted}</td>
+                            <td className="px-5 py-3.5 text-center font-mono tabular-nums text-slate-700 dark:text-slate-200 font-medium">₹{b.currentBill}</td>
                             <td className="px-5 py-3.5 text-center font-mono tabular-nums font-semibold text-rose-600">₹{b.outstandingAmount}</td>
                             <td className="px-5 py-3.5 text-right space-x-1.5 whitespace-nowrap">
                               <button
@@ -1869,20 +1870,20 @@ export default function AdminPage() {
             <div className="grid grid-cols-1 gap-6 mt-6">
               {/* Card 1: Billing Plans Manager */}
               <section className="card overflow-hidden">
-                <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="px-5 py-3.5 border-b border-slate-100 dark:border-white/10 bg-slate-50 dark:bg-white/5 flex items-center justify-between">
                   <h3 className="section-title">Billing Plans</h3>
                 </div>
                 {billingPlans.length === 0 ? (
                   <div className="py-8 text-center text-sm text-slate-400 italic">No plans created yet.</div>
                 ) : (
-                  <div className="divide-y divide-slate-100 max-h-[350px] overflow-y-auto">
+                  <div className="divide-y divide-slate-100 dark:divide-white/10 max-h-[350px] overflow-y-auto">
                     {billingPlans.map((plan) => {
                       const tokenRule = plan.rules?.find((r: any) => r.eventType === 'TOKEN_COMPLETED');
                       const flatRule = plan.rules?.find((r: any) => r.ruleType === 'FLAT_RATE');
                       return (
-                        <div key={plan.id} className="p-4 flex items-center justify-between hover:bg-slate-50/50">
+                        <div key={plan.id} className="p-4 flex items-center justify-between hover:bg-slate-50/50 dark:hover:bg-white/5">
                           <div className="min-w-0 pr-2">
-                            <span className="font-semibold text-slate-800 block text-xs truncate">{plan.name}</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-100 block text-xs truncate">{plan.name}</span>
                             <span className="text-[10px] text-slate-400 block truncate" title={plan.description}>
                               {plan.description || 'No description'}
                             </span>
@@ -1919,9 +1920,9 @@ export default function AdminPage() {
       {/* Modal: Modify Plan */}
       {showPlanModal && selectedBillingClinic && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-800">Assign Billing Plan — {selectedBillingClinic.name}</h3>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 dark:border-white/10">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-white/5">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">Assign Billing Plan — {selectedBillingClinic.name}</h3>
               <button onClick={() => setShowPlanModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
             </div>
             <form onSubmit={handleAssignPlan} className="p-6 space-y-4">
@@ -1968,9 +1969,9 @@ export default function AdminPage() {
       {/* Modal: Generate Invoice */}
       {showInvoiceModal && selectedBillingClinic && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-800">Generate Cycle Invoice</h3>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 dark:border-white/10">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-white/5">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">Generate Cycle Invoice</h3>
               <button onClick={() => setShowInvoiceModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
             </div>
             <form onSubmit={handleGenerateInvoice} className="p-6 space-y-4">
@@ -2021,10 +2022,10 @@ export default function AdminPage() {
       {/* Modal: View Clinic Bills */}
       {showInvoicesListModal && invoicesListClinic && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-100 dark:border-white/10 animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-white/5">
               <div>
-                <h3 className="font-bold text-slate-800">Invoices & Bills</h3>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100">Invoices & Bills</h3>
                 <p className="text-xs text-slate-400 mt-0.5">{invoicesListClinic.name}</p>
               </div>
               <button onClick={() => setShowInvoicesListModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
@@ -2080,9 +2081,9 @@ export default function AdminPage() {
       {/* Modal: Create Plan */}
       {showCreatePlanModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100">
-            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-800">Create New Billing Plan</h3>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border border-slate-100 dark:border-white/10">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-white/10 flex items-center justify-between bg-slate-50 dark:bg-white/5">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">Create New Billing Plan</h3>
               <button onClick={() => setShowCreatePlanModal(false)} className="text-slate-400 hover:text-slate-600 text-lg">×</button>
             </div>
             <form onSubmit={handleCreatePlan} className="p-6 space-y-4">

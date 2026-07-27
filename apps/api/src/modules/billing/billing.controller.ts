@@ -9,12 +9,16 @@ import {
   UseGuards,
   ForbiddenException,
   BadRequestException,
+  Req,
+  Headers,
 } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { BillingService } from './billing.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { Public } from '../../common/decorators/public.decorator';
+import { CreateSubscriptionOrderDto, VerifySubscriptionPaymentDto } from './dto/subscription.dto';
 
 @Controller('billing')
 export class BillingController {
@@ -123,10 +127,10 @@ export class BillingController {
   }
 
   /**
-   * Get all active billing plans (Super Admin only)
+   * Get all active billing plans (Super Admin and Clinic Admin)
    */
   @Get('plans')
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.CLINIC_ADMIN)
   async getPlans() {
     return this.billingService.getPlans();
   }
@@ -210,5 +214,52 @@ export class BillingController {
   @Roles(Role.ADMIN)
   async deletePlan(@Param('id') id: string) {
     return this.billingService.deletePlan(id);
+  }
+
+  /**
+   * Create a Razorpay subscription order (Clinic Owner only)
+   */
+  @Post('subscriptions/create-order')
+  @Roles(Role.CLINIC_ADMIN, Role.ADMIN)
+  async createSubscriptionOrder(
+    @CurrentUser() user: AuthUser,
+    @Body() body: CreateSubscriptionOrderDto,
+  ) {
+    if (!user.clinicId) {
+      throw new BadRequestException('Your profile is not linked to any clinic.');
+    }
+    return this.billingService.createSubscriptionOrder(user.clinicId, body.planId);
+  }
+
+  /**
+   * Verify signature and activate subscription (Clinic Owner only)
+   */
+  @Post('subscriptions/verify')
+  @Roles(Role.CLINIC_ADMIN, Role.ADMIN)
+  async verifySubscriptionPayment(
+    @CurrentUser() user: AuthUser,
+    @Body() body: VerifySubscriptionPaymentDto,
+  ) {
+    if (!user.clinicId) {
+      throw new BadRequestException('Your profile is not linked to any clinic.');
+    }
+    return this.billingService.verifySubscriptionPayment(user.clinicId, body);
+  }
+
+  /**
+   * Public Razorpay Webhook Endpoint
+   */
+  @Public()
+  @Post('webhook')
+  async razorpayWebhook(
+    @Req() req: any,
+    @Headers('x-razorpay-signature') signature: string,
+    @Body() body: any,
+  ) {
+    if (!signature) {
+      throw new BadRequestException('Webhook signature is missing');
+    }
+    const rawBody = req.rawBody ? req.rawBody.toString('utf8') : '';
+    return this.billingService.handleRazorpayWebhook(rawBody, signature, body);
   }
 }

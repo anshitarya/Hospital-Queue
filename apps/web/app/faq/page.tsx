@@ -163,7 +163,7 @@ export default function FAQPage() {
   const filteredSettings = getFilteredItems('settings');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 text-slate-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-white dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Header */}

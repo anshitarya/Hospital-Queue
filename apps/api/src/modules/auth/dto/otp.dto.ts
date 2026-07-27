@@ -9,8 +9,14 @@ import { normalizeIndianMobile } from '../../../common/utils/phone';
  * a single canonical row.
  */
 
-const normalizePhone = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? normalizeIndianMobile(value).e164 : value;
+const normalizePhone = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value;
+  try {
+    return normalizeIndianMobile(value).e164;
+  } catch {
+    return value;
+  }
+};
 
 export class OtpRequestDto {
   @Transform(normalizePhone)
@@ -31,7 +37,7 @@ export class OtpVerifyDto {
 
   @IsString()
   @Length(4, 4, { message: 'OTP must be exactly 4 digits' })
-  @Matches(/^\d{4}$/, { message: 'OTP must be 4 digits' })
+  @Matches(/^\d{4}$/, { message: 'OTP must be exactly 4 digits' })
   code!: string;
 
   @IsOptional()

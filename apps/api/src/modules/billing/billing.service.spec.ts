@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BillingService } from './billing.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { RazorpayService } from './razorpay.service';
 
 describe('BillingService', () => {
   let service: BillingService;
@@ -46,11 +47,18 @@ describe('BillingService', () => {
     },
   };
 
+  const mockRazorpayService = {
+    createOrder: jest.fn(),
+    verifyPaymentSignature: jest.fn(),
+    verifyWebhookSignature: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BillingService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: RazorpayService, useValue: mockRazorpayService },
       ],
     }).compile();
 

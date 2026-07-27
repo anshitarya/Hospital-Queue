@@ -21,9 +21,9 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
   }, [loaded, hydrate]);
 
   return (
-    <header className="sticky top-0 z-40 bg-white/90 dark:bg-[#0a0a0b]/90 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 supports-[backdrop-filter]:bg-white/75 dark:supports-[backdrop-filter]:bg-[#0a0a0b]/80">
+    <header className="sticky top-0 z-40 bg-white/90 dark:bg-slate-950/70 backdrop-blur-2xl border-b border-slate-200 dark:border-white/10 shadow-sm dark:shadow-glass">
       {/* Brand accent strip */}
-      <div className="h-[2px] bg-gradient-to-r from-brand-500 via-brand-600 to-emerald-500" />
+      <div className="h-[2px] bg-gradient-to-r from-brand-500 via-emerald-400 to-purple-500" />
       <div className="mx-auto max-w-7xl flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3 gap-2.5">
         {/* Logo + title */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -40,7 +40,7 @@ export function Header({ title = 'Turnos', subtitle, actions }: { title?: string
           )}
         </div>
         {/* Actions */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {actions}
           <ProfileMenu />
         </div>

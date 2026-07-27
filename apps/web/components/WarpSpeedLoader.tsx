@@ -55,6 +55,7 @@ interface WarpSpeedLoaderProps {
 
 export function WarpSpeedLoader({ message, subtext }: WarpSpeedLoaderProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const badgeRef = useRef<HTMLDivElement | null>(null);
   const [stepIdx, setStepIdx] = useState(0);
 
   // Cycle through texts every 750ms for smooth comfortable feedback
@@ -104,14 +105,45 @@ export function WarpSpeedLoader({ message, subtext }: WarpSpeedLoaderProps) {
     const lines: StreakLine[] = Array.from({ length: NUM_LINES }, () => ({
       angle: Math.random() * Math.PI * 2,
       r: 60 + Math.random() * (Math.max(width, height) * 0.4),
-      speed: 3 + Math.random() * 5,
-      len: 15 + Math.random() * 35,
+      speed: 1.5 + Math.random() * 3, // Start a bit slower
+      len: 10 + Math.random() * 20,
       width: 1.2 + Math.random() * 1.8,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
     }));
 
+    let globalSpeedMultiplier = 1;
+    let frameCount = 0;
+
     const render = () => {
       ctx.clearRect(0, 0, width, height);
+
+      // Global acceleration increases gradually over time
+      globalSpeedMultiplier = Math.min(globalSpeedMultiplier + 0.025, 8); // Max speed multiplier of 8x
+      frameCount++;
+
+      const isHighSpeed = globalSpeedMultiplier > 6;
+
+      // Apply visual UI vibration via CSS class toggle
+      if (badgeRef.current) {
+        if (isHighSpeed) {
+          badgeRef.current.classList.add('animate-warp-vibrate');
+        } else {
+          badgeRef.current.classList.remove('animate-warp-vibrate');
+        }
+      }
+
+      // Trigger subtle haptic vibrations periodically as speed increases
+      if (globalSpeedMultiplier > 3 && frameCount % 12 === 0) {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          // Small buzz
+          navigator.vibrate(5);
+        }
+      } else if (isHighSpeed && frameCount % 6 === 0) {
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          // Intense buzz at max warp
+          navigator.vibrate(8);
+        }
+      }
 
       const cx = width / 2;
       const cy = height * 0.38;
@@ -119,30 +151,32 @@ export function WarpSpeedLoader({ message, subtext }: WarpSpeedLoaderProps) {
 
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
-        line.r += line.speed;
-        line.speed *= 1.02;
-        line.len *= 1.015;
+        
+        // Apply individual + global acceleration
+        line.r += line.speed * globalSpeedMultiplier;
+        line.speed *= 1.03; // Exponential individual acceleration
+        line.len *= 1.03;
 
         if (line.r > maxR) {
-          line.r = 55 + Math.random() * 30;
-          line.speed = 2.5 + Math.random() * 4;
-          line.len = 12 + Math.random() * 30;
+          line.r = 40 + Math.random() * 20; // Spawn closer to center
+          line.speed = 1 + Math.random() * 2;
+          line.len = 5 + Math.random() * 15;
           line.angle = Math.random() * Math.PI * 2;
         }
 
         const x1 = cx + Math.cos(line.angle) * line.r;
         const y1 = cy + Math.sin(line.angle) * line.r;
-        const x2 = cx + Math.cos(line.angle) * (line.r + line.len);
-        const y2 = cy + Math.sin(line.angle) * (line.r + line.len);
+        const x2 = cx + Math.cos(line.angle) * (line.r + line.len * globalSpeedMultiplier * 0.3);
+        const y2 = cy + Math.sin(line.angle) * (line.r + line.len * globalSpeedMultiplier * 0.3);
 
-        const alpha = Math.min(1, (line.r - 40) / 120);
+        const alpha = Math.min(1, (line.r - 20) / 100);
 
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
         ctx.strokeStyle = line.color;
-        ctx.globalAlpha = Math.max(0, alpha * 0.5);
+        ctx.globalAlpha = Math.max(0, alpha * 0.7);
         ctx.lineWidth = line.width;
         ctx.lineCap = 'round';
         ctx.stroke();
@@ -172,7 +206,7 @@ export function WarpSpeedLoader({ message, subtext }: WarpSpeedLoaderProps) {
       <div className="pt-12 z-10" />
 
       {/* Central Clean Badge & Rotating Messages */}
-      <div className="relative z-10 flex flex-col items-center justify-center text-center px-6 my-auto">
+      <div ref={badgeRef} className="relative z-10 flex flex-col items-center justify-center text-center px-6 my-auto">
         {/* Soft Center Brand Badge */}
         <div className="relative mb-6 flex items-center justify-center">
           <div className="h-24 w-24 sm:h-28 sm:w-28 rounded-full bg-emerald-100/90 dark:bg-emerald-950/80 shadow-md flex items-center justify-center border-2 border-emerald-300 dark:border-emerald-700/60 ring-4 ring-emerald-500/10">

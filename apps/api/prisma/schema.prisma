@@ -70,6 +70,7 @@ model Clinic {
   doctors               Doctor[]
   signupRequests        BusinessSignupRequest[]
   locations             Location[]
+  subscriptions         Subscription[]
 }
 
 // A physical branch of a business (Clinic)
@@ -334,6 +335,9 @@ model QueueEntry {
   @@index([doctorId, serviceDay, status])
   @@index([patientId, joinedAt])
   @@index([locationId])
+  @@index([appointmentTime])
+  @@index([doctorId, locationId, status])
+  @@index([patientId, doctorId, status])
 }
 
 // Business owner signup requests from the public Get Started page.
@@ -554,6 +558,7 @@ model BillingPlan {
   
   rules           BillingRule[]
   businesses      BusinessBilling[]
+  subscriptions   Subscription[]
 }
 
 model BillingRule {
@@ -619,14 +624,36 @@ model InvoiceItem {
 }
 
 model Payment {
-  id              String      @id @default(cuid())
-  invoiceId       String
-  invoice         Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  amount          Decimal     @db.Decimal(10, 2)
-  status          String      @default("COMPLETED") // COMPLETED, FAILED, REFUNDED
+  id              String        @id @default(cuid())
+  invoiceId       String?
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  subscriptionId  String?
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  amount          Decimal       @db.Decimal(10, 2)
+  status          String        @default("COMPLETED") // COMPLETED, FAILED, REFUNDED
   paymentMethod   String?
   referenceId     String?
-  createdAt       DateTime    @default(now())
+  createdAt       DateTime      @default(now())
+}
+
+model Subscription {
+  id                  String       @id @default(cuid())
+  clinicId            String
+  clinic              Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  planId              String
+  plan                BillingPlan  @relation(fields: [planId], references: [id])
+  status              String       @default("PENDING") // PENDING, ACTIVE, EXPIRED, CANCELLED, FAILED
+  razorpayOrderId     String?      @unique
+  razorpayPaymentId   String?      @unique
+  razorpaySignature   String?
+  amount              Decimal      @db.Decimal(10, 2)
+  startDate           DateTime?
+  endDate             DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  payments            Payment[]
+
+  @@index([clinicId])
 }
 
 model UsageSummary {

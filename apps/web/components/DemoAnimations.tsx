@@ -155,18 +155,18 @@ export function PatientDemo() {
       {step < 3 && (
         <div className="relative space-y-4">
           <div className="text-center mb-4">
-            <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
+            <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
               Customer sign-in
             </div>
           </div>
 
           <div className="relative">
-            <label className="block text-xs font-medium text-slate-600 mb-1.5">Mobile number</label>
-            <div className="relative rounded-lg border-2 border-brand-400 bg-white px-3 py-2.5 shadow-sm flex items-center gap-2 min-h-[44px]">
-              <span className="text-slate-400 text-sm">+91</span>
-              <span className="h-4 w-px bg-slate-300" />
-              <span className="text-slate-900 text-sm font-mono tracking-wider">{phoneText}</span>
+            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Mobile number</label>
+            <div className="relative rounded-lg border-2 border-brand-400 bg-white dark:bg-slate-800 px-3 py-2.5 shadow-sm flex items-center gap-2 min-h-[44px]">
+              <span className="text-slate-600 dark:text-slate-400 text-sm">+91</span>
+              <span className="h-4 w-px bg-slate-300 dark:bg-slate-700" />
+              <span className="text-slate-900 dark:text-white text-sm font-mono tracking-wider">{phoneText}</span>
               {step === 1 && (
                 <span className="h-4 w-0.5 bg-brand-500 animate-pulse ml-0.5" />
               )}
@@ -189,12 +189,12 @@ export function PatientDemo() {
       {(step === 3 || step === 4) && (
         <div className="relative space-y-4">
           <div className="text-center">
-            <div className="text-xs text-slate-500 mb-4">OTP sent to +91 {DEMO_DATA.patient.phone}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-4">OTP sent to +91 {DEMO_DATA.patient.phone}</div>
             <div className="flex gap-2 justify-center">
               {DEMO_DATA.patient.otpDigits.map((d, i) => (
                 <div
                   key={i}
-                  className="h-11 w-9 rounded-lg border-2 border-brand-400 flex items-center justify-center text-lg font-bold text-brand-700 bg-brand-50 shadow-sm animate-fade-in"
+                  className="h-11 w-9 rounded-lg border-2 border-brand-400 flex items-center justify-center text-lg font-bold text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-950/50 shadow-sm animate-fade-in"
                   style={{ animationDelay: `${i * 140}ms` }}
                 >
                   {d}
@@ -221,42 +221,42 @@ export function PatientDemo() {
             </div>
           )}
 
-          <div className="rounded-xl border-2 border-brand-200 bg-white p-4 shadow-lg">
+          <div className="rounded-xl border-2 border-brand-200 dark:border-brand-800 bg-white dark:bg-slate-900 p-4 shadow-lg">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <div className="font-semibold text-sm text-slate-900">{DEMO_DATA.patient.doctorName}</div>
-                <div className="text-xs text-slate-400">{DEMO_DATA.patient.doctorSpecialty}</div>
+                <div className="font-semibold text-sm text-slate-900 dark:text-white">{DEMO_DATA.patient.doctorName}</div>
+                <div className="text-xs text-slate-600 dark:text-slate-400">{DEMO_DATA.patient.doctorSpecialty}</div>
               </div>
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
                 LIVE
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-2 mb-3">
-              <div className="rounded-lg bg-brand-50 ring-1 ring-brand-200 p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Your token</div>
-                <div className="text-3xl font-bold text-brand-700">#{DEMO_DATA.patient.yourToken}</div>
+              <div className="rounded-lg bg-brand-50 dark:bg-brand-950/40 ring-1 ring-brand-200 dark:ring-brand-800 p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-slate-600 dark:text-slate-400">Your token</div>
+                <div className="text-3xl font-bold text-brand-700 dark:text-brand-400">#{DEMO_DATA.patient.yourToken}</div>
               </div>
-              <div className="rounded-lg bg-slate-50 ring-1 ring-slate-200 p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Serving</div>
-                <div className="text-3xl font-bold text-slate-800">#{DEMO_DATA.patient.yourToken - ahead}</div>
+              <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 ring-1 ring-slate-200 dark:ring-slate-700 p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-slate-600 dark:text-slate-400">Serving</div>
+                <div className="text-3xl font-bold text-slate-800 dark:text-white">#{DEMO_DATA.patient.yourToken - ahead}</div>
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="rounded-lg bg-amber-50 ring-1 ring-amber-200 p-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">Ahead</div>
-                <div className="text-xl font-bold text-amber-700">{ahead}</div>
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-200 dark:ring-amber-800 p-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-600 dark:text-slate-400">Ahead</div>
+                <div className="text-xl font-bold text-amber-700 dark:text-amber-400">{ahead}</div>
               </div>
-              <div className="rounded-lg bg-purple-50 ring-1 ring-purple-200 p-2">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">ETA</div>
-                <div className="text-xl font-bold text-purple-700">{ahead === 0 ? 'Now!' : `~${eta}m`}</div>
+              <div className="rounded-lg bg-purple-50 dark:bg-purple-950/40 ring-1 ring-purple-200 dark:ring-purple-800 p-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-600 dark:text-slate-400">ETA</div>
+                <div className="text-xl font-bold text-purple-700 dark:text-purple-400">{ahead === 0 ? 'Now!' : `~${eta}m`}</div>
               </div>
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 text-center">Updates live · No refresh needed</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 text-center">Updates live · No refresh needed</p>
         </div>
       )}
     </div>
@@ -300,18 +300,18 @@ export function ReceptionDemo() {
   return (
     <div className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
       <div className="text-center">
-        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse inline-block" />
           Receptionist dashboard
         </div>
       </div>
 
       {/* Add patient form */}
-      <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="text-xs font-semibold text-slate-700 mb-3">Add customer to queue</div>
+      <div className="relative rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <div className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-3">Add customer to queue</div>
         <div className="flex gap-2 relative">
-          <div className="flex-1 relative rounded-lg border-2 border-brand-400 bg-white px-3 py-2 flex items-center min-h-[40px]">
-            <span className="text-sm text-slate-900 font-medium">{displayedName}</span>
+          <div className="flex-1 relative rounded-lg border-2 border-brand-400 bg-white dark:bg-slate-800 px-3 py-2 flex items-center min-h-[40px]">
+            <span className="text-sm text-slate-900 dark:text-white font-medium">{displayedName}</span>
             {step === 1 && (
               <span className="h-4 w-0.5 bg-brand-500 animate-pulse ml-0.5" />
             )}
@@ -327,7 +327,7 @@ export function ReceptionDemo() {
           </div>
         </div>
         {step === 3 && (
-          <div className="mt-2 text-xs text-brand-600 font-medium flex items-center gap-1.5">
+          <div className="mt-2 text-xs text-brand-700 dark:text-brand-400 font-medium flex items-center gap-1.5">
             <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
               <circle cx="12" cy="12" r="9" strokeOpacity=".3" />
               <path d="M12 3a9 9 0 0 1 9 9" />
@@ -338,10 +338,10 @@ export function ReceptionDemo() {
       </div>
 
       {/* Live queue */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-xs font-semibold text-slate-700">Live queue</div>
-          <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
+          <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">Live queue</div>
+          <span className="flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
             LIVE
           </span>
@@ -352,10 +352,10 @@ export function ReceptionDemo() {
               key={p.n}
               className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs transition-all duration-500 ${
                 p.status === 'new'
-                  ? 'bg-brand-50 ring-1 ring-brand-300 text-brand-900 font-semibold animate-fade-in'
+                  ? 'bg-brand-50 dark:bg-brand-950/40 ring-1 ring-brand-300 dark:ring-brand-800 text-brand-900 dark:text-brand-200 font-semibold animate-fade-in'
                   : i === 0
-                  ? 'bg-emerald-50 ring-1 ring-emerald-200 text-emerald-800 font-medium'
-                  : 'bg-slate-50 text-slate-700'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 ring-1 ring-emerald-200 dark:ring-emerald-800 text-emerald-800 dark:text-emerald-300 font-medium'
+                  : 'bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200'
               }`}
             >
               <span>
@@ -363,16 +363,16 @@ export function ReceptionDemo() {
                 {p.name}
               </span>
               {p.status === 'new' && (
-                <span className="text-[10px] rounded-full bg-brand-500 text-white px-2 py-0.5">New</span>
+                <span className="text-[10px] rounded-full bg-brand-700 text-white px-2 py-0.5">New</span>
               )}
               {i === 0 && p.status !== 'new' && (
-                <span className="text-[10px] rounded-full bg-emerald-500 text-white px-2 py-0.5">In consultation</span>
+                <span className="text-[10px] rounded-full bg-emerald-700 text-white px-2 py-0.5">In consultation</span>
               )}
             </div>
           ))}
         </div>
         {step >= 4 && (
-          <div className="mt-2 text-[11px] text-brand-600 font-medium text-center animate-fade-in">
+          <div className="mt-2 text-[11px] text-brand-700 dark:text-brand-400 font-medium text-center animate-fade-in">
             Token #{DEMO_DATA.reception.newTokenNumber} assigned · All customers notified ✓
           </div>
         )}
@@ -416,7 +416,7 @@ export function DoctorDemo() {
   return (
     <div className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
       <div className="text-center">
-        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 bg-slate-100 rounded-full px-3 py-1">
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse inline-block" />
           Provider panel
         </div>
@@ -426,7 +426,7 @@ export function DoctorDemo() {
       <div className={`relative rounded-xl p-4 shadow-sm transition-all duration-500 ${
         current
           ? 'bg-gradient-to-br from-purple-500 to-purple-700 text-white'
-          : 'bg-slate-100 border border-slate-200'
+          : 'bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
       }`}>
         {current ? (
           <>
@@ -448,19 +448,19 @@ export function DoctorDemo() {
             </div>
           </>
         ) : step === 0 ? (
-          <div className="text-center py-2 text-sm text-slate-500">Ready · {DEMO_DATA.doctor.initialQueue.length} customers waiting</div>
+          <div className="text-center py-2 text-sm text-slate-700 dark:text-slate-200">Ready · {DEMO_DATA.doctor.initialQueue.length} customers waiting</div>
         ) : (
-          <div className="text-center py-2 text-sm text-slate-600 font-medium">
+          <div className="text-center py-2 text-sm text-slate-700 dark:text-slate-200 font-medium">
             ✓ Completed · Avg consult {DEMO_DATA.doctor.avgConsultMinutes} min
           </div>
         )}
       </div>
 
       {/* Queue */}
-      <div className="relative rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="relative rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-xs font-semibold text-slate-700">Up next</div>
-          <span className="text-[10px] text-slate-500">{remaining.length} waiting</span>
+          <div className="text-xs font-semibold text-slate-700 dark:text-slate-200">Up next</div>
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">{remaining.length} waiting</span>
         </div>
         <div className="space-y-1.5">
           {remaining.slice(0, 3).map((p, i) => (
@@ -468,8 +468,8 @@ export function DoctorDemo() {
               key={p.n}
               className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs transition-all duration-500 ${
                 i === 0
-                  ? 'bg-amber-50 ring-1 ring-amber-200 text-amber-800 font-medium'
-                  : 'bg-slate-50 text-slate-600'
+                  ? 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-200 dark:ring-amber-800 text-amber-800 dark:text-amber-300 font-medium'
+                  : 'bg-slate-50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-200'
               }`}
             >
               <span>
@@ -477,7 +477,7 @@ export function DoctorDemo() {
                 {p.name}
               </span>
               {i === 0 && (
-                <span className="text-[10px] text-amber-600 font-semibold">Next up</span>
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">Next up</span>
               )}
             </div>
           ))}
@@ -492,7 +492,7 @@ export function DoctorDemo() {
           </div>
         )}
         {step === 5 && (
-          <div className="mt-2 text-[11px] text-emerald-600 font-medium text-center animate-fade-in">
+          <div className="mt-2 text-[11px] text-emerald-700 dark:text-emerald-400 font-medium text-center animate-fade-in">
             All screens updated · Avg consult: {DEMO_DATA.doctor.avgConsultMinutes} min ✓
           </div>
         )}

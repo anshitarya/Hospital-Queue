@@ -461,23 +461,23 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                   setSelectedLocationId(e.target.value);
                   router.push(`/doctor/${e.target.value}`);
                 }}
-                className="text-xs bg-white dark:bg-slate-850 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer"
+                className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100 rounded-2xl px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium cursor-pointer"
               >
                 {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                  <option key={loc.id} value={loc.id} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{loc.name}</option>
                 ))}
               </select>
             ) : (
-              <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1.5 rounded-lg font-medium border border-slate-200/50 dark:border-slate-750">
+              <span className="text-xs text-slate-700 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-2xl font-semibold border border-slate-200 dark:border-slate-600">
                 {locations[0].name}
               </span>
             )
           ) : undefined
         }
       />
-      <main className="mx-auto max-w-4xl px-4 py-5 space-y-4 animate-fade-in">
+      <main className="mx-auto max-w-4xl px-4 py-6 space-y-5 animate-fade-in">
         {linkError && (
-          <div className="card p-4 bg-rose-50 border border-rose-200 text-rose-700 text-sm rounded-xl">
+          <div className="card p-5 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-400/30 text-rose-800 dark:text-rose-200 text-sm rounded-3xl">
             {linkError}
           </div>
         )}
@@ -487,7 +487,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
           <button
             type="button"
             onClick={() => setTab('queue')}
-            className={'tab ' + (tab === 'queue' ? 'tab-active' : 'tab-inactive')}
+            className={'tab rounded-xl !py-2 !px-4 ' + (tab === 'queue' ? 'tab-active' : 'tab-inactive')}
           >
             Queue
             <span className="ml-1.5 opacity-70 text-xs">

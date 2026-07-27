@@ -24,8 +24,8 @@ class RequestEmailVerifyDto {
 
 class VerifyEmailDto {
   @IsString()
-  @Length(6, 6, { message: 'Verification code must be exactly 6 digits' })
-  @Matches(/^\d{6}$/, { message: 'Verification code must be 6 digits' })
+  @Length(4, 4, { message: 'Verification code must be exactly 4 digits' })
+  @Matches(/^\d{4}$/, { message: 'Verification code must be 4 digits' })
   code!: string;
 }
 

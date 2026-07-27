@@ -24,10 +24,11 @@ export default () => ({
     redisAdapter: process.env.SOCKET_IO_REDIS_ADAPTER === 'true',
   },
   msg91: {
-    authKey:     process.env.MSG91_AUTH_KEY,
-    senderId:    process.env.MSG91_SENDER_ID ?? 'TURNOS',
-    dltEntityId: process.env.MSG91_DLT_ENTITY_ID,
-    widgetId:    process.env.MSG91_WIDGET_ID,
+    authKey:     process.env.MSG91_AUTH_KEY?.trim(),
+    senderId:    (process.env.MSG91_SENDER_ID ?? 'TURNOS').trim(),
+    dltEntityId: process.env.MSG91_DLT_ENTITY_ID?.trim(),
+    widgetId:    (process.env.MSG91_WIDGET_ID ?? '366778725641393938343334').trim(),
+    tokenAuth:   (process.env.MSG91_TOKEN_AUTH ?? '553766TZ3k6473zu6a65fed8P1').trim(),
   },
   metaWa: {
     accessToken:   process.env.META_WA_ACCESS_TOKEN,
@@ -42,6 +43,11 @@ export default () => ({
   },
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+  },
+  razorpay: {
+    keyId: process.env.RAZORPAY_KEY_ID,
+    keySecret: process.env.RAZORPAY_KEY_SECRET,
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
   },
 });
 

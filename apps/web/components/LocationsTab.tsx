@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Toast, type ToastMessage } from '@/components/Toast';
 import { TableSkeleton } from '@/components/Skeleton';
-import LocationPickerModal from './LocationPickerModal';
+import dynamic from 'next/dynamic';
 import { Icon } from './Icons';
+
+const LocationPickerModal = dynamic(() => import('./LocationPickerModal'), { ssr: false });
 
 interface LocationItem {
   id: string;

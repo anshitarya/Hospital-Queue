@@ -22,14 +22,14 @@ export default function PatientLoginPage() {
   const router = useRouter();
   const setSession = useAuth((s) => s.setSession);
 
-  const [phone, setPhone]             = useState('');
-  const [e164, setE164]               = useState('');
+  const [phone, setPhone] = useState('');
+  const [e164, setE164] = useState('');
   const [phoneResult, setPhoneResult] = useState<PhoneValidationResult>({ ok: false });
-  const [step, setStep]               = useState<Step>('phone');
-  const [busy, setBusy]               = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+  const [step, setStep] = useState<Step>('phone');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [otpLoginEnabled, setOtpLoginEnabled] = useState(true);
-  const [devCode, setDevCode]         = useState<string | null>(null);
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   useEffect(() => {
     getAuthStatus()
@@ -38,7 +38,7 @@ export default function PatientLoginPage() {
           setOtpLoginEnabled(status.customerOtpLoginEnabled);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   function err(msg: unknown) {
@@ -112,25 +112,16 @@ export default function PatientLoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      {busy && (
-        <WarpSpeedLoader
-          message={
-            step === 'phone'
-              ? 'Checking…'
-              : step === 'pin'
-              ? 'Verifying PIN…'
-              : step === 'otp'
-              ? 'Verifying OTP…'
-              : 'Saving PIN…'
-          }
-        />
-      )}
-      <div className="w-full max-w-sm">
+    <main className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-50 dark:bg-[#07090e] text-slate-900 dark:text-slate-100">
+      <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -left-32 h-[450px] w-[450px] rounded-full bg-brand-500/10 blur-[120px]" />
+        <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-purple-600/10 blur-[130px]" />
+      </div>
 
+      <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <Link href="/login/choose" className="inline-flex items-center gap-2.5 group">
-            <TurnosIcon className="h-10 w-10" />
+            <TurnosIcon className="h-10 w-10 text-white" />
             <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">turnos</span>
           </Link>
         </div>
@@ -140,8 +131,8 @@ export default function PatientLoginPage() {
           {step === 'phone' && (
             <>
               <div>
-                <h1 className="text-xl font-semibold">Customer sign-in</h1>
-                <p className="text-sm text-slate-500 mt-0.5">
+                <h1 className="text-xl font-semibold text-white">Customer sign-in</h1>
+                <p className="text-sm text-slate-400 mt-0.5">
                   Enter your registered mobile number to continue.
                 </p>
               </div>
@@ -157,7 +148,7 @@ export default function PatientLoginPage() {
                 </button>
               </form>
               <p className="text-xs text-slate-400 text-center">
-                 Click Forgot PIN / Login with OTP when logging in for the first time.
+                Click Forgot PIN / Login with OTP when logging in for the first time.
               </p>
             </>
           )}
@@ -273,7 +264,7 @@ function PinPad({
     setEntered((p) => p.slice(0, -1));
   }
 
-  const KEYS = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+  const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
   return (
     <div className="space-y-5">
@@ -283,11 +274,10 @@ function PinPad({
         {Array.from({ length: 4 }, (_, i) => (
           <span
             key={i}
-            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${
-              i < entered.length
+            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${i < entered.length
                 ? 'bg-brand-600 border-brand-600 scale-110'
                 : 'bg-transparent border-slate-300'
-            }`}
+              }`}
           />
         ))}
       </div>
@@ -370,11 +360,10 @@ function OtpPad({
         {Array.from({ length: 4 }, (_, i) => (
           <span
             key={i}
-            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${
-              i < entered.length
+            className={`h-4 w-4 rounded-full border-2 transition-all duration-150 ${i < entered.length
                 ? 'bg-brand-600 border-brand-600 scale-110'
                 : 'bg-transparent border-slate-300'
-            }`}
+              }`}
           />
         ))}
       </div>
