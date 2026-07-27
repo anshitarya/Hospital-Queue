@@ -89,6 +89,14 @@ export class OtpService {
           authkey: cleanAuthKey,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          authkey: cleanAuthKey,
+          mobile: mobileWith91,
+          otp: code,
+          otp_length: 4,
+          otp_expiry: 5,
+          ...(templateId ? { template_id: templateId } : {}),
+        }),
       });
 
       let data: any;
