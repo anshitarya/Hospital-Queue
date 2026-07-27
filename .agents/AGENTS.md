@@ -20,3 +20,7 @@ To activate Razorpay payments, the following settings need to be configured:
    - `payment.captured`
    - `payment.failed`
    - `refund.processed`
+
+## Git Commit Guidelines
+
+- **Do NOT run `git commit` automatically**. Leave all code changes uncommitted in the working directory for the user to review and commit themselves.

@@ -30,6 +30,15 @@ export class OtpService {
   }
 
   private issueRateKey(channel: Channel, target: string) {
+    // Log masked secrets for diagnostic purposes in production
+    const cleanAuth = (this.authKey ?? '').trim();
+    const cleanWidget = (this.widgetId ?? '').trim();
+    this.logger.log(
+      `[MSG91 DIAGNOSTICS] AuthKey length: ${cleanAuth.length}, starts: "${cleanAuth.substring(0, 4)}", ends: "${cleanAuth.substring(cleanAuth.length - 4)}"`
+    );
+    this.logger.log(
+      `[MSG91 DIAGNOSTICS] WidgetId length: ${cleanWidget.length}, starts: "${cleanWidget.substring(0, 4)}", ends: "${cleanWidget.substring(cleanWidget.length - 4)}"`
+    );
     return `otp:rate:issue:${channel}:${target}`;
   }
 
