@@ -94,8 +94,8 @@ describe('OtpService.issue', () => {
     expect(url).toContain('mobile=919876543210');
     expect(url).toContain('otp_length=4');
     expect(url).toContain('otp_expiry=5');
-    // No otp= param — MSG91 generates the OTP itself
-    expect(url).not.toContain('otp=');
+    // We pass our generated code to MSG91 so it can deliver the SMS
+    expect(url).toMatch(/otp=\d{4}/);
   });
 
   it('does NOT store code in Redis when MSG91 handles OTP', async () => {

@@ -75,9 +75,10 @@ export class OtpService {
     if (channel === 'phone' && cleanAuthKey) {
       const digits = target.replace(/\D/g, '');
       const mobileWith91 = digits.startsWith('91') ? digits : `91${digits}`;
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
 
       const templateId = process.env.MSG91_OTP_TEMPLATE_ID ?? process.env.MSG91_SMS_TEMPLATE_ID;
-      let otpUrl = `https://control.msg91.com/api/v5/otp?authkey=${encodeURIComponent(cleanAuthKey)}&mobile=${encodeURIComponent(mobileWith91)}&otp_length=4&otp_expiry=5`;
+      let otpUrl = `https://control.msg91.com/api/v5/otp?authkey=${encodeURIComponent(cleanAuthKey)}&mobile=${encodeURIComponent(mobileWith91)}&otp=${encodeURIComponent(code)}&otp_length=4&otp_expiry=5`;
       if (templateId) {
         otpUrl += `&template_id=${encodeURIComponent(templateId)}`;
       }
