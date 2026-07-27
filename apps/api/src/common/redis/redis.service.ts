@@ -8,7 +8,7 @@ import Redis from 'ioredis';
  *
  * Key inventory (all keys have TTLs except idempotency which expires in 10 min):
  *
- *   otp:{channel}:{target}           — 6-digit OTP during login (5 min)
+ *   otp:{channel}:{target}           — 4-digit OTP for email/dev fallback (5 min)
  *   otp:rate:issue:{channel}:{target} — OTP send rate limit counter (10 min)
  *   otp:rate:verify:{channel}:{target} — OTP verify attempt counter (10 min)
  *   pin_lock:{userId}                — failed PIN attempts before lockout (15 min)
