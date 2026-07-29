@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { DEMO_DATA, DEMO_TIMING } from '@/lib/config';
 
 /* ─────────────────────────────────────────────────────────────────────────── */
@@ -22,28 +22,48 @@ function useMounted() {
 }
 
 /**
- * Returns an incrementing tick every `ms` milliseconds. Starts at 0.
- * Safe: only ticks after mount.
+ * Detects if an element is currently in the viewport using IntersectionObserver.
  */
-function useTicker(ms: number) {
+function useIsVisible(ref: React.RefObject<HTMLElement>) {
+  const [isIntersecting, setIntersecting] = useState(false);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new IntersectionObserver(([entry]) =>
+      setIntersecting(entry.isIntersecting)
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return isIntersecting;
+}
+
+/**
+ * Returns an incrementing tick every `ms` milliseconds. Starts at 0.
+ * Safe: only ticks after mount and when active.
+ */
+function useTicker(ms: number, active: boolean) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
+    if (!active) return;
     const id = setInterval(() => setTick((t) => t + 1), ms);
     return () => clearInterval(id);
-  }, [ms]);
+  }, [ms, active]);
   return tick;
 }
 
 /**
  * Drives a step machine 0 → steps-1 → reset.
  * Each step lasts `perStep` ms. Step transitions happen client-side only,
- * so initial render is always step 0 (matches SSR).
+ * so initial render is always step 0 (matches SSR). Only advances when active.
  */
-function useStep(steps: number, perStep: number) {
+function useStep(steps: number, perStep: number, active: boolean) {
   const [step, setStep] = useState(0);
   const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
+    if (!active) return;
     if (restarting) {
       const t = setTimeout(() => { setStep(0); setRestarting(false); }, 400);
       return () => clearTimeout(t);
@@ -53,7 +73,7 @@ function useStep(steps: number, perStep: number) {
       else setRestarting(true);
     }, perStep);
     return () => clearTimeout(t);
-  }, [step, steps, perStep, restarting]);
+  }, [step, steps, perStep, restarting, active]);
 
   return { step, restarting };
 }
@@ -129,9 +149,11 @@ function TouchRipple({
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export function PatientDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isVisible = useIsVisible(ref);
   const mounted = useMounted();
-  const { step, restarting } = useStep(6, DEMO_TIMING.patientStepMs);
-  const tick = useTicker(1000);
+  const { step, restarting } = useStep(6, DEMO_TIMING.patientStepMs, isVisible);
+  const tick = useTicker(1000, isVisible);
 
   const typing = useTyping(DEMO_DATA.patient.phone, step === 1, DEMO_TIMING.typeIntervalMs);
   const phoneText = step === 0 ? '' : step >= 2 ? DEMO_DATA.patient.phone : typing;
@@ -150,7 +172,7 @@ export function PatientDemo() {
   const fade = restarting ? 'opacity-0' : 'opacity-100';
 
   return (
-    <div className={`relative transition-opacity duration-400 ${fade} select-none`}>
+    <div ref={ref} className={`relative transition-opacity duration-400 ${fade} select-none`}>
       {/* ── Steps 0–2: Phone entry ── */}
       {step < 3 && (
         <div className="relative space-y-4">
@@ -276,8 +298,10 @@ export function PatientDemo() {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export function ReceptionDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isVisible = useIsVisible(ref);
   const mounted = useMounted();
-  const { step, restarting } = useStep(6, DEMO_TIMING.receptionStepMs);
+  const { step, restarting } = useStep(6, DEMO_TIMING.receptionStepMs, isVisible);
   const typed = useTyping(DEMO_DATA.reception.newPatientName, step === 1, DEMO_TIMING.typeIntervalMs);
 
   const displayedName =
@@ -298,7 +322,7 @@ export function ReceptionDemo() {
   const fade = restarting ? 'opacity-0' : 'opacity-100';
 
   return (
-    <div className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
+    <div ref={ref} className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
       <div className="text-center">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse inline-block" />
@@ -394,9 +418,11 @@ export function ReceptionDemo() {
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 export function DoctorDemo() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isVisible = useIsVisible(ref);
   const mounted = useMounted();
-  const { step, restarting } = useStep(6, DEMO_TIMING.doctorStepMs);
-  const tick = useTicker(1000);
+  const { step, restarting } = useStep(6, DEMO_TIMING.doctorStepMs, isVisible);
+  const tick = useTicker(1000, isVisible);
 
   const fade = restarting ? 'opacity-0' : 'opacity-100';
 
@@ -414,7 +440,7 @@ export function DoctorDemo() {
   const tapOnComplete = step === 3 && mounted;
 
   return (
-    <div className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
+    <div ref={ref} className={`relative transition-opacity duration-400 ${fade} select-none space-y-4`}>
       <div className="text-center">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 rounded-full px-3 py-1">
           <span className="h-1.5 w-1.5 rounded-full bg-purple-500 animate-pulse inline-block" />

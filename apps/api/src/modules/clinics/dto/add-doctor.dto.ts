@@ -49,7 +49,7 @@ export class AddDoctorDto {
     typeof value === 'string' && value ? normalizeIndianMobile(value).e164 : value,
   )
   @IsString()
-  @Matches(/^\+91[6-9]\d{9}$/, { message: 'Enter a valid 10-digit Indian mobile number' })
+  @Matches(/^\+91[6-9]\d{9}$/, { message: 'Enter a valid 10 digit Indian mobile number' })
   phone?: string;
 
   @IsString()

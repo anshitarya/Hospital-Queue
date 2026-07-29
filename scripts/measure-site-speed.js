@@ -90,72 +90,53 @@ function auditBundleSizes() {
   }
 }
 
-const httpAgent = new http.Agent({ keepAlive: true });
-const httpsAgent = new https.Agent({ keepAlive: true });
+const { exec } = require('child_process');
 
-function fetchTimed(urlStr, redirectCount = 0) {
+function fetchTimed(urlStr) {
   return new Promise((resolve) => {
-    if (redirectCount > 5) {
-      resolve({ url: urlStr, status: 310, ttfbMs: 0, totalMs: 0, sizeBytes: 0, error: 'Too many redirects' });
-      return;
-    }
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+    // Use system curl to bypass Cloudflare's Node.js JA3/TLS fingerprint bot blocks.
+    // -w output format: HTTP_STATUS TTFB TOTAL_TIME SIZE_BYTES
+    const cmd = `curl -s -L -k --max-time 5 -A "${userAgent}" -w "%{http_code} %{time_starttransfer} %{time_total} %{size_download}" -o /dev/null "${urlStr}"`;
 
-    const url = new URL(urlStr);
-    const isHttps = url.protocol === 'https:';
-    const client = isHttps ? https : http;
-    const agent = isHttps ? httpsAgent : httpAgent;
-
-    const startTime = process.hrtime.bigint();
-    let ttfbTime = 0;
-
-    const req = client.get(urlStr, { agent, timeout: 5000 }, (res) => {
-      ttfbTime = Number(process.hrtime.bigint() - startTime) / 1e6;
-
-      // Handle HTTP redirects (301, 302, 307, 308)
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        const nextUrl = new URL(res.headers.location, urlStr).toString();
-        fetchTimed(nextUrl, redirectCount + 1).then(resolve);
+    exec(cmd, (error, stdout) => {
+      if (error) {
+        resolve({
+          url: urlStr,
+          status: 0,
+          ttfbMs: 0,
+          totalMs: 5000,
+          sizeBytes: 0,
+          error: error.message,
+        });
         return;
       }
 
-      let bodyLength = 0;
-      res.on('data', (chunk) => {
-        bodyLength += chunk.length;
-      });
-
-      res.on('end', () => {
-        const totalTime = Number(process.hrtime.bigint() - startTime) / 1e6;
+      const parts = stdout.trim().split(/\s+/);
+      if (parts.length < 4 || parts[0] === '000') {
         resolve({
           url: urlStr,
-          status: res.statusCode,
-          ttfbMs: ttfbTime,
-          totalMs: totalTime,
-          sizeBytes: bodyLength,
-          error: null,
+          status: 0,
+          ttfbMs: 0,
+          totalMs: 5000,
+          sizeBytes: 0,
+          error: stdout.trim() || 'Connection failed or timeout',
         });
-      });
-    });
+        return;
+      }
 
-    req.on('error', (err) => {
+      const status = parseInt(parts[0], 10);
+      const ttfbMs = parseFloat(parts[1]) * 1000;
+      const totalMs = parseFloat(parts[2]) * 1000;
+      const sizeBytes = parseInt(parts[3], 10);
+
       resolve({
         url: urlStr,
-        status: 0,
-        ttfbMs: 0,
-        totalMs: 0,
-        sizeBytes: 0,
-        error: err.message,
-      });
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      resolve({
-        url: urlStr,
-        status: 408,
-        ttfbMs: 0,
-        totalMs: 5000,
-        sizeBytes: 0,
-        error: 'Timeout after 5000ms',
+        status,
+        ttfbMs,
+        totalMs,
+        sizeBytes,
+        error: null,
       });
     });
   });

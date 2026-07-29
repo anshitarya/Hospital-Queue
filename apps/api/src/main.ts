@@ -14,9 +14,10 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
 
-  // Artificial latency middleware for testing skeleton shimmer loaders
+  // Artificial latency middleware for testing skeleton shimmer loaders (disabled in production)
   app.use((req: any, res: any, next: () => void) => {
-    const delay = Number(process.env.DEV_THROTTLE_MS ?? 0);
+    const isProd = process.env.NODE_ENV === 'production';
+    const delay = isProd ? 0 : Number(process.env.DEV_THROTTLE_MS ?? 0);
     // Keep initial page bootstrap /auth/me check instant so first load is instant
     const isInitialAuthCheck = req.method === 'GET' && (req.path === '/api/auth/me' || req.path === '/auth/me');
     if (delay > 0 && !isInitialAuthCheck) {

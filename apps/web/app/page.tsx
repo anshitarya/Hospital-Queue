@@ -130,7 +130,7 @@ export default function HomePage() {
                   {f.icon}
                 </div>
                 <div className="font-semibold text-lg">{f.title}</div>
-                <p className="mt-1.5 text-sm text-slate-600 leading-relaxed">{f.body}</p>
+                <p className="mt-1.5 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">{f.body}</p>
               </div>
             ))}
           </div>
@@ -225,8 +225,8 @@ export default function HomePage() {
             <div className="text-5xl shrink-0 leading-none">💬</div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-semibold text-amber-700 uppercase tracking-widest">For businesses</div>
-              <h3 className="mt-1 text-xl font-bold text-slate-900">Would this help your business?</h3>
-              <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+              <h3 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">Would this help your business?</h3>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                 We&apos;re building this for clinics, salons, banks, and any business with a queue. Take 2 minutes
                 to tell us whether you need this and what features matter most — your feedback directly shapes
                 what we build next.
@@ -458,11 +458,11 @@ function SectionHeading({
 }) {
   return (
     <div className="text-center max-w-2xl mx-auto">
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 text-brand-700 px-3 py-1 text-xs font-medium ring-1 ring-brand-200">
+      <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 px-3 py-1 text-xs font-medium ring-1 ring-brand-200 dark:ring-brand-700">
         {kicker}
       </div>
       <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight">{title}</h2>
-      <p className="mt-3 text-slate-600">{sub}</p>
+      <p className="mt-3 text-slate-600 dark:text-slate-300">{sub}</p>
     </div>
   );
 }
@@ -493,12 +493,12 @@ function FlowCard({
       <ol className="mt-6 space-y-4">
         {steps.map((s) => (
           <li key={s.n} className="flex gap-4 group">
-            <div className={`shrink-0 h-8 w-8 rounded-full bg-white ring-2 ${ring} flex items-center justify-center font-semibold text-sm text-slate-700 group-hover:scale-110 transition-transform`}>
+            <div className={`shrink-0 h-8 w-8 rounded-full bg-white dark:bg-slate-700 ring-2 ${ring} flex items-center justify-center font-semibold text-sm text-slate-700 dark:text-white group-hover:scale-110 transition-transform`}>
               {s.n}
             </div>
             <div className="pt-0.5">
-              <div className="font-semibold text-slate-900">{s.t}</div>
-              <div className="text-sm text-slate-600 mt-0.5">{s.d}</div>
+              <div className="font-semibold text-slate-900 dark:text-white">{s.t}</div>
+              <div className="text-sm text-slate-600 dark:text-slate-300 mt-0.5">{s.d}</div>
             </div>
           </li>
         ))}
@@ -534,8 +534,8 @@ function RoleCard({
       <div className="mt-3 font-semibold">{title}</div>
       <ul className="mt-2 space-y-1">
         {points.map((p) => (
-          <li key={p} className="text-sm text-slate-600 flex items-center gap-2">
-            <Icon.Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+          <li key={p} className="text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
+            <Icon.Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             {p}
           </li>
         ))}
