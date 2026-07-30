@@ -47,6 +47,13 @@ export function PrescriptionConfig() {
   const [emergencyWarning, setEmergencyWarning] = useState('');
   const [watermarkUrl, setWatermarkUrl] = useState('');
 
+  // Additional settings
+  const [website, setWebsite] = useState('');
+  const [showFollowUp, setShowFollowUp] = useState(true);
+  const [clinicNameFontSize, setClinicNameFontSize] = useState(16);
+  const [doctorNameFontSize, setDoctorNameFontSize] = useState(11);
+  const [headerDetailsFontSize, setHeaderDetailsFontSize] = useState(8);
+
   useEffect(() => {
     const fetchConfig = async () => {
       try {
@@ -69,8 +76,13 @@ export function PrescriptionConfig() {
           setCustomHeaderText(data.customHeaderText || '');
           setCustomFooterText(data.customFooterText || '');
           setSignatureUrl(data.signatureUrl || '');
-          setSectionOrder(data.sectionOrder || ['vitals', 'symptoms', 'diagnosis', 'medicines', 'advice']);
-
+          
+          let order = data.sectionOrder || ['vitals', 'symptoms', 'diagnosis', 'medicines', 'advice'];
+          if (!order.includes('followup')) {
+            order = [...order, 'followup'];
+          }
+          setSectionOrder(order);
+ 
           // New settings
           setTemplateStyle(data.templateStyle || 'CLASSIC');
           setShowMedicineTable(data.showMedicineTable ?? true);
@@ -88,6 +100,11 @@ export function PrescriptionConfig() {
           setConsultingHours(data.consultingHours || '');
           setEmergencyWarning(data.emergencyWarning || '');
           setWatermarkUrl(data.watermarkUrl || '');
+          setWebsite(data.website || '');
+          setShowFollowUp(data.showFollowUp ?? true);
+          setClinicNameFontSize(data.clinicNameFontSize || 16);
+          setDoctorNameFontSize(data.doctorNameFontSize || 11);
+          setHeaderDetailsFontSize(data.headerDetailsFontSize || 8);
         }
       } catch (err) {
         console.error(err);
@@ -150,6 +167,11 @@ export function PrescriptionConfig() {
           consultingHours,
           emergencyWarning,
           watermarkUrl,
+          website,
+          showFollowUp,
+          clinicNameFontSize: Number(clinicNameFontSize),
+          doctorNameFontSize: Number(doctorNameFontSize),
+          headerDetailsFontSize: Number(headerDetailsFontSize),
         },
       });
       setMsg('Prescription template configuration saved successfully!');
@@ -282,13 +304,23 @@ export function PrescriptionConfig() {
                   className="input mt-1 w-full"
                 />
               </div>
-              <div className="sm:col-span-2">
+              <div>
                 <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Email Address</label>
                 <input
                   type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="e.g. drsandeep@gmail.com"
+                  className="input mt-1 w-full"
+                />
+              </div>
+              <div>
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Website URL</label>
+                <input
+                  type="text"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="e.g. www.sandeepclinic.com"
                   className="input mt-1 w-full"
                 />
               </div>
@@ -380,9 +412,49 @@ export function PrescriptionConfig() {
             </div>
           </div>
 
+          {/* Font Sizes Customization */}
+          <div className="card p-5 space-y-4">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">4. Typography & Font Sizes</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Clinic Name Size (px)</label>
+                <input
+                  type="number"
+                  min={10}
+                  max={32}
+                  value={clinicNameFontSize}
+                  onChange={(e) => setClinicNameFontSize(Number(e.target.value))}
+                  className="input mt-1 w-full text-xs"
+                />
+              </div>
+              <div>
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Doctor Name Size (px)</label>
+                <input
+                  type="number"
+                  min={8}
+                  max={24}
+                  value={doctorNameFontSize}
+                  onChange={(e) => setDoctorNameFontSize(Number(e.target.value))}
+                  className="input mt-1 w-full text-xs"
+                />
+              </div>
+              <div>
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Header Details Size (px)</label>
+                <input
+                  type="number"
+                  min={6}
+                  max={16}
+                  value={headerDetailsFontSize}
+                  onChange={(e) => setHeaderDetailsFontSize(Number(e.target.value))}
+                  className="input mt-1 w-full text-xs"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Visibility Switches */}
           <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">4. Elements Visibility</h4>
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">5. Elements Visibility</h4>
             <div className="grid grid-cols-2 gap-3">
               <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
                 <input type="checkbox" checked={showLogo} onChange={(e) => setShowLogo(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
@@ -428,12 +500,16 @@ export function PrescriptionConfig() {
                 <input type="checkbox" checked={showInvestigations} onChange={(e) => setShowInvestigations(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
                 Investigations
               </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showFollowUp} onChange={(e) => setShowFollowUp(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Follow Up Block
+              </label>
             </div>
           </div>
 
           {/* Section Ordering */}
           <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">5. Layout Section Order</h4>
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">6. Layout Section Order</h4>
             <p className="text-[10px] text-slate-400">Re-arrange layout blocks dynamically using up/down arrow buttons:</p>
             <div className="space-y-2">
               {sectionOrder.map((section, idx) => (
@@ -496,12 +572,12 @@ export function PrescriptionConfig() {
                   <div className={`flex-1 leading-relaxed ${
                     headerTextPosition === 'RIGHT' ? 'text-right' : headerTextPosition === 'CENTER' ? 'text-center' : 'text-left'
                   }`}>
-                    <span className="block font-black text-slate-900 text-xs tracking-tight">{customClinicName || 'Clinic Name'}</span>
-                    <span className="block text-rose-700 font-extrabold text-[9px]">{customDoctorName || 'Dr. Doctor Name'}</span>
-                    <span className="block text-[8px] text-slate-400 font-semibold">{qualifications || 'Qualifications'}</span>
-                    <span className="block text-[8px] text-slate-400">{specializationText || 'Specialization'}</span>
-                    <span className="block text-[8px] text-slate-400">{registrationNumber || 'Registration Number'}</span>
-                    <span className="block text-[8px] text-slate-500 font-medium mt-1">
+                    <span className="block font-black text-slate-900 tracking-tight" style={{ fontSize: `${clinicNameFontSize}px` }}>{customClinicName || 'Clinic Name'}</span>
+                    <span className="block text-rose-700 font-extrabold" style={{ fontSize: `${doctorNameFontSize}px` }}>{customDoctorName || 'Dr. Doctor Name'}</span>
+                    <span className="block text-slate-400 font-semibold" style={{ fontSize: `${headerDetailsFontSize}px` }}>{qualifications || 'Qualifications'}</span>
+                    <span className="block text-slate-400" style={{ fontSize: `${headerDetailsFontSize}px` }}>{specializationText || 'Specialization'}</span>
+                    <span className="block text-slate-400" style={{ fontSize: `${headerDetailsFontSize}px` }}>{registrationNumber || 'Registration Number'}</span>
+                    <span className="block text-slate-500 font-medium mt-1" style={{ fontSize: `${headerDetailsFontSize - 1}px` }}>
                       {addressLine1 || 'Address Line 1'}, {addressLine2 || 'Address Line 2'}
                     </span>
                   </div>
@@ -614,6 +690,14 @@ export function PrescriptionConfig() {
                       </div>
                     );
                   }
+                  if (section === 'followup' && showFollowUp) {
+                    return (
+                      <div key={section} className="p-2 border border-dashed border-teal-200 rounded-xl bg-teal-50/20">
+                        <span className="font-bold text-[8px] text-slate-700 block uppercase">Follow Up</span>
+                        <span className="text-slate-500 block">Date: {new Date(Date.now() + 5 * 86400000).toLocaleDateString()} | Notes: Review in 5 days (SOS if symptoms persist)</span>
+                      </div>
+                    );
+                  }
                   return null;
                 })}
               </div>
@@ -627,7 +711,7 @@ export function PrescriptionConfig() {
                     <span className="block text-[7px] text-slate-400">Consulting Hours: {consultingHours}</span>
                   )}
                   {contactNumber && (
-                    <span className="block text-[7px] text-slate-400">Contact: {contactNumber} {email ? `| Email: ${email}` : ''}</span>
+                    <span className="block text-[7px] text-slate-400">Contact: {contactNumber} {email ? `| Email: ${email}` : ''} {website ? `| Web: ${website}` : ''}</span>
                   )}
                 </div>
                 

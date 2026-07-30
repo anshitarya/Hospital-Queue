@@ -345,20 +345,21 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
       }
 
       // Render Header Details
-      doc.fontSize(16).font('Helvetica-Bold').fillColor('#1e293b').text(clinicName, textX, startY, { align: textAlignment, width: textWidth });
-      doc.fontSize(11).font('Helvetica-Bold').fillColor('#b91c1c').text(doctorName, { align: textAlignment, width: textWidth });
+      doc.fontSize(config.clinicNameFontSize || 16).font('Helvetica-Bold').fillColor('#1e293b').text(clinicName, textX, startY, { align: textAlignment, width: textWidth });
+      doc.fontSize(config.doctorNameFontSize || 11).font('Helvetica-Bold').fillColor('#b91c1c').text(doctorName, { align: textAlignment, width: textWidth });
       
+      const detailsSz = config.headerDetailsFontSize || 8.5;
       if (qualificationsText) {
-        doc.fontSize(8.5).font('Helvetica-Oblique').fillColor('#475569').text(qualificationsText, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz).font('Helvetica-Oblique').fillColor('#475569').text(qualificationsText, { align: textAlignment, width: textWidth });
       }
       if (specText) {
-        doc.fontSize(8.5).font('Helvetica').fillColor('#475569').text(specText, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz).font('Helvetica').fillColor('#475569').text(specText, { align: textAlignment, width: textWidth });
       }
       if (regNo) {
-        doc.fontSize(8.5).font('Helvetica').fillColor('#64748b').text(`Reg No: ${regNo}`, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz).font('Helvetica').fillColor('#64748b').text(`Reg No: ${regNo}`, { align: textAlignment, width: textWidth });
       }
       if (addressText) {
-        doc.fontSize(8).font('Helvetica').fillColor('#64748b').text(addressText, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz - 0.5).font('Helvetica').fillColor('#64748b').text(addressText, { align: textAlignment, width: textWidth });
       }
       doc.moveDown(1);
     } else {
@@ -526,6 +527,19 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
         doc.fontSize(8.5).font('Helvetica').fillColor('#475569').text(prescription.investigationsOrdered);
         doc.moveDown(1.2);
       }
+
+      if (section === 'followup' && config.showFollowUp && (prescription.followUpDate || prescription.followUpNote)) {
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e293b').text('Follow Up');
+        let followUpText = '';
+        if (prescription.followUpDate) {
+          followUpText += `Date: ${prescription.followUpDate.toLocaleDateString()}`;
+        }
+        if (prescription.followUpNote) {
+          followUpText += `${followUpText ? '  |  ' : ''}Notes: ${prescription.followUpNote}`;
+        }
+        doc.fontSize(8.5).font('Helvetica').fillColor('#475569').text(followUpText);
+        doc.moveDown(1.2);
+      }
     }
 
     // Signature Area
@@ -554,10 +568,11 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
     if (timingHours) {
       doc.text(`Consulting Hours: ${timingHours}`, 50, footerTopY + 6);
     }
-    if (phoneText || emailText) {
+    if (phoneText || emailText || config.website) {
       let contactLine = '';
       if (phoneText) contactLine += `Contact: ${phoneText}`;
-      if (emailText) contactLine += `${phoneText ? '  |  ' : ''}Email: ${emailText}`;
+      if (emailText) contactLine += `${contactLine ? '  |  ' : ''}Email: ${emailText}`;
+      if (config.website) contactLine += `${contactLine ? '  |  ' : ''}Web: ${config.website}`;
       doc.text(contactLine, 50, footerTopY + 16);
     }
 

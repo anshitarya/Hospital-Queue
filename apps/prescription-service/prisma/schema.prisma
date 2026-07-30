@@ -806,5 +806,10 @@ model DoctorPrescriptionConfig {
   consultingHours       String?  // e.g. "Mon-Sat: 4:30 PM - 8:30 PM"
   emergencyWarning      String?  // e.g. "In case of emergency, contact the nearest hospital."
   watermarkUrl          String?  // Custom background watermark image URL
+  website               String?
+  showFollowUp          Boolean  @default(true)
+  clinicNameFontSize    Int      @default(16)
+  doctorNameFontSize    Int      @default(11)
+  headerDetailsFontSize Int      @default(8)
 }
 

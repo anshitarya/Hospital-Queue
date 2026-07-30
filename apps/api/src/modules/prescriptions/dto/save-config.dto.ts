@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class SaveConfigDto {
   @IsArray()
@@ -133,4 +133,24 @@ export class SaveConfigDto {
   @IsString()
   @IsOptional()
   watermarkUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  website?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  showFollowUp?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  clinicNameFontSize?: number;
+
+  @IsNumber()
+  @IsOptional()
+  doctorNameFontSize?: number;
+
+  @IsNumber()
+  @IsOptional()
+  headerDetailsFontSize?: number;
 }
