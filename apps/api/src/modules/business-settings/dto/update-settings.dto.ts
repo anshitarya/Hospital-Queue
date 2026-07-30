@@ -2,6 +2,7 @@ import { IsString, IsArray, IsOptional, IsBoolean, IsInt, Min } from 'class-vali
 
 export class UpdateSettingsDto {
   @IsOptional() @IsString() businessType?: string;
+  @IsOptional() @IsString() logoUrl?: string;
   @IsOptional() @IsString() queueMode?: string;
   @IsOptional() @IsString() appointmentMode?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) workingDays?: string[];

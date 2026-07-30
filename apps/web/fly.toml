@@ -1,4 +1,4 @@
-app            = "turnos"
+app = "turnos"
 primary_region = "sin"   # Singapore
 
 [build]

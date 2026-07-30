@@ -17,4 +17,10 @@ export class UpdateDoctorDto {
   @Min(0)
   @Max(240)
   delayMinutes?: number;
+
+  @IsOptional()
+  prescriptionEnabled?: boolean;
+
+  @IsOptional()
+  prescriptionAllowed?: boolean;
 }

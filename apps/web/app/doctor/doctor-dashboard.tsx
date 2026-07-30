@@ -16,6 +16,9 @@ import { EntryStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst, fmtWait } from '@/lib/datetime';
+import { AudioRecorder } from '@/components/AudioRecorder';
+import { PrescriptionReview } from '@/components/PrescriptionReview';
+import { PrescriptionConfig } from '@/components/PrescriptionConfig';
 
 import dynamic from 'next/dynamic';
 
@@ -46,8 +49,9 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const [doctorId, setDoctorId] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [activePrescription, setActivePrescription] = useState<any>(null);
 
-  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history' | 'leaves'>('queue', ['queue', 'staff', 'history', 'leaves']);
+  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history' | 'leaves' | 'prescription-config'>('queue', ['queue', 'staff', 'history', 'leaves', 'prescription-config']);
 
   // Break form state (Feature 4)
   const [showBreakForm, setShowBreakForm] = useState(false);
@@ -237,6 +241,10 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const waiting = (branchSnapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
   const nextUp = waiting[0];
   const isPaused = branchSnapshot?.doctor?.status === 'PAUSED';
+
+  useEffect(() => {
+    setActivePrescription(null);
+  }, [current?.id]);
   const orderMap = useMemo(() => {
     const map = new Map<string, number>();
     const countsPerDay = new Map<string, number>();
@@ -528,6 +536,15 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
           >
             All Records
           </button>
+          {user?.role === 'DOCTOR' && branchSnapshot?.doctor?.prescriptionEnabled && (
+            <button
+              type="button"
+              onClick={() => setTab('prescription-config')}
+              className={'tab ' + (tab === 'prescription-config' ? 'tab-active' : 'tab-inactive')}
+            >
+              📄 Prescription Config
+            </button>
+          )}
         </div>
 
         {/* ── Queue tab ── */}
@@ -750,6 +767,25 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
                           {waiting.length} waiting
                         </span>
+                      </div>
+                    )}
+
+                    {/* Prescription Section */}
+                    {current.visitId && branchSnapshot?.doctor?.prescriptionEnabled && (
+                      <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 space-y-4">
+                        <AudioRecorder
+                          visitId={current.visitId}
+                          onPrescriptionReady={(pres) => setActivePrescription(pres)}
+                        />
+                        {activePrescription && (
+                          <PrescriptionReview
+                            prescription={activePrescription}
+                            onCompleted={() => {
+                              setActivePrescription(null);
+                              setToast({ type: 'ok', msg: 'Prescription saved and queued for WhatsApp delivery!' });
+                            }}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1094,6 +1130,11 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
             loading={recordsLoading}
             onDateChange={(f, t) => { setRecordsFrom(f); setRecordsTo(t); }}
           />
+        )}
+
+        {/* ── Prescription Template Config tab ── */}
+        {tab === 'prescription-config' && user?.role === 'DOCTOR' && (
+          <PrescriptionConfig />
         )}
       </main>
 

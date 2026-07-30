@@ -129,6 +129,8 @@ export interface Doctor {
   followUpEvery?: number;
   locations?: { locationId: string }[];
   missedGap?: number;
+  prescriptionEnabled: boolean;
+  prescriptionAllowed: boolean;
 }
 export interface QueueEntry {
   id: string;
@@ -157,6 +159,7 @@ export interface QueueEntry {
   movingAvgMinutes?: number;
   appointmentTime?: string | null;
   appointmentSlot?: string | null;
+  visitId?: string | null;
 }
 export interface MissedEntry {
   id: string;

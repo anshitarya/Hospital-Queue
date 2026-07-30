@@ -852,6 +852,33 @@ export default function AdminPage() {
     }
   }
 
+  async function togglePrescriptionAccess(docId: string, currentVal: boolean) {
+    try {
+      const nextVal = !currentVal;
+      await api<any>(`/doctors/${docId}`, {
+        method: 'PATCH',
+        body: {
+          prescriptionAllowed: nextVal,
+          ...(!nextVal ? { prescriptionEnabled: false } : {}),
+        },
+      });
+      setClinicDoctors((prev) =>
+        prev.map((d) =>
+          d.id === docId
+            ? {
+                ...d,
+                prescriptionAllowed: nextVal,
+                ...(!nextVal ? { prescriptionEnabled: false } : {}),
+              }
+            : d,
+        ),
+      );
+      setToast({ type: 'ok', msg: 'Doctor AI prescription access updated.' });
+    } catch (err: any) {
+      setToast({ type: 'err', msg: err.message || 'Failed to update prescription access' });
+    }
+  }
+
   function renderStaffStatusBadge(status?: string) {
     if (!status || status === 'ACTIVE' || status === 'PENDING') {
       return (
@@ -1649,6 +1676,17 @@ export default function AdminPage() {
                                     {renderStaffStatusBadge(d.user.status)}
                                     <button type="button" onClick={() => void toggleStaffStatus(d.userId, d.user.status)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                       {d.user.status === 'DISABLED' ? 'Activate' : 'Disable'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void togglePrescriptionAccess(d.id, d.prescriptionAllowed)}
+                                      className={`btn !px-2.5 !py-1.5 text-xs font-semibold ${
+                                        d.prescriptionAllowed
+                                          ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200'
+                                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-300'
+                                      }`}
+                                    >
+                                      {d.prescriptionAllowed ? 'AI Rx: Allowed' : 'AI Rx: Blocked'}
                                     </button>
                                     <button type="button" onClick={() => startEditEmail(d.userId, d.user.email ?? null)} className="btn-secondary !px-2.5 !py-1.5 text-xs">
                                       Edit email

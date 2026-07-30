@@ -63,6 +63,7 @@ model Clinic {
   id                    String                 @id @default(cuid())
   name                  String
   address               String?
+  logoUrl               String?
   businessType          BusinessType           @default(CLINIC)
   createdAt             DateTime               @default(now())
 
@@ -105,6 +106,7 @@ model Location {
   professionalRatings     ProfessionalRating[]
   inviteCodes             InviteCode[]
   schedules               ProfessionalSchedule[]
+  prescriptions           Prescription[]
 }
 
 model UserLocation {
@@ -220,6 +222,7 @@ model User {
   professionalRatings      ProfessionalRating[]     @relation("PatientRatings")
   locations                UserLocation[]
   pushSubscriptions        PushSubscription[]
+  patientPrescriptions     Prescription[]           @relation("PatientPrescriptions")
 
   @@index([role])
   @@index([clinicId])
@@ -279,6 +282,8 @@ model Doctor {
   maxCustomersPerDay  Int                    @default(50)
   appointmentDuration Int                    @default(15)
   walkinAllowed      Boolean                @default(true)
+  prescriptionEnabled Boolean               @default(true)
+  prescriptionAllowed Boolean               @default(true)
   followupPriority   Boolean                @default(false)
   specialization     String?
   languages          String?
@@ -289,6 +294,8 @@ model Doctor {
   receptionistAssignments ReceptionistAssignment[]
   ratings                 ProfessionalRating[]
   locations               DoctorLocation[]
+  prescriptions           Prescription[]
+  prescriptionConfig      DoctorPrescriptionConfig?
 
   @@index([departmentId])
   @@index([clinicId])
@@ -391,6 +398,7 @@ model Visit {
 
   entries    QueueEntry[]
   transfers  TransferLog[]
+  prescription Prescription?
 
   @@index([locationId, serviceDay])
   @@index([patientId])
@@ -669,5 +677,113 @@ model UsageSummary {
   @@unique([businessId, locationId, professionalId, date, eventType])
   @@index([businessId, date])
   @@index([locationId, date])
+}
+
+enum PrescriptionStatus {
+  PENDING
+  TRANSCRIBING
+  READY_FOR_REVIEW
+  GENERATING_PDF
+  COMPLETED
+  FAILED
+}
+
+model Prescription {
+  id                    String                 @id @default(cuid())
+  visitId               String                 @unique
+  visit                 Visit                  @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  patientId             String
+  patient               User                   @relation("PatientPrescriptions", fields: [patientId], references: [id])
+  doctorId              String
+  doctor                Doctor                 @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  locationId            String
+  location              Location               @relation(fields: [locationId], references: [id])
+  
+  // Vitals (captured at time of prescription)
+  weight                String?                // e.g., "72 kg"
+  height                String?                // e.g., "175 cm"
+  bloodPressure         String?                // e.g., "120/80 mmHg"
+  temperature           String?                // e.g., "98.6 °F"
+  pulse                 String?                // e.g., "72 bpm"
+  spo2                  String?                // e.g., "98%"
+  
+  // Patient History & Clinical Findings
+  symptoms              String?                // Chief complaints / Symptoms (e.g., "Fever, cough for 3 days")
+  allergies             String?                // Known drug allergies (e.g., "Penicillin, Sulfa")
+  clinicalNotes         String?                // Doctor's internal physical examination notes
+  diagnosis             String?                // Diagnosed conditions (e.g., "Acute Bronchitis")
+  investigationsOrdered String?                // Lab tests or scans requested (e.g., "CBC, Chest X-ray")
+  generalAdvice         String?                // Non-pharmacological advice (diet, rest, follow-up parameters)
+  referral              String?                // Referral to another specialist if any
+  followUpDate          DateTime?              // Specific follow-up date
+  followUpNote          String?                // e.g., "In 5 days", "If fever persists"
+  
+  // Audio & PDF Metadata
+  audioUrl              String?                // S3 link to raw audio recording
+  pdfUrl                String?                // S3 link to generated PDF
+  rawTranscript         String?                // Full raw transcription from Whisper
+  structuredJson        Json?                  // Raw structured output backup from GPT
+  status                PrescriptionStatus     @default(PENDING)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  
+  medicines             PrescriptionMedicine[]
+  
+  @@index([patientId])
+  @@index([doctorId])
+  @@index([locationId])
+  @@index([createdAt])
+}
+
+model PrescriptionMedicine {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  
+  // Drug Details
+  medicine       String       // Brand name or generic name (e.g., "Azithromycin 500")
+  genericName    String?      // Active chemical compound (e.g., "Azithromycin")
+  form           String?      // Tablet, Syrup, Capsule, Ointment, Inhaler, Drops
+  dosage         String       // Strength/Dose (e.g., "500 mg", "1 tablet", "5 ml")
+  
+  // Timing & Frequency
+  frequency      String       // Text frequency (e.g., "Once Daily", "Twice Daily", "SOS")
+  frequencyPattern String?    // Numeric dosing pattern (e.g., "1-0-1", "1-0-0")
+  timing         String?      // Relation to meals (e.g., "Before food", "After food", "Empty stomach")
+  
+  // Duration & Quantity
+  duration       String       // e.g., "3 Days", "1 Week", "1 Month"
+  totalQuantity  Int?         // Total count of units to dispense (e.g., 10)
+  notes          String?      // Special instructions (e.g., "Take with warm water")
+}
+
+model DoctorPrescriptionConfig {
+  id                    String   @id @default(cuid())
+  doctorId              String   @unique
+  doctor                Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  
+  // Layout Options & Section Order
+  // Controls the order of layout blocks, e.g., ["vitals", "symptoms", "diagnosis", "medicines", "advice"]
+  sectionOrder          String[] @default(["vitals", "symptoms", "diagnosis", "medicines", "advice"])
+  
+  // Formatting & Visibility Switches
+  showLogo              Boolean  @default(true)
+  showPatientAge        Boolean  @default(true)
+  showPatientMobile     Boolean  @default(true)
+  showPatientAddress    Boolean  @default(false)
+  showDate              Boolean  @default(true)
+  showSignature         Boolean  @default(true)
+  showVitals            Boolean  @default(true)
+  showSymptoms          Boolean  @default(true)
+  showDiagnosis         Boolean  @default(true)
+  showAdvice            Boolean  @default(true)
+  showInvestigations    Boolean  @default(true)
+  
+  // Custom Letterhead Options (useful if doctor uses pre-printed letterhead pads)
+  headerEnabled         Boolean  @default(true) // Set to false to hide digital header
+  footerEnabled         Boolean  @default(true) // Set to false to hide digital footer
+  customHeaderText      String?  // Custom clinic tagline or header text
+  customFooterText      String?  // Custom clinic disclaimer/address for footer
+  signatureUrl          String?  // S3 path of signature image
 }
 
