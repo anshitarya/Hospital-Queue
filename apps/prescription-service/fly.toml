@@ -1,0 +1,13 @@
+app = "hq-prescription"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile.prod"
+
+[env]
+  NODE_ENV = "production"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

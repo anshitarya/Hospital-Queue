@@ -1,4 +1,4 @@
-app = "turnos-api-hq"
+app    = "turnos-api-hq"
 primary_region = "sin"   # Singapore
 
 [build]
