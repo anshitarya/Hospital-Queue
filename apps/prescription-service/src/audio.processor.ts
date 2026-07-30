@@ -217,16 +217,24 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
         });
       }
 
+      const existing = await tx.prescription.findUnique({
+        where: { id: prescriptionId },
+      });
+
       await tx.prescription.update({
         where: { id: prescriptionId },
         data: {
           rawTranscript,
           structuredJson: structuredJson as any,
-          symptoms: structuredJson.symptoms || null,
-          diagnosis: structuredJson.diagnosis || null,
-          generalAdvice: structuredJson.advice || null,
-          weight: structuredJson.weight || null,
-          bloodPressure: structuredJson.bloodPressure || null,
+          symptoms: structuredJson.symptoms || existing?.symptoms || null,
+          diagnosis: structuredJson.diagnosis || existing?.diagnosis || null,
+          generalAdvice: structuredJson.advice || existing?.generalAdvice || null,
+          weight: structuredJson.weight || existing?.weight || null,
+          bloodPressure: structuredJson.bloodPressure || existing?.bloodPressure || null,
+          height: existing?.height || null,
+          temperature: existing?.temperature || null,
+          pulse: existing?.pulse || null,
+          spo2: existing?.spo2 || null,
           status: PrescriptionStatus.READY_FOR_REVIEW,
         },
       });

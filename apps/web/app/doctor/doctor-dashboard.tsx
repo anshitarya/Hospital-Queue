@@ -244,7 +244,18 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
 
   useEffect(() => {
     setActivePrescription(null);
-  }, [current?.id]);
+    if (current?.visitId) {
+      api<any>(`/prescriptions/visit/${current.visitId}`)
+        .then((pres) => {
+          if (pres) {
+            setActivePrescription(pres);
+          }
+        })
+        .catch(() => {
+          // No prescription found yet or other API error
+        });
+    }
+  }, [current?.id, current?.visitId]);
   const orderMap = useMemo(() => {
     const map = new Map<string, number>();
     const countsPerDay = new Map<string, number>();
@@ -656,6 +667,40 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         )}
                         {current.priority >= 100 && (
                           <span className="inline-flex mt-1 pill bg-rose-100 text-rose-700 ring-rose-200">🚨 Emergency</span>
+                        )}
+                        {activePrescription && (activePrescription.weight || activePrescription.height || activePrescription.bloodPressure || activePrescription.temperature || activePrescription.pulse || activePrescription.spo2) && (
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            {activePrescription.weight && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                ⚖️ {activePrescription.weight}
+                              </span>
+                            )}
+                            {activePrescription.height && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                📏 {activePrescription.height}
+                              </span>
+                            )}
+                            {activePrescription.bloodPressure && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                💓 BP: {activePrescription.bloodPressure}
+                              </span>
+                            )}
+                            {activePrescription.temperature && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                🌡️ {activePrescription.temperature}°F
+                              </span>
+                            )}
+                            {activePrescription.pulse && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                🫀 {activePrescription.pulse} bpm
+                              </span>
+                            )}
+                            {activePrescription.spo2 && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                🩸 SpO2: {activePrescription.spo2}
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                       {/* Actions */}

@@ -5,6 +5,7 @@ import { Queue } from 'bullmq';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { FinalizePrescriptionDto } from './dto/finalize-prescription.dto';
 import { SaveConfigDto } from './dto/save-config.dto';
+import { SaveVitalsDto } from './dto/save-vitals.dto';
 import { PrescriptionStatus } from '@prisma/client';
 
 @Injectable()
@@ -196,6 +197,46 @@ export class PrescriptionsService {
       },
       update: {
         ...dto,
+      },
+    });
+  }
+
+  async saveVitals(dto: SaveVitalsDto) {
+    const visit = await this.prisma.visit.findUnique({
+      where: { id: dto.visitId },
+      include: { entries: true },
+    });
+    if (!visit) {
+      throw new NotFoundException('Visit record not found');
+    }
+
+    const doctorId = visit.entries?.[0]?.doctorId;
+    if (!doctorId) {
+      throw new BadRequestException('No doctor associated with this visit');
+    }
+
+    return this.prisma.prescription.upsert({
+      where: { visitId: dto.visitId },
+      create: {
+        visitId: dto.visitId,
+        doctorId,
+        patientId: visit.patientId,
+        locationId: visit.locationId,
+        weight: dto.weight,
+        height: dto.height,
+        bloodPressure: dto.bloodPressure,
+        temperature: dto.temperature,
+        pulse: dto.pulse,
+        spo2: dto.spo2,
+        status: PrescriptionStatus.PENDING,
+      },
+      update: {
+        weight: dto.weight,
+        height: dto.height,
+        bloodPressure: dto.bloodPressure,
+        temperature: dto.temperature,
+        pulse: dto.pulse,
+        spo2: dto.spo2,
       },
     });
   }

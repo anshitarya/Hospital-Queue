@@ -15,6 +15,7 @@ import { Role } from '@prisma/client';
 import { PrescriptionsService } from './prescriptions.service';
 import { FinalizePrescriptionDto } from './dto/finalize-prescription.dto';
 import { SaveConfigDto } from './dto/save-config.dto';
+import { SaveVitalsDto } from './dto/save-vitals.dto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 
 @Controller('prescriptions')
@@ -46,7 +47,7 @@ export class PrescriptionsController {
     return this.prescriptions.uploadAudio(visitId, doctorId, file);
   }
 
-  @Roles(Role.DOCTOR, Role.PATIENT, Role.RECEPTIONIST)
+  @Roles(Role.DOCTOR, Role.PATIENT, Role.RECEPTIONIST, Role.CLINIC_ADMIN)
   @Get('visit/:visitId')
   async getForVisit(@Param('visitId') visitId: string) {
     return this.prescriptions.getPrescriptionForVisit(visitId);
@@ -77,5 +78,11 @@ export class PrescriptionsController {
   ) {
     const doctorId = await this.getDoctorId(user.id);
     return this.prescriptions.saveDoctorConfig(doctorId, dto);
+  }
+
+  @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN)
+  @Post('vitals')
+  async saveVitals(@Body() dto: SaveVitalsDto) {
+    return this.prescriptions.saveVitals(dto);
   }
 }
