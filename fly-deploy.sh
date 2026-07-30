@@ -113,10 +113,17 @@ fi
 echo ""
 echo "▶ Configuring application secrets..."
 JWT_SECRET=$(openssl rand -hex 32)
-flyctl secrets set \
-  JWT_SECRET="$JWT_SECRET" \
-  CORS_ORIGIN="https://${WEB_APP}.fly.dev" \
-  --app "$API_APP"
+if [ -z "$PREFIX" ]; then
+  flyctl secrets set \
+    JWT_SECRET="$JWT_SECRET" \
+    CORS_ORIGIN="https://turnos.in,https://www.turnos.in,https://turnos.fly.dev" \
+    --app "$API_APP"
+else
+  flyctl secrets set \
+    JWT_SECRET="$JWT_SECRET" \
+    CORS_ORIGIN="https://${WEB_APP}.fly.dev" \
+    --app "$API_APP"
+fi
 echo "  ✔ JWT_SECRET and CORS_ORIGIN set on API"
 
 # Sync local .env variables to Fly apps
