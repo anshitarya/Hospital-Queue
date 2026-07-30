@@ -179,10 +179,10 @@ export function PrescriptionConfig() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row gap-6">
+      <div className="flex flex-col lg:flex-row gap-8 items-start">
         
         {/* Left Side: Customize Forms */}
-        <div className="flex-1 space-y-6 max-w-2xl">
+        <div className="flex-1 space-y-6 w-full max-w-2xl">
           
           {/* Template Style Selector */}
           <div className="card p-5 space-y-4">
@@ -465,7 +465,7 @@ export function PrescriptionConfig() {
         </div>
 
         {/* Right Side: Live visual mockup preview */}
-        <div className="w-[420px] shrink-0 hidden lg:block sticky top-6 self-start space-y-3">
+        <div className="w-full lg:w-[420px] shrink-0 sticky top-6 self-start space-y-3 mt-8 lg:mt-0">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Prescription Live Design Preview</span>
           
           <div className="border border-slate-200 dark:border-slate-800 rounded-2xl bg-white shadow-lg overflow-hidden relative p-6 aspect-[1/1.41] flex flex-col justify-between text-slate-800" style={{ fontSize: '10px' }}>
