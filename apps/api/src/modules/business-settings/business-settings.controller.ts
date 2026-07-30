@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Patch, Param, Query, ForbiddenException } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Param, Query, ForbiddenException, Post, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { BusinessSettingsService } from './business-settings.service';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthUser } from '../../common/decorators/current-user.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('business-settings')
 export class BusinessSettingsController {
@@ -25,6 +26,17 @@ export class BusinessSettingsController {
   ) {
     if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
     return this.service.updateSettings(user.clinicId, dto, locationId);
+  }
+
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.MANAGER, Role.ADMIN)
+  @Post('my/logo')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadLogo(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!user.clinicId) throw new ForbiddenException('No clinic assigned');
+    return this.service.uploadLogo(user.clinicId, file);
   }
 
   @Roles(Role.ADMIN)

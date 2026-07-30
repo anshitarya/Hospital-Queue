@@ -24,11 +24,18 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { WorkflowModule } from './modules/workflow/workflow.module';
 import { RatingsModule } from './modules/ratings/ratings.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { BullModule } from '@nestjs/bullmq';
+import { PrescriptionsModule } from './modules/prescriptions/prescriptions.module';
 import configuration from './config/configuration';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    BullModule.forRoot({
+      connection: {
+        url: (process.env.REDIS_URL ?? 'redis://localhost:6379').trim(),
+      },
+    }),
     CacheModule.register({ isGlobal: true, ttl: 60000 }), // 60 seconds global cache TTL
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
@@ -49,6 +56,7 @@ import configuration from './config/configuration';
     WorkflowModule,
     RatingsModule,
     BillingModule,
+    PrescriptionsModule,
   ],
   providers: [
     // Global request logger — runs around every HTTP handler.

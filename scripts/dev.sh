@@ -27,6 +27,17 @@ for arg in "$@"; do
   [[ "$arg" == "--native-only" ]] && NATIVE_ONLY=1
 done
 
+# Load and export root .env variables if present
+if [[ -f .env ]]; then
+  echo "▶ Sourcing root .env variables..."
+  set -a
+  source .env
+  set +a
+fi
+
+# Override Redis host to localhost for native execution
+export REDIS_URL="redis://localhost:6379"
+
 wait_for_port() {
   local port=$1 label=$2 max=${3:-45}
   echo -n "▶ Waiting for $label on 127.0.0.1:$port"
@@ -135,31 +146,45 @@ ensure_db
 sync_api_schema
 
 # ── 2. Free ports ──────────────────────────────────────────────────────────
+API_DEV_PORT=${API_PORT:-4000}
+WEB_DEV_PORT=${WEB_PORT:-3000}
+
 echo "▶ Freeing ports..."
-lsof -ti :4000 | xargs kill -9 2>/dev/null && echo "  killed stale :4000" || true
-lsof -ti :3000 | xargs kill -9 2>/dev/null && echo "  killed stale :3000" || true
+lsof -ti :$API_DEV_PORT | xargs kill -9 2>/dev/null && echo "  killed stale :$API_DEV_PORT" || true
+lsof -ti :$WEB_DEV_PORT | xargs kill -9 2>/dev/null && echo "  killed stale :$WEB_DEV_PORT" || true
+lsof -ti :4002 | xargs kill -9 2>/dev/null && echo "  killed stale :4002" || true
+lsof -ti :4003 | xargs kill -9 2>/dev/null && echo "  killed stale :4003" || true
 
 # ── 3. Launch services ─────────────────────────────────────────────────────
 if [[ $WEB_ONLY -eq 0 ]]; then
-  echo "▶ Starting API on :4000..."
-  (cd apps/api && API_PORT=4000 npm run start:dev 2>&1 | sed 's/^/[api] /') &
+  echo "▶ Starting API on :$API_DEV_PORT..."
+  (cd apps/api && PORT=$API_DEV_PORT API_PORT=$API_DEV_PORT npm run start:dev 2>&1 | sed 's/^/[api] /') &
   API_PID=$!
+
+  echo "▶ Starting Prescription Service..."
+  (cd apps/prescription-service && PORT=4002 npm run start:dev 2>&1 | sed 's/^/[prescription] /') &
+  PRESCRIPTION_PID=$!
+
+  echo "▶ Starting Notification Service..."
+  (cd apps/notification-service && PORT=4003 npm run start:dev 2>&1 | sed 's/^/[notification] /') &
+  NOTIFICATION_PID=$!
 fi
 
 if [[ $API_ONLY -eq 0 ]]; then
-  echo "▶ Starting Web on :3000..."
-  (cd apps/web && npm run dev 2>&1 | sed 's/^/[web] /') &
+  echo "▶ Starting Web on :$WEB_DEV_PORT..."
+  (cd apps/web && PORT=$WEB_DEV_PORT npm run dev 2>&1 | sed 's/^/[web] /') &
   WEB_PID=$!
 fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  API  → http://localhost:4000"
-echo "  Web  → http://localhost:3000"
+echo "  API           → http://localhost:$API_DEV_PORT"
+echo "  Web           → http://localhost:$WEB_DEV_PORT"
 echo "  Ctrl+C to stop everything"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-trap 'echo ""; echo "Stopping..."; kill $API_PID $WEB_PID 2>/dev/null; exit 0' INT TERM
+trap 'echo ""; echo "Stopping..."; kill $API_PID $WEB_PID $PRESCRIPTION_PID $NOTIFICATION_PID 2>/dev/null; exit 0' INT TERM
 
 wait
+

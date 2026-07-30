@@ -123,6 +123,49 @@ services:
       - ./apps/web/postcss.config.js:/app/postcss.config.js
       - ./apps/web/tsconfig.json:/app/tsconfig.json
 
+  prescription-service:
+    build:
+      context: ./apps/prescription-service
+      dockerfile: Dockerfile
+      args:
+        INSECURE_SSL: ${INSECURE_SSL:-0}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/prescription-service/src:/app/src
+      - ./apps/prescription-service/prisma:/app/prisma
+
+  notification-service:
+    build:
+      context: ./apps/notification-service
+      dockerfile: Dockerfile
+      args:
+        INSECURE_SSL: ${INSECURE_SSL:-0}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "1000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/notification-service/src:/app/src
+
 volumes:
   hq_pgdata:
   hq_redisdata:
+

@@ -30,3 +30,27 @@ jobs:
         working-directory: ./apps/web
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-prescription:
+    name: Deploy Prescription Worker to Fly.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy Prescription Worker
+        run: flyctl deploy --remote-only
+        working-directory: ./apps/prescription-service
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-notification:
+    name: Deploy Notification Worker to Fly.io
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy Notification Worker
+        run: flyctl deploy --remote-only
+        working-directory: ./apps/notification-service
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
