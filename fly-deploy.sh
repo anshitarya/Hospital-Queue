@@ -172,9 +172,15 @@ cd "$REPO_ROOT"
 echo ""
 echo "▶ Deploying Web Client (building on Fly's servers, ~3-5 min)..."
 cd "$REPO_ROOT/apps/web"
-flyctl deploy --remote-only --app "$WEB_APP" \
-  --build-arg "NEXT_PUBLIC_API_URL=https://${API_APP}.fly.dev" \
-  --build-arg "NEXT_PUBLIC_SOCKET_URL=https://${API_APP}.fly.dev"
+if [ -z "$PREFIX" ]; then
+  flyctl deploy --remote-only --app "$WEB_APP" \
+    --build-arg "NEXT_PUBLIC_API_URL=https://api.turnos.in" \
+    --build-arg "NEXT_PUBLIC_SOCKET_URL=https://api.turnos.in"
+else
+  flyctl deploy --remote-only --app "$WEB_APP" \
+    --build-arg "NEXT_PUBLIC_API_URL=https://${API_APP}.fly.dev" \
+    --build-arg "NEXT_PUBLIC_SOCKET_URL=https://${API_APP}.fly.dev"
+fi
 cd "$REPO_ROOT"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
