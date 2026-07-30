@@ -786,5 +786,25 @@ model DoctorPrescriptionConfig {
   customHeaderText      String?  // Custom clinic tagline or header text
   customFooterText      String?  // Custom clinic disclaimer/address for footer
   signatureUrl          String?  // S3 path of signature image
+
+  // New Layout & Formatting Settings
+  templateStyle         String   @default("CLASSIC") // "CLASSIC" | "MODERN_GRID" | "CLEAN_MINIMAL" | "MANIPAL_HEALTH"
+  showMedicineTable     Boolean  @default(true)      // Use structured table instead of bullet points
+  logoPosition          String   @default("LEFT")    // "LEFT" | "RIGHT" | "CENTER"
+  headerTextPosition    String   @default("RIGHT")   // "LEFT" | "RIGHT" | "CENTER"
+  
+  // Custom Display Info (defaults to Doctor/Clinic fields if null)
+  customClinicName      String?
+  customDoctorName      String?
+  qualifications        String?  // e.g. "MBBS, M.D. (Internal Medicine)"
+  specializationText    String?  // e.g. "Senior Consultant Physician"
+  registrationNumber    String?  // e.g. "DMC/R/14703"
+  contactNumber         String?  // e.g. "+91 9828889673"
+  email                 String?  // e.g. "drsandeep@gmail.com"
+  addressLine1          String?  // e.g. "6-C-2, Mahaveer Nagar"
+  addressLine2          String?  // e.g. "Kota, Rajasthan"
+  consultingHours       String?  // e.g. "Mon-Sat: 4:30 PM - 8:30 PM"
+  emergencyWarning      String?  // e.g. "In case of emergency, contact the nearest hospital."
+  watermarkUrl          String?  // Custom background watermark image URL
 }
 

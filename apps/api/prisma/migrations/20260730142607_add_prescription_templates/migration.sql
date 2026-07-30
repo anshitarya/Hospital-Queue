@@ -1,0 +1,17 @@
+-- AlterTable
+ALTER TABLE "DoctorPrescriptionConfig" ADD COLUMN     "addressLine1" TEXT,
+ADD COLUMN     "addressLine2" TEXT,
+ADD COLUMN     "consultingHours" TEXT,
+ADD COLUMN     "contactNumber" TEXT,
+ADD COLUMN     "customClinicName" TEXT,
+ADD COLUMN     "customDoctorName" TEXT,
+ADD COLUMN     "email" TEXT,
+ADD COLUMN     "emergencyWarning" TEXT,
+ADD COLUMN     "headerTextPosition" TEXT NOT NULL DEFAULT 'RIGHT',
+ADD COLUMN     "logoPosition" TEXT NOT NULL DEFAULT 'LEFT',
+ADD COLUMN     "qualifications" TEXT,
+ADD COLUMN     "registrationNumber" TEXT,
+ADD COLUMN     "showMedicineTable" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "specializationText" TEXT,
+ADD COLUMN     "templateStyle" TEXT NOT NULL DEFAULT 'CLASSIC',
+ADD COLUMN     "watermarkUrl" TEXT;

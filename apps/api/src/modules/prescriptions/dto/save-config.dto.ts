@@ -69,4 +69,68 @@ export class SaveConfigDto {
   @IsString()
   @IsOptional()
   signatureUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  templateStyle?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  showMedicineTable?: boolean;
+
+  @IsString()
+  @IsOptional()
+  logoPosition?: string;
+
+  @IsString()
+  @IsOptional()
+  headerTextPosition?: string;
+
+  @IsString()
+  @IsOptional()
+  customClinicName?: string;
+
+  @IsString()
+  @IsOptional()
+  customDoctorName?: string;
+
+  @IsString()
+  @IsOptional()
+  qualifications?: string;
+
+  @IsString()
+  @IsOptional()
+  specializationText?: string;
+
+  @IsString()
+  @IsOptional()
+  registrationNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  contactNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  email?: string;
+
+  @IsString()
+  @IsOptional()
+  addressLine1?: string;
+
+  @IsString()
+  @IsOptional()
+  addressLine2?: string;
+
+  @IsString()
+  @IsOptional()
+  consultingHours?: string;
+
+  @IsString()
+  @IsOptional()
+  emergencyWarning?: string;
+
+  @IsString()
+  @IsOptional()
+  watermarkUrl?: string;
 }
