@@ -1,4 +1,4 @@
-app = "hq-notification"
+app = "turnos-notification-hq"
 primary_region = "sin"
 
 [build]

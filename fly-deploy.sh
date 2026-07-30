@@ -19,7 +19,7 @@ if [ -z "$PREFIX" ]; then
   WEB_APP="turnos"
   PRESCRIPTION_APP="turnos-prescription-hq"
   NOTIFICATION_APP="turnos-notification-hq"
-  DB_APP="turnos-db-hq"
+  DB_APP="queue-hq-db"
 else
   API_APP="${PREFIX}-hq-api"
   WEB_APP="${PREFIX}-hq-web"
