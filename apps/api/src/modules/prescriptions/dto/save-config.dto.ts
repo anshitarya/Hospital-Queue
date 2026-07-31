@@ -153,4 +153,16 @@ export class SaveConfigDto {
   @IsNumber()
   @IsOptional()
   headerDetailsFontSize?: number;
+
+  @IsString()
+  @IsOptional()
+  clinicNameColor?: string;
+
+  @IsString()
+  @IsOptional()
+  doctorNameColor?: string;
+
+  @IsString()
+  @IsOptional()
+  headerDetailsColor?: string;
 }

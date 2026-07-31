@@ -345,21 +345,22 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
       }
 
       // Render Header Details
-      doc.fontSize(config.clinicNameFontSize || 16).font('Helvetica-Bold').fillColor('#1e293b').text(clinicName, textX, startY, { align: textAlignment, width: textWidth });
-      doc.fontSize(config.doctorNameFontSize || 11).font('Helvetica-Bold').fillColor('#b91c1c').text(doctorName, { align: textAlignment, width: textWidth });
+      doc.fontSize(config.clinicNameFontSize || 16).font('Helvetica-Bold').fillColor(config.clinicNameColor || '#1e293b').text(clinicName, textX, startY, { align: textAlignment, width: textWidth });
+      doc.fontSize(config.doctorNameFontSize || 11).font('Helvetica-Bold').fillColor(config.doctorNameColor || '#b91c1c').text(doctorName, { align: textAlignment, width: textWidth });
       
       const detailsSz = config.headerDetailsFontSize || 8.5;
+      const detailsColor = config.headerDetailsColor || '#475569';
       if (qualificationsText) {
-        doc.fontSize(detailsSz).font('Helvetica-Oblique').fillColor('#475569').text(qualificationsText, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz).font('Helvetica-Oblique').fillColor(detailsColor).text(qualificationsText, { align: textAlignment, width: textWidth });
       }
       if (specText) {
-        doc.fontSize(detailsSz).font('Helvetica').fillColor('#475569').text(specText, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz).font('Helvetica').fillColor(detailsColor).text(specText, { align: textAlignment, width: textWidth });
       }
       if (regNo) {
-        doc.fontSize(detailsSz).font('Helvetica').fillColor('#64748b').text(`Reg No: ${regNo}`, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz).font('Helvetica').fillColor(detailsColor).text(`Reg No: ${regNo}`, { align: textAlignment, width: textWidth });
       }
       if (addressText) {
-        doc.fontSize(detailsSz - 0.5).font('Helvetica').fillColor('#64748b').text(addressText, { align: textAlignment, width: textWidth });
+        doc.fontSize(detailsSz - 0.5).font('Helvetica').fillColor(detailsColor).text(addressText, { align: textAlignment, width: textWidth });
       }
       doc.moveDown(1);
     } else {

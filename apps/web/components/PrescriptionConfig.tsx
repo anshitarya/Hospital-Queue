@@ -53,6 +53,9 @@ export function PrescriptionConfig() {
   const [clinicNameFontSize, setClinicNameFontSize] = useState(16);
   const [doctorNameFontSize, setDoctorNameFontSize] = useState(11);
   const [headerDetailsFontSize, setHeaderDetailsFontSize] = useState(8);
+  const [clinicNameColor, setClinicNameColor] = useState('#1e293b');
+  const [doctorNameColor, setDoctorNameColor] = useState('#b91c1c');
+  const [headerDetailsColor, setHeaderDetailsColor] = useState('#475569');
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -105,6 +108,9 @@ export function PrescriptionConfig() {
           setClinicNameFontSize(data.clinicNameFontSize || 16);
           setDoctorNameFontSize(data.doctorNameFontSize || 11);
           setHeaderDetailsFontSize(data.headerDetailsFontSize || 8);
+          setClinicNameColor(data.clinicNameColor || '#1e293b');
+          setDoctorNameColor(data.doctorNameColor || '#b91c1c');
+          setHeaderDetailsColor(data.headerDetailsColor || '#475569');
         }
       } catch (err) {
         console.error(err);
@@ -172,6 +178,9 @@ export function PrescriptionConfig() {
           clinicNameFontSize: Number(clinicNameFontSize),
           doctorNameFontSize: Number(doctorNameFontSize),
           headerDetailsFontSize: Number(headerDetailsFontSize),
+          clinicNameColor,
+          doctorNameColor,
+          headerDetailsColor,
         },
       });
       setMsg('Prescription template configuration saved successfully!');
@@ -412,43 +421,86 @@ export function PrescriptionConfig() {
             </div>
           </div>
 
-          {/* Font Sizes Customization */}
+          {/* Font Sizes & Colors Customization */}
           <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">4. Typography & Font Sizes</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Clinic Name Size (px)</label>
-                <input
-                  type="number"
-                  min={10}
-                  max={32}
-                  value={clinicNameFontSize}
-                  onChange={(e) => setClinicNameFontSize(Number(e.target.value))}
-                  className="input mt-1 w-full text-xs"
-                />
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">4. Typography, Sizes & Colors</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+              
+              {/* Clinic Name Size & Color */}
+              <div className="space-y-2">
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Clinic Name (Size & Color)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={10}
+                    max={32}
+                    value={clinicNameFontSize}
+                    onChange={(e) => setClinicNameFontSize(Number(e.target.value))}
+                    className="input w-full text-xs"
+                    title="Font Size (px)"
+                  />
+                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
+                    <input
+                      type="color"
+                      value={clinicNameColor}
+                      onChange={(e) => setClinicNameColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: clinicNameColor }} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Doctor Name Size (px)</label>
-                <input
-                  type="number"
-                  min={8}
-                  max={24}
-                  value={doctorNameFontSize}
-                  onChange={(e) => setDoctorNameFontSize(Number(e.target.value))}
-                  className="input mt-1 w-full text-xs"
-                />
+
+              {/* Doctor Name Size & Color */}
+              <div className="space-y-2">
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Doctor Name (Size & Color)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={8}
+                    max={24}
+                    value={doctorNameFontSize}
+                    onChange={(e) => setDoctorNameFontSize(Number(e.target.value))}
+                    className="input w-full text-xs"
+                    title="Font Size (px)"
+                  />
+                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
+                    <input
+                      type="color"
+                      value={doctorNameColor}
+                      onChange={(e) => setDoctorNameColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: doctorNameColor }} />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Header Details Size (px)</label>
-                <input
-                  type="number"
-                  min={6}
-                  max={16}
-                  value={headerDetailsFontSize}
-                  onChange={(e) => setHeaderDetailsFontSize(Number(e.target.value))}
-                  className="input mt-1 w-full text-xs"
-                />
+
+              {/* Header Details Size & Color */}
+              <div className="space-y-2">
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Header Details (Size & Color)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={6}
+                    max={16}
+                    value={headerDetailsFontSize}
+                    onChange={(e) => setHeaderDetailsFontSize(Number(e.target.value))}
+                    className="input w-full text-xs"
+                    title="Font Size (px)"
+                  />
+                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
+                    <input
+                      type="color"
+                      value={headerDetailsColor}
+                      onChange={(e) => setHeaderDetailsColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: headerDetailsColor }} />
+                  </div>
+                </div>
               </div>
+
             </div>
           </div>
 
@@ -572,12 +624,12 @@ export function PrescriptionConfig() {
                   <div className={`flex-1 leading-relaxed ${
                     headerTextPosition === 'RIGHT' ? 'text-right' : headerTextPosition === 'CENTER' ? 'text-center' : 'text-left'
                   }`}>
-                    <span className="block font-black text-slate-900 tracking-tight" style={{ fontSize: `${clinicNameFontSize}px` }}>{customClinicName || 'Clinic Name'}</span>
-                    <span className="block text-rose-700 font-extrabold" style={{ fontSize: `${doctorNameFontSize}px` }}>{customDoctorName || 'Dr. Doctor Name'}</span>
-                    <span className="block text-slate-400 font-semibold" style={{ fontSize: `${headerDetailsFontSize}px` }}>{qualifications || 'Qualifications'}</span>
-                    <span className="block text-slate-400" style={{ fontSize: `${headerDetailsFontSize}px` }}>{specializationText || 'Specialization'}</span>
-                    <span className="block text-slate-400" style={{ fontSize: `${headerDetailsFontSize}px` }}>{registrationNumber || 'Registration Number'}</span>
-                    <span className="block text-slate-500 font-medium mt-1" style={{ fontSize: `${headerDetailsFontSize - 1}px` }}>
+                    <span className="block font-black tracking-tight" style={{ fontSize: `${clinicNameFontSize}px`, color: clinicNameColor }}>{customClinicName || 'Clinic Name'}</span>
+                    <span className="block font-extrabold" style={{ fontSize: `${doctorNameFontSize}px`, color: doctorNameColor }}>{customDoctorName || 'Dr. Doctor Name'}</span>
+                    <span className="block font-semibold" style={{ fontSize: `${headerDetailsFontSize}px`, color: headerDetailsColor }}>{qualifications || 'Qualifications'}</span>
+                    <span className="block" style={{ fontSize: `${headerDetailsFontSize}px`, color: headerDetailsColor }}>{specializationText || 'Specialization'}</span>
+                    <span className="block" style={{ fontSize: `${headerDetailsFontSize}px`, color: headerDetailsColor }}>{registrationNumber || 'Registration Number'}</span>
+                    <span className="block font-medium mt-1" style={{ fontSize: `${headerDetailsFontSize - 1}px`, color: headerDetailsColor }}>
                       {addressLine1 || 'Address Line 1'}, {addressLine2 || 'Address Line 2'}
                     </span>
                   </div>

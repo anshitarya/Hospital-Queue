@@ -811,5 +811,8 @@ model DoctorPrescriptionConfig {
   clinicNameFontSize    Int      @default(16)
   doctorNameFontSize    Int      @default(11)
   headerDetailsFontSize Int      @default(8)
+  clinicNameColor       String   @default("#1e293b")
+  doctorNameColor       String   @default("#b91c1c")
+  headerDetailsColor    String   @default("#475569")
 }
 
