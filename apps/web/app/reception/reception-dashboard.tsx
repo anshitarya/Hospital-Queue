@@ -60,6 +60,8 @@ interface DashboardDoctor {
   waiting: number; inConsultation: number;
   completed: number; missed: number; skipped: number; cancelled: number;
   locationIds?: string[];
+  prescriptionEnabled?: boolean;
+  prescriptionAllowed?: boolean;
 }
 
 interface BranchDoctorRef {
@@ -69,6 +71,8 @@ interface BranchDoctorRef {
   loginId?: string | null;
   department: string;
   locationIds?: string[];
+  prescriptionEnabled?: boolean;
+  prescriptionAllowed?: boolean;
 }
 
 const EMPTY_DOCTOR_STATS: Omit<DashboardDoctor, keyof BranchDoctorRef> = {
@@ -542,6 +546,25 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
       setToast({ type: 'err', msg: err instanceof ApiError ? err.message : 'Failed to update branch assignment' });
     } finally {
       setTogglingDocId(null);
+    }
+  }
+
+  async function togglePrescriptionAccess(docId: string, currentVal: boolean, isAllowed?: boolean) {
+    if (isAllowed === false) {
+      setToast({ type: 'err', msg: 'AI prescription features are disabled by the Super Admin' });
+      return;
+    }
+    try {
+      await api<any>(`/doctors/${docId}`, {
+        method: 'PATCH',
+        body: { prescriptionEnabled: !currentVal },
+      });
+      setToast({ type: 'ok', msg: 'Doctor AI prescription access updated.' });
+      void loadStaffLists();
+      await loadDashboard(true);
+      setAssignmentsRefreshKey((key) => key + 1);
+    } catch (err: any) {
+      setToast({ type: 'err', msg: err.message || 'Failed to update prescription access' });
     }
   }
 
@@ -1501,7 +1524,7 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                           </div>
                         </div>
                         {canManageStaff && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
+                          <div className="flex flex-wrap gap-1.5 pt-1 flex-col sm:flex-row">
                             <button type="button" className="btn-secondary !px-2 !py-1 text-xs flex-1"
                               onClick={() => void resetStaffPassword({ userId: doc.userId, name: doc.name, email: null, phone: null, loginId: doc.loginId, role: 'doctor' })}>Reset pwd</button>
                             <button
@@ -1513,6 +1536,20 @@ export function ReceptionDashboard({ locationIdFromParams }: { locationIdFromPar
                               onClick={() => void toggleDoctorBranchAssignment(doc)}
                             >
                               {isAssigned ? 'Remove' : 'Add to Branch'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={doc.prescriptionAllowed === false}
+                              onClick={() => void togglePrescriptionAccess(doc.id, doc.prescriptionEnabled ?? false, doc.prescriptionAllowed)}
+                              className={`btn !px-2 !py-1 text-xs flex-1 font-semibold ${
+                                doc.prescriptionAllowed === false
+                                  ? 'opacity-50 cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700'
+                                  : doc.prescriptionEnabled
+                                    ? 'bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-950/20 dark:text-indigo-400'
+                                    : 'bg-slate-100 text-slate-500 border border-slate-300 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400'
+                              }`}
+                            >
+                              {doc.prescriptionEnabled ? 'AI Rx: On' : 'AI Rx: Off'}
                             </button>
                           </div>
                         )}

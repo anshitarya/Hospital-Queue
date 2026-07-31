@@ -26,6 +26,7 @@ interface SettingsData {
   vipJoinRule: string;
   autoQueueAssignment: boolean;
   allowOnlineBooking: boolean;
+  logoUrl: string;
 }
 
 /** Fields allowed by PATCH /business-settings/my (UpdateSettingsDto). */
@@ -49,6 +50,7 @@ const EDITABLE_FIELDS = [
   'vipJoinRule',
   'autoQueueAssignment',
   'allowOnlineBooking',
+  'logoUrl',
 ] as const;
 
 function parseSettings(raw: Record<string, unknown>): SettingsData {
@@ -72,6 +74,7 @@ function parseSettings(raw: Record<string, unknown>): SettingsData {
     vipJoinRule: String(raw.vipJoinRule ?? 'PRIORITY_QUEUE'),
     autoQueueAssignment: Boolean(raw.autoQueueAssignment ?? false),
     allowOnlineBooking: Boolean(raw.allowOnlineBooking ?? false),
+    logoUrl: String(raw.logoUrl ?? ''),
   };
 }
 
@@ -94,6 +97,47 @@ export function SettingsTab({
   const [doctors, setDoctors] = useState<Array<{ id: string; user: { name: string }; specialization: string | null; clinic: { name: string } | null }>>([]);
   const [qrDoctor, setQrDoctor] = useState<string | null>(null);
   const [clinicName, setClinicName] = useState<string>('');
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 100 * 1024) {
+      setToast({ type: 'err', msg: 'Logo file size must be less than 100 KB' });
+      return;
+    }
+
+    setLogoUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const token = localStorage.getItem('hq_token');
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ''}/api/business-settings/my/logo`, {
+        method: 'POST',
+        headers: {
+          Authorization: token ? `Bearer ${token}` : '',
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to upload logo');
+      }
+
+      const data = await res.json();
+      if (settings) {
+        setSettings({ ...settings, logoUrl: data.logoUrl });
+      }
+      setToast({ type: 'ok', msg: 'Clinic logo uploaded successfully!' });
+    } catch (err: any) {
+      setToast({ type: 'err', msg: err.message || 'Failed to upload clinic logo' });
+    } finally {
+      setLogoUploading(false);
+    }
+  };
 
   useEffect(() => {
     async function load() {
@@ -160,6 +204,74 @@ export function SettingsTab({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Clinic Brand & Logo Settings */}
+        <div className="card p-6 space-y-4">
+          <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Clinic Branding & Logo</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+            <div className="md:col-span-2 space-y-4">
+              <div>
+                <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clinic Name</label>
+                <input className="input mt-1 w-full bg-slate-50 dark:bg-slate-800 text-slate-500 cursor-not-allowed" type="text" value={clinicName} disabled />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Contact your system administrator to change the clinic name.</p>
+              </div>
+
+              <div>
+                <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Upload Logo from Gallery</label>
+                <div className="mt-1 flex items-center gap-3">
+                  <label className={`btn-secondary !py-2 !px-3 text-xs font-semibold cursor-pointer transition-all flex items-center gap-2 ${logoUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                    <svg className={`h-4 w-4 ${logoUploading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      {logoUploading ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      )}
+                    </svg>
+                    {logoUploading ? 'Uploading logo...' : 'Choose Image File'}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={logoUploading} />
+                  </label>
+                  {logoUploading && <span className="text-xs text-slate-400 font-medium">Sending to Cloudflare storage...</span>}
+                </div>
+              </div>
+
+              <div>
+                <label className="label text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">Clinic Logo URL (or Google Drive link)</label>
+                <input 
+                  className="input mt-1 w-full" 
+                  type="text" 
+                  placeholder="https://example.com/logo.png" 
+                  value={settings.logoUrl}
+                  onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })} 
+                />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Provide a public URL of your logo image. R2 hosting URLs (e.g. from your Cloudflare storage) work best.</p>
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center justify-center border border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 h-full min-h-[160px] bg-slate-50/50 dark:bg-slate-800/20">
+              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase mb-2">Logo Preview</span>
+              {settings.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img 
+                  src={settings.logoUrl} 
+                  alt="Clinic Logo Preview" 
+                  className="max-h-24 max-w-full object-contain rounded shadow-sm bg-white p-1"
+                  onError={(e) => {
+                    (e.target as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="text-center py-4">
+                  <div className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-600">
+                    <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <span className="text-[10px] text-slate-400 mt-1 block">No Logo Configured</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Mode Settings */}
         <div className="card p-6 space-y-4">
           <h3 className="font-semibold text-slate-900 dark:text-white text-sm">Queue & Appointment Modes</h3>

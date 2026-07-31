@@ -16,6 +16,9 @@ import { EntryStatusPill, LiveIndicator } from '@/components/StatusPill';
 import { PhoneInput, type PhoneValidationResult } from '@/components/PhoneInput';
 import { type DoctorCredentials } from '@/components/DoctorCredentialsModal';
 import { formatTimeIst, serviceDay, serviceDaysAgo, formatDateIst, fmtWait } from '@/lib/datetime';
+import { AudioRecorder } from '@/components/AudioRecorder';
+import { PrescriptionReview } from '@/components/PrescriptionReview';
+import { PrescriptionConfig } from '@/components/PrescriptionConfig';
 
 import dynamic from 'next/dynamic';
 
@@ -46,8 +49,9 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const [doctorId, setDoctorId] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [activePrescription, setActivePrescription] = useState<any>(null);
 
-  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history' | 'leaves'>('queue', ['queue', 'staff', 'history', 'leaves']);
+  const [tab, setTab] = useTabState<'queue' | 'staff' | 'history' | 'leaves' | 'prescription-config'>('queue', ['queue', 'staff', 'history', 'leaves', 'prescription-config']);
 
   // Break form state (Feature 4)
   const [showBreakForm, setShowBreakForm] = useState(false);
@@ -237,6 +241,21 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const waiting = (branchSnapshot?.entries ?? []).filter((e) => e.status === 'WAITING');
   const nextUp = waiting[0];
   const isPaused = branchSnapshot?.doctor?.status === 'PAUSED';
+
+  useEffect(() => {
+    setActivePrescription(null);
+    if (current?.visitId) {
+      api<any>(`/prescriptions/visit/${current.visitId}`)
+        .then((pres) => {
+          if (pres) {
+            setActivePrescription(pres);
+          }
+        })
+        .catch(() => {
+          // No prescription found yet or other API error
+        });
+    }
+  }, [current?.id, current?.visitId]);
   const orderMap = useMemo(() => {
     const map = new Map<string, number>();
     const countsPerDay = new Map<string, number>();
@@ -528,6 +547,15 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
           >
             All Records
           </button>
+          {user?.role === 'DOCTOR' && branchSnapshot?.doctor?.prescriptionEnabled && (
+            <button
+              type="button"
+              onClick={() => setTab('prescription-config')}
+              className={'tab ' + (tab === 'prescription-config' ? 'tab-active' : 'tab-inactive')}
+            >
+              📄 Prescription Config
+            </button>
+          )}
         </div>
 
         {/* ── Queue tab ── */}
@@ -640,6 +668,40 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         {current.priority >= 100 && (
                           <span className="inline-flex mt-1 pill bg-rose-100 text-rose-700 ring-rose-200">🚨 Emergency</span>
                         )}
+                        {activePrescription && (activePrescription.weight || activePrescription.height || activePrescription.bloodPressure || activePrescription.temperature || activePrescription.pulse || activePrescription.spo2) && (
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            {activePrescription.weight && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                ⚖️ {activePrescription.weight}
+                              </span>
+                            )}
+                            {activePrescription.height && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                📏 {activePrescription.height}
+                              </span>
+                            )}
+                            {activePrescription.bloodPressure && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                💓 BP: {activePrescription.bloodPressure}
+                              </span>
+                            )}
+                            {activePrescription.temperature && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                🌡️ {activePrescription.temperature}°F
+                              </span>
+                            )}
+                            {activePrescription.pulse && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                🫀 {activePrescription.pulse} bpm
+                              </span>
+                            )}
+                            {activePrescription.spo2 && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-100 dark:bg-teal-950/40 dark:text-teal-400 dark:border-teal-900/60">
+                                🩸 SpO2: {activePrescription.spo2}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {/* Actions */}
                       <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
@@ -750,6 +812,25 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         <span className="text-xs text-slate-400 bg-slate-100 rounded-full px-2 py-0.5">
                           {waiting.length} waiting
                         </span>
+                      </div>
+                    )}
+
+                    {/* Prescription Section */}
+                    {current.visitId && branchSnapshot?.doctor?.prescriptionEnabled && (
+                      <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-4 space-y-4">
+                        <AudioRecorder
+                          visitId={current.visitId}
+                          onPrescriptionReady={(pres) => setActivePrescription(pres)}
+                        />
+                        {activePrescription && (
+                          <PrescriptionReview
+                            prescription={activePrescription}
+                            onCompleted={() => {
+                              setActivePrescription(null);
+                              setToast({ type: 'ok', msg: 'Prescription saved and queued for WhatsApp delivery!' });
+                            }}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -1094,6 +1175,11 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
             loading={recordsLoading}
             onDateChange={(f, t) => { setRecordsFrom(f); setRecordsTo(t); }}
           />
+        )}
+
+        {/* ── Prescription Template Config tab ── */}
+        {tab === 'prescription-config' && user?.role === 'DOCTOR' && (
+          <PrescriptionConfig />
         )}
       </main>
 

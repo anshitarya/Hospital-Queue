@@ -1545,6 +1545,69 @@ const QueueRow = memo(function QueueRow({
   const [transferWalkin, setTransferWalkin] = useState(false);
   const [transferSlotType, setTransferSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
 
+  // Vitals states
+  const [showVitalsForm, setShowVitalsForm] = useState(false);
+  const [vitalsWeight, setVitalsWeight] = useState('');
+  const [vitalsHeight, setVitalsHeight] = useState('');
+  const [vitalsBP, setVitalsBP] = useState('');
+  const [vitalsTemp, setVitalsTemp] = useState('');
+  const [vitalsPulse, setVitalsPulse] = useState('');
+  const [vitalsSpO2, setVitalsSpO2] = useState('');
+  const [vitalsLoading, setVitalsLoading] = useState(false);
+
+  const openVitalsForm = async () => {
+    setShowVitalsForm(true);
+    setShowTransfer(false);
+    setShowMove(false);
+    if (!entry.visitId) return;
+    setVitalsLoading(true);
+    try {
+      const pres = await api<any>(`/prescriptions/visit/${entry.visitId}`);
+      if (pres) {
+        setVitalsWeight(pres.weight || '');
+        setVitalsHeight(pres.height || '');
+        setVitalsBP(pres.bloodPressure || '');
+        setVitalsTemp(pres.temperature || '');
+        setVitalsPulse(pres.pulse || '');
+        setVitalsSpO2(pres.spo2 || '');
+      }
+    } catch {
+      // safe to ignore if no prescription yet
+      setVitalsWeight('');
+      setVitalsHeight('');
+      setVitalsBP('');
+      setVitalsTemp('');
+      setVitalsPulse('');
+      setVitalsSpO2('');
+    } finally {
+      setVitalsLoading(false);
+    }
+  };
+
+  const submitVitals = async () => {
+    if (!entry.visitId) return;
+    setVitalsLoading(true);
+    try {
+      await api('/prescriptions/vitals', {
+        method: 'POST',
+        body: {
+          visitId: entry.visitId,
+          weight: vitalsWeight || undefined,
+          height: vitalsHeight || undefined,
+          bloodPressure: vitalsBP || undefined,
+          temperature: vitalsTemp || undefined,
+          pulse: vitalsPulse || undefined,
+          spo2: vitalsSpO2 || undefined,
+        }
+      });
+      setShowVitalsForm(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setVitalsLoading(false);
+    }
+  };
+
   const isInConsult = entry.status === 'IN_CONSULTATION';
   const isPending   = entry.id.startsWith('pending-');
   const isWaiting   = entry.status === 'WAITING';
@@ -1704,8 +1767,55 @@ const QueueRow = memo(function QueueRow({
         </div>
       )}
 
+      {showVitalsForm && (
+        <div className="mt-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/20 border border-teal-100 dark:border-teal-900/40 p-3 space-y-2.5 animate-enter">
+          <div className="text-xs font-semibold text-teal-800 dark:text-teal-300 flex items-center gap-1.5">
+            🩺 Patient Vitals
+            {vitalsLoading && <Spinner className="h-3 w-3 text-teal-600 animate-spin" />}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <label className="flex flex-col gap-0.5 text-[10px] font-semibold text-slate-500 uppercase">
+              <span>Weight (kg)</span>
+              <input type="text" placeholder="e.g. 72 kg" value={vitalsWeight} onChange={(e) => setVitalsWeight(e.target.value)} className="input-sm w-full text-xs" />
+            </label>
+            <label className="flex flex-col gap-0.5 text-[10px] font-semibold text-slate-500 uppercase">
+              <span>Height (cm)</span>
+              <input type="text" placeholder="e.g. 170 cm" value={vitalsHeight} onChange={(e) => setVitalsHeight(e.target.value)} className="input-sm w-full text-xs" />
+            </label>
+            <label className="flex flex-col gap-0.5 text-[10px] font-semibold text-slate-500 uppercase">
+              <span>BP (mmHg)</span>
+              <input type="text" placeholder="e.g. 120/80" value={vitalsBP} onChange={(e) => setVitalsBP(e.target.value)} className="input-sm w-full text-xs" />
+            </label>
+            <label className="flex flex-col gap-0.5 text-[10px] font-semibold text-slate-500 uppercase">
+              <span>Temp (°F)</span>
+              <input type="text" placeholder="e.g. 98.6" value={vitalsTemp} onChange={(e) => setVitalsTemp(e.target.value)} className="input-sm w-full text-xs" />
+            </label>
+            <label className="flex flex-col gap-0.5 text-[10px] font-semibold text-slate-500 uppercase">
+              <span>Pulse (bpm)</span>
+              <input type="text" placeholder="e.g. 72" value={vitalsPulse} onChange={(e) => setVitalsPulse(e.target.value)} className="input-sm w-full text-xs" />
+            </label>
+            <label className="flex flex-col gap-0.5 text-[10px] font-semibold text-slate-500 uppercase">
+              <span>SpO2 (%)</span>
+              <input type="text" placeholder="e.g. 98%" value={vitalsSpO2} onChange={(e) => setVitalsSpO2(e.target.value)} className="input-sm w-full text-xs" />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={submitVitals} disabled={vitalsLoading || !entry.visitId} className="btn-primary !bg-teal-600 hover:!bg-teal-700 !py-1.5 !px-3 text-xs">Save Vitals</button>
+            <button type="button" onClick={() => setShowVitalsForm(false)} className="btn-ghost !py-1.5 !px-2 text-xs">Cancel</button>
+          </div>
+        </div>
+      )}
+
       <div className="flex gap-1.5 mt-2.5 justify-end items-center flex-wrap">
         {actionInFlight && <Spinner className="h-3.5 w-3.5 text-brand-500 mr-1" />}
+        
+        {entry.visitId && (
+          <button type="button" onClick={showVitalsForm ? () => setShowVitalsForm(false) : openVitalsForm} disabled={actionInFlight}
+            title="Enter patient vitals (weight, bp, temp, etc.)" className="btn-secondary !px-3 !py-1.5 text-xs text-teal-600 border-teal-200 hover:bg-teal-50 disabled:opacity-50">
+            🩺 Vitals
+          </button>
+        )}
+
         {isInConsult && (
           <>
             <button type="button" onClick={() => onComplete(entry.id)} disabled={actionInFlight}
@@ -1718,7 +1828,7 @@ const QueueRow = memo(function QueueRow({
               title="Return patient to front of queue">
               ↩ Move back
             </button>
-            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} disabled={actionInFlight}
+            <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); setShowVitalsForm(false); }} disabled={actionInFlight}
               className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50">
               Transfer
             </button>
@@ -1736,13 +1846,13 @@ const QueueRow = memo(function QueueRow({
                   title="Move one position back in queue">
                   ↩ Back
                 </button>
-                <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); }} disabled={actionInFlight}
+                <button type="button" onClick={() => { setShowTransfer((v) => !v); setShowMove(false); setShowVitalsForm(false); }} disabled={actionInFlight}
                   className="btn-secondary !px-3 !py-1.5 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50 disabled:opacity-50">
                   Transfer
                 </button>
               </>
             )}
-            <button type="button" onClick={() => { setShowMove((v) => !v); setShowTransfer(false); }} disabled={actionInFlight}
+            <button type="button" onClick={() => { setShowMove((v) => !v); setShowTransfer(false); setShowVitalsForm(false); }} disabled={actionInFlight}
               title="Move to a specific position" className="btn-secondary !px-3 !py-1.5 text-xs disabled:opacity-50">↕ Move</button>
             <button type="button" onClick={() => onEmergency(entry.id)} disabled={actionInFlight}
               title="Mark as emergency — moves to top" className="btn-danger !px-3 !py-1.5 text-xs disabled:opacity-50">🚨</button>
