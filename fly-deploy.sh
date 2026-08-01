@@ -20,12 +20,14 @@ if [ -z "$PREFIX" ]; then
   PRESCRIPTION_APP="turnos-prescription-hq"
   NOTIFICATION_APP="turnos-notification-hq"
   DB_APP="queue-hq-db"
+  HA_FLAG=""
 else
   API_APP="${PREFIX}-hq-api"
   WEB_APP="${PREFIX}-hq-web"
   PRESCRIPTION_APP="${PREFIX}-hq-prescription"
   NOTIFICATION_APP="${PREFIX}-hq-notification"
   DB_APP="${PREFIX}-hq-db"
+  HA_FLAG="--ha=false"
 fi
 REGION="sin"
 
@@ -158,21 +160,21 @@ fi
 echo ""
 echo "▶ Deploying API (building on Fly's servers, ~3-5 min)..."
 cd "$REPO_ROOT/apps/api"
-flyctl deploy --remote-only --app "$API_APP"
+flyctl deploy --remote-only --app "$API_APP" ${HA_FLAG}
 cd "$REPO_ROOT"
 
 # ── 7. Deploy Prescription Worker ─────────────────────────────────────────────
 echo ""
 echo "▶ Deploying Prescription Worker (~2-4 min)..."
 cd "$REPO_ROOT/apps/prescription-service"
-flyctl deploy --remote-only --app "$PRESCRIPTION_APP"
+flyctl deploy --remote-only --app "$PRESCRIPTION_APP" ${HA_FLAG}
 cd "$REPO_ROOT"
 
 # ── 8. Deploy Notification Worker ─────────────────────────────────────────────
 echo ""
 echo "▶ Deploying Notification Worker (~2-4 min)..."
 cd "$REPO_ROOT/apps/notification-service"
-flyctl deploy --remote-only --app "$NOTIFICATION_APP"
+flyctl deploy --remote-only --app "$NOTIFICATION_APP" ${HA_FLAG}
 cd "$REPO_ROOT"
 
 # ── 9. Deploy Web Client ──────────────────────────────────────────────────────
@@ -184,7 +186,7 @@ if [ -z "$PREFIX" ]; then
     --build-arg "NEXT_PUBLIC_API_URL=https://api.turnos.in" \
     --build-arg "NEXT_PUBLIC_SOCKET_URL=https://api.turnos.in"
 else
-  flyctl deploy --remote-only --app "$WEB_APP" \
+  flyctl deploy --remote-only --app "$WEB_APP" ${HA_FLAG} \
     --build-arg "NEXT_PUBLIC_API_URL=https://${API_APP}.fly.dev" \
     --build-arg "NEXT_PUBLIC_SOCKET_URL=https://${API_APP}.fly.dev"
 fi
