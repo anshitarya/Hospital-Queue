@@ -216,34 +216,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* DOCTOR SURVEY                                                       */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      <section className="py-10 sm:py-14">
-        <div className="mx-auto max-w-3xl px-4 sm:px-6">
-          <div className="rounded-2xl bg-amber-50 ring-1 ring-amber-200 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            <div className="text-5xl shrink-0 leading-none">💬</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-amber-700 uppercase tracking-widest">For businesses</div>
-              <h3 className="mt-1 text-xl font-bold text-slate-900 dark:text-white">Would this help your business?</h3>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                We&apos;re building this for clinics, salons, banks, and any business with a queue. Take 2 minutes
-                to tell us whether you need this and what features matter most — your feedback directly shapes
-                what we build next.
-              </p>
-            </div>
-            <a
-              href={BRAND.doctorSurveyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 inline-flex items-center gap-2 rounded-xl bg-amber-700 hover:bg-amber-800 active:bg-amber-900 text-white px-5 py-3 text-sm font-semibold shadow-sm transition-colors"
-            >
-              <Icon.ClipboardList className="h-4 w-4" />
-              Take the survey
-            </a>
-          </div>
-        </div>
-      </section>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* FAQ                                                                 */}

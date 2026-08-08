@@ -563,9 +563,9 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
           <>
             {/* Break / pause banner */}
             {isPaused && (
-              <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 space-y-1">
+              <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 px-4 py-3 space-y-1">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-amber-800 font-medium text-sm">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-medium text-sm">
                     <span>{breakActive ? '☕' : '⏸'}</span>
                     {breakActive
                       ? `On break — returning at ~${formatTimeIst(breakUntil!)}`
@@ -577,7 +577,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                   </button>
                 </div>
                 {branchSnapshot?.doctor?.breakNote && (
-                  <div className="text-xs text-amber-700 pl-6">{branchSnapshot.doctor.breakNote}</div>
+                  <div className="text-xs text-amber-700 dark:text-amber-400 pl-6">{branchSnapshot.doctor.breakNote}</div>
                 )}
               </div>
             )}
@@ -585,7 +585,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
             {/* Current patient card */}
             <section className={`card overflow-hidden ${current ? 'ring-2 ring-emerald-300/60 shadow-md' : ''}`}>
               {/* Section header */}
-              <div className={`px-5 py-3.5 border-b border-slate-100 flex items-center justify-between ${current ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30' : 'bg-slate-50'}`}>
+              <div className={`px-5 py-3.5 border-b border-slate-100 dark:border-white/5 flex items-center justify-between ${current ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30' : 'bg-slate-50 dark:bg-white/5'}`}>
                 <div>
                   <h2 className="section-title">{current ? L.inService : L.service}</h2>
                   {branchSnapshot?.doctor && !isPaused && (
@@ -610,8 +610,8 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
 
               {/* Inline break form — appears when ☕ Break is clicked */}
               {showBreakForm && (
-                <div className="px-5 py-4 bg-amber-50 border-b border-amber-100">
-                  <div className="text-sm font-semibold text-amber-800 mb-3">Schedule a break</div>
+                <div className="px-5 py-4 bg-amber-50 dark:bg-amber-950/20 border-b border-amber-100 dark:border-amber-900/50">
+                  <div className="text-sm font-semibold text-amber-800 dark:text-amber-300 mb-3">Schedule a break</div>
                   <div className="flex flex-wrap gap-3 items-end">
                     <label className="flex flex-col gap-1 text-xs text-slate-600">
                       <span>Duration (min)</span>
@@ -650,7 +650,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         {tokenDisplay(current.tokenNumber)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xl font-bold text-slate-900 leading-tight truncate">{current.patient?.name}</div>
+                        <div className="text-xl font-bold text-slate-900 dark:text-white leading-tight truncate">{current.patient?.name}</div>
                         <div className="text-sm text-slate-500 mt-0.5">{current.patient?.phone}</div>
                         {current.startedAt && (
                           <div className="text-xs text-slate-400 mt-1">
@@ -661,7 +661,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                           </div>
                         )}
                         {current.notes && (
-                          <div className="mt-2 text-sm text-slate-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 max-w-full">
+                          <div className="mt-2 text-sm text-slate-600 dark:text-slate-300 bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/50 rounded-lg px-3 py-2 max-w-full">
                             📝 {current.notes}
                           </div>
                         )}
@@ -988,12 +988,12 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         {idx + 1}
                       </div>
                       {/* Token */}
-                      <div className="font-mono font-bold text-slate-800 text-base w-12 shrink-0">
+                      <div className="font-mono font-bold text-slate-800 dark:text-slate-100 text-base w-12 shrink-0">
                         {tokenDisplay(e.tokenNumber)}
                       </div>
                       {/* Patient info */}
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-slate-800 truncate flex items-center gap-2 flex-wrap">
+                        <div className="font-medium text-slate-800 dark:text-slate-100 truncate flex items-center gap-2 flex-wrap">
                           {e.patient?.name}
                           {idx === 0 && (
                             <span className="pill bg-brand-100 text-brand-700 ring-brand-200 text-[10px]">next</span>
@@ -1083,7 +1083,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
         {/* ── Staff tab ── */}
         {tab === 'staff' && user?.clinicId && (
           <section className="card overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-white/5 bg-slate-50 dark:bg-white/5">
               <h2 className="section-title">Reception staff</h2>
               <p className="section-sub">
                 Add a receptionist — a temporary password is shown once, copy it before closing.
@@ -1093,7 +1093,7 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
                 {/* Add form */}
                 <form onSubmit={addReceptionist} className="space-y-3 lg:col-span-2 card-inset p-4 h-fit rounded-xl">
-                  <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
+                  <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                     <span className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-100 text-brand-700 text-xs font-bold">+</span>
                     New receptionist
                   </h3>
@@ -1137,11 +1137,11 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                       <p className="text-sm text-slate-500">No receptionists yet.</p>
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-100 rounded-xl ring-1 ring-slate-200 overflow-hidden">
+                    <div className="divide-y divide-slate-100 dark:divide-white/5 rounded-xl ring-1 ring-slate-200 dark:ring-white/10 overflow-hidden">
                       {recList.map((r, idx) => (
-                        <div key={r.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
+                        <div key={r.id} className={`px-4 py-3.5 flex items-center justify-between gap-3 ${idx % 2 === 0 ? 'bg-white dark:bg-white/5' : 'bg-slate-50/50 dark:bg-white/0'}`}>
                           <div className="min-w-0">
-                            <div className="font-medium text-slate-800 truncate">{r.name}</div>
+                            <div className="font-medium text-slate-800 dark:text-slate-100 truncate">{r.name}</div>
                             <div className="text-xs text-slate-400 flex flex-wrap gap-x-2 mt-0.5">
                               {r.email && <span>{r.email}</span>}
                               {r.email && r.phone && <span>·</span>}

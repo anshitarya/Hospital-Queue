@@ -71,12 +71,12 @@ export default function GetStartedPage() {
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2.5 mb-6 group">
             <TurnosIcon className="h-11 w-11 shadow-md group-hover:shadow-lg transition-shadow" />
-            <span className="text-xl font-semibold tracking-tight">Turnos</span>
+            <span className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">Turnos</span>
           </Link>
-          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
             Get started with Turnos
           </h1>
-          <p className="mt-2 text-slate-500 text-base max-w-xl mx-auto">
+          <p className="mt-2 text-slate-500 dark:text-slate-400 text-base max-w-xl mx-auto">
             For business owners — register your business and we&apos;ll set up your queue.
             Customers sign in separately with their mobile number and Customer PIN.
           </p>
@@ -89,8 +89,8 @@ export default function GetStartedPage() {
                 👤
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">I&apos;m a customer</h2>
-                <p className="text-sm text-slate-600 mt-1 leading-relaxed">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">I&apos;m a customer</h2>
+                <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
                   Check your queue position with your mobile number and 4-digit Customer PIN.
                   Ask reception for your PIN on your first visit.
                 </p>
@@ -106,8 +106,8 @@ export default function GetStartedPage() {
             {submitted ? (
               <div className="card p-8 text-center space-y-4">
                 <div className="text-4xl">✅</div>
-                <h2 className="text-xl font-semibold text-slate-900">Thank you!</h2>
-                <p className="text-sm text-slate-600">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Thank you!</h2>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
                   We&apos;ve received your details. Our team will reach out shortly to onboard your business.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3 pt-2">
@@ -122,14 +122,14 @@ export default function GetStartedPage() {
             ) : (
               <form onSubmit={handleSubmit} className="card p-6 space-y-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">Register your business</h2>
-                  <p className="text-sm text-slate-500 mt-0.5">
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Register your business</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                     First-time business owners — tell us about your business and we&apos;ll get you set up.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor={businessNameId} className="text-sm font-medium">Business name</label>
+                  <label htmlFor={businessNameId} className="text-sm font-medium text-slate-700 dark:text-slate-300">Business name</label>
                   <input
                     id={businessNameId}
                     className="input"
@@ -143,7 +143,7 @@ export default function GetStartedPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor={contactNameId} className="text-sm font-medium">Your name</label>
+                  <label htmlFor={contactNameId} className="text-sm font-medium text-slate-700 dark:text-slate-300">Your name</label>
                   <input
                     id={contactNameId}
                     className="input"
@@ -157,7 +157,7 @@ export default function GetStartedPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor={emailId} className="text-sm font-medium">Email</label>
+                  <label htmlFor={emailId} className="text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
                   <input
                     id={emailId}
                     className="input"
@@ -191,7 +191,7 @@ export default function GetStartedPage() {
 
                 <p className="text-xs text-center text-slate-400">
                   Already have staff access?{' '}
-                  <Link href="/login/choose" className="text-brand-600 hover:text-brand-700 font-medium">
+                  <Link href="/login/choose" className="text-brand-600 dark:text-brand-400 hover:text-brand-700 dark:hover:text-brand-300 font-medium">
                     Sign in →
                   </Link>
                 </p>
@@ -201,7 +201,7 @@ export default function GetStartedPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          <Link href="/" className="hover:text-slate-600 underline underline-offset-2">
+          <Link href="/" className="hover:text-slate-600 dark:hover:text-slate-300 underline underline-offset-2">
             ← Back to homepage
           </Link>
         </p>
