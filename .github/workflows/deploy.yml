@@ -4,53 +4,91 @@ on:
   push:
     branches:
       - main
+      - preprod
       - aa/latency-2
 
 jobs:
+  configure:
+    name: Configure Target Environment
+    runs-on: ubuntu-latest
+    outputs:
+      api_app: ${{ steps.set-env.outputs.api_app }}
+      web_app: ${{ steps.set-env.outputs.web_app }}
+      prescription_app: ${{ steps.set-env.outputs.prescription_app }}
+      notification_app: ${{ steps.set-env.outputs.notification_app }}
+      next_public_api_url: ${{ steps.set-env.outputs.next_public_api_url }}
+      ha_flag: ${{ steps.set-env.outputs.ha_flag }}
+    steps:
+      - id: set-env
+        run: |
+          if [ "${{ github.ref_name }}" = "preprod" ]; then
+            echo "api_app=preprod-hq-api" >> $GITHUB_OUTPUT
+            echo "web_app=preprod-hq-web" >> $GITHUB_OUTPUT
+            echo "prescription_app=preprod-hq-prescription" >> $GITHUB_OUTPUT
+            echo "notification_app=preprod-hq-notification" >> $GITHUB_OUTPUT
+            echo "next_public_api_url=https://preprod-hq-api.fly.dev" >> $GITHUB_OUTPUT
+            echo "ha_flag=--ha=false" >> $GITHUB_OUTPUT
+          else
+            echo "api_app=turnos-api-hq" >> $GITHUB_OUTPUT
+            echo "web_app=turnos" >> $GITHUB_OUTPUT
+            echo "prescription_app=turnos-prescription-hq" >> $GITHUB_OUTPUT
+            echo "notification_app=turnos-notification-hq" >> $GITHUB_OUTPUT
+            echo "next_public_api_url=https://api.turnos.in" >> $GITHUB_OUTPUT
+            echo "ha_flag=" >> $GITHUB_OUTPUT
+          fi
+
   deploy-api:
     name: Deploy API to Fly.io
+    needs: configure
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy API
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --app ${{ needs.configure.outputs.api_app }} ${{ needs.configure.outputs.ha_flag }}
         working-directory: ./apps/api
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   deploy-web:
     name: Deploy Web to Fly.io
+    needs: configure
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy Web
-        run: flyctl deploy --remote-only
+        run: |
+          flyctl deploy --remote-only --app ${{ needs.configure.outputs.web_app }} ${{ needs.configure.outputs.ha_flag }} \
+            --build-arg NEXT_PUBLIC_API_URL=${{ needs.configure.outputs.next_public_api_url }} \
+            --build-arg NEXT_PUBLIC_SOCKET_URL=${{ needs.configure.outputs.next_public_api_url }}
         working-directory: ./apps/web
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   deploy-prescription:
     name: Deploy Prescription Worker to Fly.io
+    needs: configure
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy Prescription Worker
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --app ${{ needs.configure.outputs.prescription_app }} ${{ needs.configure.outputs.ha_flag }}
         working-directory: ./apps/prescription-service
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
   deploy-notification:
     name: Deploy Notification Worker to Fly.io
+    needs: configure
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy Notification Worker
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --app ${{ needs.configure.outputs.notification_app }} ${{ needs.configure.outputs.ha_flag }}
         working-directory: ./apps/notification-service
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
