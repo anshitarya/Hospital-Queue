@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "in.turnos.twa",
+      "sha256_cert_fingerprints": [
+        "44:66:6D:48:25:C0:37:B1:E4:1F:E8:F7:49:17:5F:0E:C0:34:C8:D7:90:BC:4E:D5:FC:D5:04:41:B4:77:EE:71"
+      ]
+    }
+  }
+]
