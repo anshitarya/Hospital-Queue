@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { ThemeProvider } from 'next-themes';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { PwaRegister } from '@/components/PwaRegister';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -51,6 +52,7 @@ export const metadata: Metadata = {
     shortcut: '/logo-icon.png',
     apple: '/logo-icon.png',
   },
+  manifest: '/manifest.json',
   formatDetection: {
     telephone: false,
   },
@@ -60,13 +62,17 @@ export const viewport: Viewport = {
   themeColor: '#16a34a',
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head />
       <body className="relative min-h-screen antialiased overflow-x-hidden w-full max-w-[100vw]">
+        <PwaRegister />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           {/* Ambient glow mesh — only visible in dark mode */}
           <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden dark:block hidden">
@@ -82,3 +88,4 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     </html>
   );
 }
+

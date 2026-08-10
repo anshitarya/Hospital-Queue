@@ -10,3 +10,15 @@ coverage/
 next-env.d.ts
 vapid-keys.json
 
+# Android and Gradle build artifacts
+.gradle/
+build/
+app/build/
+*.idsig
+
+
+# Android signing keys (DO NOT push to public repositories)
+*.keystore
+*.jks
+
+
