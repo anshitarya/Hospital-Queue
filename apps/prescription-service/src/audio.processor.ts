@@ -463,7 +463,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
               startY += 55; // Push text below center logo
             }
           } catch (e) {
-            // Ignore logo fetch failure
+            this.logger.error(`Failed to render logo image from ${logoUrl}:`, e);
           }
         }
       }

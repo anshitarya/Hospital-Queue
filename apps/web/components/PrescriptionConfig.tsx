@@ -132,6 +132,62 @@ export function PrescriptionConfig() {
     setSectionOrder(newOrder);
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setSaving(true);
+    setMsg('');
+    setErrorMsg('');
+    try {
+      const data = await api<any>('/prescriptions/upload-logo', {
+        method: 'POST',
+        body: formData,
+      });
+      setConfig((prev: any) => ({
+        ...prev,
+        doctor: {
+          ...prev.doctor,
+          clinic: { ...prev.doctor.clinic, logoUrl: data.logoUrl },
+        },
+      }));
+      setMsg('Clinic logo uploaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Failed to upload clinic logo');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSignatureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setSaving(true);
+    setMsg('');
+    setErrorMsg('');
+    try {
+      const data = await api<any>('/prescriptions/upload-signature', {
+        method: 'POST',
+        body: formData,
+      });
+      setSignatureUrl(data.signatureUrl);
+      setMsg('Digital signature uploaded successfully!');
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Failed to upload signature');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setMsg('');
@@ -213,7 +269,7 @@ export function PrescriptionConfig() {
       <div className="flex flex-col lg:flex-row gap-8 items-start">
         
         {/* Left Side: Customize Forms */}
-        <div className="flex-1 space-y-6 w-full max-w-2xl">
+        <div className="flex-1 space-y-6 w-full">
           
           {/* Template Style Selector */}
           <div className="card p-5 space-y-4">
@@ -385,211 +441,6 @@ export function PrescriptionConfig() {
               </div>
             </div>
           </div>
-
-          {/* Alignment & Layout Formats */}
-          <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">3. Alignment & Layout Options</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Logo Position</label>
-                <select value={logoPosition} onChange={(e) => setLogoPosition(e.target.value)} className="input mt-1 w-full">
-                  <option value="LEFT">Left Aligned</option>
-                  <option value="CENTER">Centered</option>
-                  <option value="RIGHT">Right Aligned</option>
-                </select>
-              </div>
-              <div>
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Header Text Position</label>
-                <select value={headerTextPosition} onChange={(e) => setHeaderTextPosition(e.target.value)} className="input mt-1 w-full">
-                  <option value="LEFT">Left Aligned</option>
-                  <option value="CENTER">Centered</option>
-                  <option value="RIGHT">Right Aligned</option>
-                </select>
-              </div>
-              <div className="sm:col-span-2 flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
-                <div>
-                  <span className="block font-semibold text-xs text-slate-800 dark:text-slate-100">Format Medicines in Table</span>
-                  <span className="block text-[10px] text-slate-400 mt-0.5">Use an organized grid layout instead of bullet points.</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={showMedicineTable}
-                  onChange={(e) => setShowMedicineTable(e.target.checked)}
-                  className="w-5 h-5 accent-teal-600 rounded cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Font Sizes & Colors Customization */}
-          <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">4. Typography, Sizes & Colors</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              
-              {/* Clinic Name Size & Color */}
-              <div className="space-y-2">
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Clinic Name (Size & Color)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min={10}
-                    max={32}
-                    value={clinicNameFontSize}
-                    onChange={(e) => setClinicNameFontSize(Number(e.target.value))}
-                    className="input w-full text-xs"
-                    title="Font Size (px)"
-                  />
-                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
-                    <input
-                      type="color"
-                      value={clinicNameColor}
-                      onChange={(e) => setClinicNameColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                    />
-                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: clinicNameColor }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Doctor Name Size & Color */}
-              <div className="space-y-2">
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Doctor Name (Size & Color)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min={8}
-                    max={24}
-                    value={doctorNameFontSize}
-                    onChange={(e) => setDoctorNameFontSize(Number(e.target.value))}
-                    className="input w-full text-xs"
-                    title="Font Size (px)"
-                  />
-                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
-                    <input
-                      type="color"
-                      value={doctorNameColor}
-                      onChange={(e) => setDoctorNameColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                    />
-                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: doctorNameColor }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Header Details Size & Color */}
-              <div className="space-y-2">
-                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Header Details (Size & Color)</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min={6}
-                    max={16}
-                    value={headerDetailsFontSize}
-                    onChange={(e) => setHeaderDetailsFontSize(Number(e.target.value))}
-                    className="input w-full text-xs"
-                    title="Font Size (px)"
-                  />
-                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
-                    <input
-                      type="color"
-                      value={headerDetailsColor}
-                      onChange={(e) => setHeaderDetailsColor(e.target.value)}
-                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                    />
-                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: headerDetailsColor }} />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Visibility Switches */}
-          <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">5. Elements Visibility</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showLogo} onChange={(e) => setShowLogo(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Clinic Logo
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showPatientAge} onChange={(e) => setShowPatientAge(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Patient Age / Gender
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showPatientMobile} onChange={(e) => setShowPatientMobile(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Patient Mobile
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showPatientAddress} onChange={(e) => setShowPatientAddress(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Patient Address
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showDate} onChange={(e) => setShowDate(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Prescription Date
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showSignature} onChange={(e) => setShowSignature(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Doctor Signature
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showVitals} onChange={(e) => setShowVitals(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Vitals Box
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showSymptoms} onChange={(e) => setShowSymptoms(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Symptoms Block
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showDiagnosis} onChange={(e) => setShowDiagnosis(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Diagnosis Block
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showAdvice} onChange={(e) => setShowAdvice(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Advice Block
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showInvestigations} onChange={(e) => setShowInvestigations(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Investigations
-              </label>
-              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
-                <input type="checkbox" checked={showFollowUp} onChange={(e) => setShowFollowUp(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
-                Follow Up Block
-              </label>
-            </div>
-          </div>
-
-          {/* Section Ordering */}
-          <div className="card p-5 space-y-4">
-            <h4 className="font-bold text-slate-900 dark:text-white text-sm">6. Layout Section Order</h4>
-            <p className="text-[10px] text-slate-400">Re-arrange layout blocks dynamically using up/down arrow buttons:</p>
-            <div className="space-y-2">
-              {sectionOrder.map((section, idx) => (
-                <div key={section} className="flex items-center justify-between p-2.5 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/30">
-                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 capitalize">{section}</span>
-                  <div className="flex gap-1">
-                    <button type="button" onClick={() => moveSection(idx, 'up')} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-[10px]">▲</button>
-                    <button type="button" onClick={() => moveSection(idx, 'down')} disabled={idx === sectionOrder.length - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-[10px]">▼</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {msg && <div className="text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-2.5 rounded-xl font-medium">✅ {msg}</div>}
-          {errorMsg && <div className="text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/30 px-4 py-2.5 rounded-xl font-medium">⚠️ {errorMsg}</div>}
-
-          {/* Save Button */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium shadow-sm transition disabled:opacity-50 text-xs"
-            >
-              {saving ? 'Saving changes...' : 'Save Configuration'}
-            </button>
-          </div>
         </div>
 
         {/* Right Side: Live visual mockup preview */}
@@ -613,10 +464,16 @@ export function PrescriptionConfig() {
                   
                   {/* Logo */}
                   {showLogo && (
-                    <div className={`h-8 w-8 rounded-full border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center shrink-0 ${
+                    <div className={`h-8 w-8 shrink-0 ${
                       logoPosition === 'RIGHT' ? 'order-last' : logoPosition === 'CENTER' ? 'mb-2' : 'mr-3'
                     }`}>
-                      <span className="text-[9px] font-bold text-slate-400">Logo</span>
+                      {config?.doctor?.clinic?.logoUrl ? (
+                        <img src={config.doctor.clinic.logoUrl} alt="Logo" className="h-8 w-8 rounded-full object-contain bg-white" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full border border-dashed border-slate-300 bg-slate-50 flex items-center justify-center">
+                          <span className="text-[7px] font-bold text-slate-400">Logo</span>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -770,9 +627,13 @@ export function PrescriptionConfig() {
                 {/* Doctor Stamp/Signature space */}
                 {showSignature && (
                   <div className="text-right flex flex-col items-end">
-                    <div className="h-6 w-16 border border-dashed border-slate-200 flex items-center justify-center text-[7px] text-slate-300">
-                      Signature
-                    </div>
+                    {signatureUrl ? (
+                      <img src={signatureUrl} alt="Signature" className="h-6 w-16 object-contain" />
+                    ) : (
+                      <div className="h-6 w-16 border border-dashed border-slate-200 flex items-center justify-center text-[7px] text-slate-300">
+                        Signature
+                      </div>
+                    )}
                     <span className="text-[7px] font-bold text-slate-700 mt-1">{customDoctorName || 'Dr. Doctor Name'}</span>
                   </div>
                 )}
@@ -788,6 +649,265 @@ export function PrescriptionConfig() {
           </div>
         </div>
 
+      </div>
+
+      {/* Full Width bottom options */}
+      <div className="space-y-6 w-full">
+        
+        {/* Card 3: Doctor Digital Signature (Full Width) */}
+        <div className="card p-5 space-y-5">
+          <h4 className="font-bold text-slate-900 dark:text-white text-sm">3. Doctor Digital Signature</h4>
+          
+          <div className="space-y-2 max-w-2xl">
+            <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Doctor Digital Signature</label>
+            <div className="flex flex-col gap-2 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800">
+              {signatureUrl ? (
+                <div className="flex items-center gap-3">
+                  <img src={signatureUrl} alt="Signature" className="h-12 w-20 object-contain border bg-white rounded" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">Signature Active</span>
+                    <span className="block text-[9px] text-slate-400 truncate">{signatureUrl}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-400 font-medium">No signature uploaded yet.</div>
+              )}
+              <div className="flex gap-2 mt-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  id="signature-upload-input"
+                  onChange={handleSignatureUpload}
+                  className="hidden"
+                />
+                <label
+                  htmlFor="signature-upload-input"
+                  className="btn-ghost !py-1 !px-2.5 text-xs shrink-0 cursor-pointer text-teal-600 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/20 border border-teal-200"
+                >
+                  Upload File
+                </label>
+                <input
+                  type="text"
+                  placeholder="Or paste image/Google Drive URL"
+                  value={signatureUrl}
+                  onChange={(e) => setSignatureUrl(e.target.value)}
+                  className="input !py-1 text-[10px] flex-1"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 1: Alignment & Typography */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Alignment & Layout Options */}
+          <div className="card p-5 space-y-4 h-full">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">4. Alignment & Layout Options</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Logo Position</label>
+                <select value={logoPosition} onChange={(e) => setLogoPosition(e.target.value)} className="input mt-1 w-full">
+                  <option value="LEFT">Left Aligned</option>
+                  <option value="CENTER">Centered</option>
+                  <option value="RIGHT">Right Aligned</option>
+                </select>
+              </div>
+              <div>
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold">Header Text Position</label>
+                <select value={headerTextPosition} onChange={(e) => setHeaderTextPosition(e.target.value)} className="input mt-1 w-full">
+                  <option value="LEFT">Left Aligned</option>
+                  <option value="CENTER">Centered</option>
+                  <option value="RIGHT">Right Aligned</option>
+                </select>
+              </div>
+              <div className="sm:col-span-2 flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl">
+                <div>
+                  <span className="block font-semibold text-xs text-slate-800 dark:text-slate-100">Format Medicines in Table</span>
+                  <span className="block text-[10px] text-slate-400 mt-0.5">Use an organized grid layout instead of bullet points.</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showMedicineTable}
+                  onChange={(e) => setShowMedicineTable(e.target.checked)}
+                  className="w-5 h-5 accent-teal-600 rounded cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Font Sizes & Colors Customization */}
+          <div className="card p-5 space-y-4 h-full">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">5. Typography, Sizes & Colors</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              
+              {/* Clinic Name Size & Color */}
+              <div className="space-y-2">
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Clinic Name (Size & Color)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={10}
+                    max={32}
+                    value={clinicNameFontSize}
+                    onChange={(e) => setClinicNameFontSize(Number(e.target.value))}
+                    className="input w-full text-xs"
+                    title="Font Size (px)"
+                  />
+                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
+                    <input
+                      type="color"
+                      value={clinicNameColor}
+                      onChange={(e) => setClinicNameColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: clinicNameColor }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Doctor Name Size & Color */}
+              <div className="space-y-2">
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Doctor Name (Size & Color)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={8}
+                    max={24}
+                    value={doctorNameFontSize}
+                    onChange={(e) => setDoctorNameFontSize(Number(e.target.value))}
+                    className="input w-full text-xs"
+                    title="Font Size (px)"
+                  />
+                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
+                    <input
+                      type="color"
+                      value={doctorNameColor}
+                      onChange={(e) => setDoctorNameColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: doctorNameColor }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Header Details Size & Color */}
+              <div className="space-y-2 sm:col-span-2 xl:col-span-1">
+                <label className="label text-xs uppercase tracking-wider text-slate-400 font-bold block">Header Details (Size & Color)</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min={6}
+                    max={16}
+                    value={headerDetailsFontSize}
+                    onChange={(e) => setHeaderDetailsFontSize(Number(e.target.value))}
+                    className="input w-full text-xs"
+                    title="Font Size (px)"
+                  />
+                  <div className="relative shrink-0 flex items-center justify-center border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 bg-slate-50 dark:bg-slate-900/60 w-12 h-10">
+                    <input
+                      type="color"
+                      value={headerDetailsColor}
+                      onChange={(e) => setHeaderDetailsColor(e.target.value)}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <div className="h-5 w-5 rounded-full border border-slate-300 shadow-sm" style={{ backgroundColor: headerDetailsColor }} />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Visibility & Section Order */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Visibility Switches */}
+          <div className="card p-5 space-y-4 h-full">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">6. Elements Visibility</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showLogo} onChange={(e) => setShowLogo(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Clinic Logo
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showPatientAge} onChange={(e) => setShowPatientAge(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Patient Age / Gender
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showPatientMobile} onChange={(e) => setShowPatientMobile(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Patient Mobile
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showPatientAddress} onChange={(e) => setShowPatientAddress(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Patient Address
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showDate} onChange={(e) => setShowDate(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Prescription Date
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showSignature} onChange={(e) => setShowSignature(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Doctor Signature
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showVitals} onChange={(e) => setShowVitals(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Vitals Box
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showSymptoms} onChange={(e) => setShowSymptoms(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Symptoms Block
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showDiagnosis} onChange={(e) => setShowDiagnosis(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Diagnosis Block
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showAdvice} onChange={(e) => setShowAdvice(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Advice Block
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showInvestigations} onChange={(e) => setShowInvestigations(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Investigations
+              </label>
+              <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer">
+                <input type="checkbox" checked={showFollowUp} onChange={(e) => setShowFollowUp(e.target.checked)} className="rounded text-teal-600 accent-teal-600" />
+                Follow Up Block
+              </label>
+            </div>
+          </div>
+
+          {/* Section Ordering */}
+          <div className="card p-5 space-y-4 h-full">
+            <h4 className="font-bold text-slate-900 dark:text-white text-sm">7. Layout Section Order</h4>
+            <p className="text-[10px] text-slate-400">Re-arrange layout blocks dynamically using up/down arrow buttons:</p>
+            <div className="space-y-2">
+              {sectionOrder.map((section, idx) => (
+                <div key={section} className="flex items-center justify-between p-2.5 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/30">
+                  <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 capitalize">{section}</span>
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => moveSection(idx, 'up')} disabled={idx === 0} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-[10px]">▲</button>
+                    <button type="button" onClick={() => moveSection(idx, 'down')} disabled={idx === sectionOrder.length - 1} className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 text-[10px]">▼</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {msg && <div className="text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-2.5 rounded-xl font-medium">✅ {msg}</div>}
+        {errorMsg && <div className="text-xs text-rose-500 bg-rose-50 dark:bg-rose-950/30 px-4 py-2.5 rounded-xl font-medium">⚠️ {errorMsg}</div>}
+
+        {/* Save Button */}
+        <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-medium shadow-sm transition disabled:opacity-50 text-xs"
+          >
+            {saving ? 'Saving changes...' : 'Save Configuration'}
+          </button>
+        </div>
       </div>
     </div>
   );

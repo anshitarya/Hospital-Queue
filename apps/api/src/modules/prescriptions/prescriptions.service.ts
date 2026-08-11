@@ -180,10 +180,24 @@ export class PrescriptionsService {
   async getDoctorConfig(doctorId: string) {
     let config = await this.prisma.doctorPrescriptionConfig.findUnique({
       where: { doctorId },
+      include: {
+        doctor: {
+          include: {
+            clinic: true,
+          },
+        },
+      },
     });
     if (!config) {
       config = await this.prisma.doctorPrescriptionConfig.create({
         data: { doctorId },
+        include: {
+          doctor: {
+            include: {
+              clinic: true,
+            },
+          },
+        },
       });
     }
     return config;
@@ -200,6 +214,77 @@ export class PrescriptionsService {
         ...dto,
       },
     });
+  }
+
+  async uploadSignature(doctorId: string, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    if (file.size > 200 * 1024) {
+      throw new BadRequestException('Signature file size must be less than 200 KB');
+    }
+    const ext = file.originalname.split('.').pop() ?? 'png';
+    const key = `signatures/${doctorId}-${Date.now()}.${ext}`;
+
+    try {
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        }),
+      );
+      const signatureUrl = process.env.S3_PUBLIC_URL
+        ? `${process.env.S3_PUBLIC_URL}/${key}`
+        : `${process.env.S3_ENDPOINT ?? 'https://s3.amazonaws.com'}/${this.bucketName}/${key}`;
+
+      await this.prisma.doctorPrescriptionConfig.upsert({
+        where: { doctorId },
+        create: { doctorId, signatureUrl },
+        update: { signatureUrl },
+      });
+
+      return { signatureUrl };
+    } catch (err) {
+      throw new BadRequestException(`Failed to upload signature: ${(err as Error).message}`);
+    }
+  }
+
+  async uploadLogo(doctorId: string, file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+    if (file.size > 200 * 1024) {
+      throw new BadRequestException('Logo file size must be less than 200 KB');
+    }
+    const doctor = await this.prisma.doctor.findUnique({
+      where: { id: doctorId },
+      select: { clinicId: true },
+    });
+    if (!doctor || !doctor.clinicId) throw new BadRequestException('Doctor clinic not found');
+
+    const ext = file.originalname.split('.').pop() ?? 'png';
+    const key = `logos/${doctor.clinicId}-${Date.now()}.${ext}`;
+
+    try {
+      await this.s3Client.send(
+        new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        }),
+      );
+      const logoUrl = process.env.S3_PUBLIC_URL
+        ? `${process.env.S3_PUBLIC_URL}/${key}`
+        : `${process.env.S3_ENDPOINT ?? 'https://s3.amazonaws.com'}/${this.bucketName}/${key}`;
+
+      await this.prisma.clinic.update({
+        where: { id: doctor.clinicId },
+        data: { logoUrl },
+      });
+
+      return { logoUrl };
+    } catch (err) {
+      throw new BadRequestException(`Failed to upload logo: ${(err as Error).message}`);
+    }
   }
 
   async saveVitals(dto: SaveVitalsDto) {

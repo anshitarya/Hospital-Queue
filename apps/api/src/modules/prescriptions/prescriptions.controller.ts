@@ -80,6 +80,28 @@ export class PrescriptionsController {
     return this.prescriptions.saveDoctorConfig(doctorId, dto);
   }
 
+  @Roles(Role.DOCTOR)
+  @Post('upload-signature')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadSignature(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const doctorId = await this.getDoctorId(user.id);
+    return this.prescriptions.uploadSignature(doctorId, file);
+  }
+
+  @Roles(Role.DOCTOR)
+  @Post('upload-logo')
+  @UseInterceptors(FileInterceptor('file'))
+  async uploadLogo(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const doctorId = await this.getDoctorId(user.id);
+    return this.prescriptions.uploadLogo(doctorId, file);
+  }
+
   @Roles(Role.DOCTOR, Role.RECEPTIONIST, Role.CLINIC_ADMIN)
   @Post('vitals')
   async saveVitals(@Body() dto: SaveVitalsDto) {

@@ -229,7 +229,9 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
   const shiftEndByStart = useMemo(() => {
     const map = new Map<string, string>();
     for (const s of doctorShifts) {
-      if (s.startTime && s.endTime) map.set(s.startTime, s.endTime);
+      if (s.startTime && s.endTime) {
+        map.set(`${s.dayOfWeek}-${s.startTime}`, s.endTime);
+      }
     }
     return map;
   }, [doctorShifts]);
@@ -347,10 +349,11 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
     return 'walk-in';
   }, []);
 
-  const entrySlotLabel = useCallback((e: { appointmentSlot?: string | null; appointmentTime?: string | null }) => {
+  const entrySlotLabel = useCallback((e: { serviceDay: string; appointmentSlot?: string | null; appointmentTime?: string | null }) => {
     const start = e.appointmentSlot ?? (e.appointmentTime ? formatTimeIst(e.appointmentTime) : null);
     if (!start) return 'Walk-in / unscheduled';
-    const end = shiftEndByStart.get(start);
+    const dow = istDayOfWeekFromKey(e.serviceDay);
+    const end = shiftEndByStart.get(`${dow}-${start}`);
     return end ? `${start} – ${end}` : start;
   }, [shiftEndByStart]);
 

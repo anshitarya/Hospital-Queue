@@ -47,6 +47,10 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const { user, ready } = useRequireRole(['DOCTOR', 'ADMIN', 'RECEPTIONIST', 'CLINIC_ADMIN']);
   const router = useRouter();
   const [doctorId, setDoctorId] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [activePrescription, setActivePrescription] = useState<any>(null);
@@ -504,7 +508,10 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
           ) : undefined
         }
       />
-      <main className="mx-auto max-w-4xl px-4 py-6 space-y-5 animate-fade-in">
+      <main
+        className="mx-auto px-4 py-6 space-y-5 animate-fade-in w-full"
+        style={{ maxWidth: isMounted && tab === 'prescription-config' ? '1400px' : '896px' }}
+      >
         {linkError && (
           <div className="card p-5 bg-rose-50 dark:bg-rose-500/15 border border-rose-200 dark:border-rose-400/30 text-rose-800 dark:text-rose-200 text-sm rounded-3xl">
             {linkError}
