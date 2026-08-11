@@ -178,7 +178,7 @@ export class AudioProcessor extends WorkerHost {
           required: ['transcript', 'prescription'],
         };
 
-        const modelName = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash';
+        const modelName = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash';
         const model = this.geminiAI.getGenerativeModel({
           model: modelName,
           generationConfig: {
