@@ -190,6 +190,34 @@ export class AudioProcessor extends WorkerHost {
                     required: ['medicine', 'dosage', 'duration'],
                   },
                 },
+                investigations: {
+                  type: SchemaType.ARRAY,
+                  description: 'List of diagnostic investigations/tests ordered by the doctor (blood tests, imaging, cultures, etc.).',
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      testName: {
+                        type: SchemaType.STRING,
+                        description: 'Name of the test or investigation (e.g., "Complete Blood Count", "Chest X-Ray", "Urine Culture")',
+                      },
+                      testType: {
+                        type: SchemaType.STRING,
+                        description: 'Category of the test',
+                        enum: ['Blood Test', 'Urine Test', 'Stool Test', 'X-Ray', 'CT Scan', 'MRI', 'Ultrasound', 'ECG', 'Culture', 'Biopsy', 'Other'],
+                      },
+                      urgency: {
+                        type: SchemaType.STRING,
+                        description: 'Urgency of the test',
+                        enum: ['Routine', 'Urgent', 'STAT'],
+                      },
+                      notes: {
+                        type: SchemaType.STRING,
+                        description: 'Any special instructions for the test (e.g., "Fasting required", "Early morning sample")',
+                      },
+                    },
+                    required: ['testName', 'testType'],
+                  },
+                },
               },
               required: ['symptoms', 'diagnosis', 'advice', 'medicines'],
             },
@@ -256,6 +284,11 @@ export class AudioProcessor extends WorkerHost {
   - timing: e.g., "After food", "Before food"
   - duration: e.g., "3 Days", "1 Week"
   - notes: specific warnings or instructions
+- investigations: array of diagnostic tests/investigations ordered, each containing:
+  - testName: name of the test (e.g., "Complete Blood Count", "Chest X-Ray")
+  - testType: "Blood Test" | "Urine Test" | "Stool Test" | "X-Ray" | "CT Scan" | "MRI" | "Ultrasound" | "ECG" | "Culture" | "Biopsy" | "Other"
+  - urgency: "Routine" | "Urgent" | "STAT"
+  - notes: any special instructions (e.g., "Fasting required")
 Lowcase keys or missing info should be handled gracefully. Output must be strictly JSON matching the schema, with no markdown wrappers or additional text.`
               },
               {
@@ -275,7 +308,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
     // C. Ultimate Fallback to Mock Data if both Gemini and OpenAI failed/not-set
     if (!structuredJson) {
       this.logger.warn('Mocking transcription and structuring (no valid Gemini or OpenAI API keys configured/reachable)');
-      rawTranscript = 'Patient presents with mild fever and wet cough for the past three days. Checked vitals. Weight is seventy two kilograms, blood pressure is one hundred twenty over eighty. Diagnosing Upper Respiratory Tract Infection. Prescribing Azithromycin five hundred milligrams once daily for three days after meals, and Paracetamol six hundred fifty milligrams SOS for fever. Advice rest and plenty of fluids.';
+      rawTranscript = 'Patient presents with mild fever and wet cough for the past three days. Checked vitals. Weight is seventy two kilograms, blood pressure is one hundred twenty over eighty. Diagnosing Upper Respiratory Tract Infection. Prescribing Azithromycin five hundred milligrams once daily for three days after meals, and Paracetamol six hundred fifty milligrams SOS for fever. Advice rest and plenty of fluids. Also ordering CBC and Chest X-Ray.';
       structuredJson = {
         symptoms: 'Mild fever, wet cough for 3 days',
         diagnosis: 'Upper Respiratory Tract Infection (URTI)',
@@ -305,7 +338,11 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
             duration: 'As needed',
             notes: 'Take for fever',
           }
-        ]
+        ],
+        investigations: [
+          { testName: 'Complete Blood Count (CBC)', testType: 'Blood Test', urgency: 'Routine', notes: 'Fasting not required' },
+          { testName: 'Chest X-Ray', testType: 'X-Ray', urgency: 'Routine', notes: 'PA view' },
+        ],
       };
     }
 
@@ -348,6 +385,10 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
           temperature: existing?.temperature || null,
           pulse: existing?.pulse || null,
           spo2: existing?.spo2 || null,
+          // Store investigations as JSON string in the investigationsOrdered field
+          investigationsOrdered: structuredJson.investigations && structuredJson.investigations.length > 0
+            ? JSON.stringify(structuredJson.investigations)
+            : existing?.investigationsOrdered || null,
           status: PrescriptionStatus.READY_FOR_REVIEW,
         },
       });
@@ -650,8 +691,51 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
       }
 
       if (section === 'investigations' && config.showInvestigations && prescription.investigationsOrdered) {
-        doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e293b').text('Investigations Ordered');
-        doc.fontSize(8.5).font('Helvetica').fillColor('#475569').text(prescription.investigationsOrdered);
+        // Try to parse as structured JSON array first; fall back to plain text
+        let investigations: { testName: string; testType?: string; urgency?: string; notes?: string }[] | null = null;
+        try {
+          const parsed = JSON.parse(prescription.investigationsOrdered);
+          if (Array.isArray(parsed) && parsed.length > 0) investigations = parsed;
+        } catch { /* plain text fallback */ }
+
+        doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#1e293b').text('Investigations / Tests Ordered');
+        doc.moveDown(0.4);
+
+        if (investigations) {
+          // Table Header
+          const invTableY = doc.y;
+          doc.fillColor('#eff6ff').rect(50, invTableY, 495, 18).fill();
+          doc.fillColor('#1e3a5f');
+          doc.fontSize(8).font('Helvetica-Bold')
+            .text('S.No', 55, invTableY + 4)
+            .text('Test Name', 85, invTableY + 4)
+            .text('Type', 270, invTableY + 4)
+            .text('Urgency', 370, invTableY + 4)
+            .text('Special Instructions', 435, invTableY + 4);
+          doc.moveTo(50, invTableY + 18).lineTo(545, invTableY + 18).strokeColor('#bfdbfe').stroke();
+
+          let invY = invTableY + 18;
+          investigations.forEach((inv, idx) => {
+            // Alternate row shading
+            if (idx % 2 === 1) {
+              doc.fillColor('#f8fbff').rect(50, invY, 495, 20).fill();
+            }
+            doc.fontSize(7.5).font('Helvetica').fillColor('#1e293b')
+              .text(`${idx + 1}`, 55, invY + 5)
+              .font('Helvetica-Bold').text(inv.testName || '-', 85, invY + 5, { width: 180 })
+              .font('Helvetica').fillColor('#475569')
+              .text(inv.testType || '-', 270, invY + 5, { width: 95 })
+              .text(inv.urgency || 'Routine', 370, invY + 5, { width: 60 })
+              .text(inv.notes || '-', 435, invY + 5, { width: 110 });
+            invY += 20;
+            doc.moveTo(50, invY).lineTo(545, invY).strokeColor('#e0eefe').stroke();
+          });
+          doc.y = invY + 8;
+          doc.x = 50;
+        } else {
+          // Plain text fallback for older records
+          doc.fontSize(8.5).font('Helvetica').fillColor('#475569').text(prescription.investigationsOrdered);
+        }
         doc.moveDown(1.2);
       }
 

@@ -591,6 +591,42 @@ export function PrescriptionConfig() {
                       </div>
                     );
                   }
+                  if (section === 'investigations' && showInvestigations) {
+                    return (
+                      <div key={section} className="space-y-1">
+                        <span className="font-bold text-[8px] text-slate-700 block uppercase tracking-wide">Investigations / Tests Ordered</span>
+                        <div className="border border-blue-100 rounded overflow-hidden">
+                          <table className="w-full text-left" style={{ fontSize: '7.5px' }}>
+                            <thead className="bg-blue-50 border-b border-blue-100 font-bold text-blue-900">
+                              <tr>
+                                <th className="p-1 w-6">S.No</th>
+                                <th className="p-1">Test Name</th>
+                                <th className="p-1">Type</th>
+                                <th className="p-1">Urgency</th>
+                                <th className="p-1">Instructions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-blue-50 text-slate-600">
+                              <tr>
+                                <td className="p-1">1</td>
+                                <td className="p-1 font-semibold text-slate-800">Complete Blood Count (CBC)</td>
+                                <td className="p-1">Blood Test</td>
+                                <td className="p-1">Routine</td>
+                                <td className="p-1">Fasting not required</td>
+                              </tr>
+                              <tr className="bg-blue-50/40">
+                                <td className="p-1">2</td>
+                                <td className="p-1 font-semibold text-slate-800">Chest X-Ray</td>
+                                <td className="p-1">X-Ray</td>
+                                <td className="p-1">Routine</td>
+                                <td className="p-1">PA view</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  }
                   if (section === 'advice' && showAdvice) {
                     return (
                       <div key={section}>
