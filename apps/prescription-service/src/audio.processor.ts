@@ -6,6 +6,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import PDFDocument from 'pdfkit';
 import * as fs from 'fs';
 import * as path from 'path';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { PrismaService } from './prisma.service';
 import { PrescriptionStatus } from '@prisma/client';
 
@@ -14,6 +15,7 @@ import { PrescriptionStatus } from '@prisma/client';
 export class AudioProcessor extends WorkerHost {
   private readonly logger = new Logger(AudioProcessor.name);
   private openai: OpenAI;
+  private geminiAI: GoogleGenerativeAI;
   private s3Client: S3Client;
   private bucketName: string;
 
@@ -22,6 +24,9 @@ export class AudioProcessor extends WorkerHost {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY ?? 'mock-key',
     });
+    this.geminiAI = new GoogleGenerativeAI(
+      process.env.GEMINI_API_KEY ?? 'mock-key',
+    );
     this.bucketName = process.env.S3_BUCKET_NAME ?? 'hospital-prescriptions';
     this.s3Client = new S3Client({
       region: process.env.S3_REGION ?? 'us-east-1',
@@ -69,33 +74,189 @@ export class AudioProcessor extends WorkerHost {
       data: { status: PrescriptionStatus.TRANSCRIBING },
     });
 
-    // 2. Perform speech-to-text via OpenAI Whisper
+    // 2. Perform speech-to-text and structuring
     let rawTranscript = '';
-    if (process.env.OPENAI_API_KEY === 'mock-key' || !process.env.OPENAI_API_KEY) {
-      this.logger.warn('Mocking Whisper speech-to-text transcription (OPENAI_API_KEY not configured)');
-      rawTranscript = 'Patient presents with mild fever and wet cough for the past three days. Checked vitals. Weight is seventy two kilograms, blood pressure is one hundred twenty over eighty. Diagnosing Upper Respiratory Tract Infection. Prescribing Azithromycin five hundred milligrams once daily for three days after meals, and Paracetamol six hundred fifty milligrams SOS for fever. Advice rest and plenty of fluids.';
-    } else {
+    let structuredJson: any = null;
+
+    // A. Try Google Gemini first (Speech-to-Text + Structuring in a single step)
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'mock-key') {
+      this.logger.log('Performing speech-to-text and structuring via Google Gemini 1.5 Flash...');
       try {
-        // Download audio file from storage
         const res = await fetch(audioUrl);
         if (!res.ok) throw new Error(`Failed to download audio from ${audioUrl}`);
         const buffer = Buffer.from(await res.arrayBuffer());
-        const file = await OpenAI.toFile(buffer, 'audio.webm', { type: 'audio/webm' });
-        
-        const response = await this.openai.audio.transcriptions.create({
-          file,
-          model: 'whisper-1',
+
+        const audioPart = {
+          inlineData: {
+            data: buffer.toString('base64'),
+            mimeType: 'audio/webm',
+          },
+        };
+
+        const schema: any = {
+          type: SchemaType.OBJECT,
+          properties: {
+            transcript: {
+              type: SchemaType.STRING,
+              description: 'The exact full text transcription of what the doctor said in the audio recording.',
+            },
+            prescription: {
+              type: SchemaType.OBJECT,
+              description: 'The structured medical prescription details.',
+              properties: {
+                symptoms: {
+                  type: SchemaType.STRING,
+                  description: 'Chief complaints and symptoms reported, comma separated (e.g., "Mild fever, wet cough")',
+                },
+                diagnosis: {
+                  type: SchemaType.STRING,
+                  description: 'Diagnosed condition (e.g., "Upper Respiratory Tract Infection")',
+                },
+                advice: {
+                  type: SchemaType.STRING,
+                  description: 'Non-pharmacological instructions (e.g., "Rest and drink plenty of fluids")',
+                },
+                weight: {
+                  type: SchemaType.STRING,
+                  description: 'Patient weight if mentioned (e.g., "72 kg")',
+                },
+                bloodPressure: {
+                  type: SchemaType.STRING,
+                  description: 'Blood pressure if mentioned (e.g., "120/80 mmHg")',
+                },
+                medicines: {
+                  type: SchemaType.ARRAY,
+                  description: 'List of medicines prescribed.',
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      medicine: {
+                        type: SchemaType.STRING,
+                        description: 'Brand name or name of drug (e.g., "Azithromycin 500")',
+                      },
+                      genericName: {
+                        type: SchemaType.STRING,
+                        description: 'Chemical or generic name (e.g., "Azithromycin")',
+                      },
+                      form: {
+                        type: SchemaType.STRING,
+                        description: 'Form of medicine',
+                        enum: ['Tablet', 'Syrup', 'Capsule', 'Ointment', 'Drops', 'Inhaler', 'Injection'],
+                      },
+                      dosage: {
+                        type: SchemaType.STRING,
+                        description: 'Strength or quantity (e.g., "500 mg")',
+                      },
+                      frequency: {
+                        type: SchemaType.STRING,
+                        description: 'Frequency of intake (e.g., "Once Daily", "Twice Daily", "SOS")',
+                      },
+                      frequencyPattern: {
+                        type: SchemaType.STRING,
+                        description: 'Pattern of intake (e.g., "1-0-0", "1-0-1")',
+                      },
+                      timing: {
+                        type: SchemaType.STRING,
+                        description: 'Timing relative to meals (e.g., "After food", "Before food")',
+                      },
+                      duration: {
+                        type: SchemaType.STRING,
+                        description: 'Duration of treatment (e.g., "3 Days", "1 Week")',
+                      },
+                      notes: {
+                        type: SchemaType.STRING,
+                        description: 'Specific warnings or instructions',
+                      },
+                    },
+                    required: ['medicine', 'dosage', 'duration'],
+                  },
+                },
+              },
+              required: ['symptoms', 'diagnosis', 'advice', 'medicines'],
+            },
+          },
+          required: ['transcript', 'prescription'],
+        };
+
+        const modelName = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash';
+        const model = this.geminiAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            responseSchema: schema,
+          },
         });
-        rawTranscript = response.text;
+
+        const prompt = 'You are an expert medical scribe. Analyze the attached doctor\'s audio recording. First, transcribe the exact words spoken by the doctor in the recording. Second, extract and structure the details into a JSON object matching the schema.';
+        const result = await model.generateContent([prompt, audioPart]);
+        const responseJson = JSON.parse(result.response.text());
+        
+        rawTranscript = responseJson.transcript;
+        structuredJson = responseJson.prescription;
+        this.logger.log('Successfully processed audio with Gemini 1.5 Flash.');
       } catch (err) {
-        this.logger.error('OpenAI Whisper transcription failed (likely due to quota/credits). Falling back to mock text...', err);
-        rawTranscript = 'Patient presents with mild fever and wet cough for the past three days. Checked vitals. Weight is seventy two kilograms, blood pressure is one hundred twenty over eighty. Diagnosing Upper Respiratory Tract Infection. Prescribing Azithromycin five hundred milligrams once daily for three days after meals, and Paracetamol six hundred fifty milligrams SOS for fever. Advice rest and plenty of fluids.';
+        this.logger.error('Google Gemini processing failed. Will fall back to OpenAI...', err);
       }
     }
 
-    // 3. Structure raw text using GPT-4o-mini
-    let structuredJson: any = null;
-    if (process.env.OPENAI_API_KEY === 'mock-key' || !process.env.OPENAI_API_KEY) {
+    // B. Fall back to OpenAI Whisper + GPT-4o-mini if Gemini didn't complete
+    if (!structuredJson) {
+      if (process.env.OPENAI_API_KEY && process.env.OPENAI_API_KEY !== 'mock-key') {
+        this.logger.log('Performing speech-to-text and structuring via OpenAI...');
+        try {
+          // Download audio file from storage
+          const res = await fetch(audioUrl);
+          if (!res.ok) throw new Error(`Failed to download audio from ${audioUrl}`);
+          const buffer = Buffer.from(await res.arrayBuffer());
+          const file = await OpenAI.toFile(buffer, 'audio.webm', { type: 'audio/webm' });
+          
+          const response = await this.openai.audio.transcriptions.create({
+            file,
+            model: 'whisper-1',
+          });
+          rawTranscript = response.text;
+
+          const completion = await this.openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `You are an expert medical scribe. Analyze the doctor's audio transcript of a patient consultation and structure it into a clean, valid JSON object containing:
+- symptoms: chief complaints reported (comma separated)
+- diagnosis: diagnosed condition (e.g., "Acute Bronchitis")
+- advice: non-pharmacological instructions
+- weight: patient weight if mentioned (e.g. "72 kg")
+- bloodPressure: BP if mentioned (e.g. "120/80 mmHg")
+- medicines: array of objects containing:
+  - medicine: brand name or name of drug (e.g., "Azithromycin 500")
+  - genericName: chemical name (e.g. "Azithromycin")
+  - form: "Tablet" | "Syrup" | "Capsule" | "Ointment" | "Drops" | "Inhaler" | "Injection"
+  - dosage: strength/quantity (e.g., "500 mg")
+  - frequency: e.g., "Once Daily", "Twice Daily", "SOS"
+  - frequencyPattern: e.g., "1-0-0", "1-0-1"
+  - timing: e.g., "After food", "Before food"
+  - duration: e.g., "3 Days", "1 Week"
+  - notes: specific warnings or instructions
+Lowcase keys or missing info should be handled gracefully. Output must be strictly JSON matching the schema, with no markdown wrappers or additional text.`
+              },
+              {
+                role: 'user',
+                content: rawTranscript
+              }
+            ],
+            response_format: { type: 'json_object' }
+          });
+          structuredJson = JSON.parse(completion.choices[0].message.content ?? '{}');
+        } catch (err) {
+          this.logger.error('OpenAI processing failed. Falling back to Mock data...', err);
+        }
+      }
+    }
+
+    // C. Ultimate Fallback to Mock Data if both Gemini and OpenAI failed/not-set
+    if (!structuredJson) {
+      this.logger.warn('Mocking transcription and structuring (no valid Gemini or OpenAI API keys configured/reachable)');
+      rawTranscript = 'Patient presents with mild fever and wet cough for the past three days. Checked vitals. Weight is seventy two kilograms, blood pressure is one hundred twenty over eighty. Diagnosing Upper Respiratory Tract Infection. Prescribing Azithromycin five hundred milligrams once daily for three days after meals, and Paracetamol six hundred fifty milligrams SOS for fever. Advice rest and plenty of fluids.';
       structuredJson = {
         symptoms: 'Mild fever, wet cough for 3 days',
         diagnosis: 'Upper Respiratory Tract Infection (URTI)',
@@ -127,73 +288,6 @@ export class AudioProcessor extends WorkerHost {
           }
         ]
       };
-    } else {
-      try {
-        const completion = await this.openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: `You are an expert medical scribe. Analyze the doctor's audio transcript of a patient consultation and structure it into a clean, valid JSON object containing:
-- symptoms: chief complaints reported (comma separated)
-- diagnosis: diagnosed condition (e.g., "Acute Bronchitis")
-- advice: non-pharmacological instructions
-- weight: patient weight if mentioned (e.g. "72 kg")
-- bloodPressure: BP if mentioned (e.g. "120/80 mmHg")
-- medicines: array of objects containing:
-  - medicine: brand name or name of drug (e.g., "Azithromycin 500")
-  - genericName: chemical name (e.g. "Azithromycin")
-  - form: "Tablet" | "Syrup" | "Capsule" | "Ointment" | "Drops" | "Inhaler" | "Injection"
-  - dosage: strength/quantity (e.g., "500 mg")
-  - frequency: e.g., "Once Daily", "Twice Daily", "SOS"
-  - frequencyPattern: e.g., "1-0-0", "1-0-1"
-  - timing: e.g., "After food", "Before food"
-  - duration: e.g., "3 Days", "1 Week"
-  - notes: specific warnings or instructions
-Lowcase keys or missing info should be handled gracefully. Output must be strictly JSON matching the schema, with no markdown wrappers or additional text.`
-            },
-            {
-              role: 'user',
-              content: rawTranscript
-            }
-          ],
-          response_format: { type: 'json_object' }
-        });
-        structuredJson = JSON.parse(completion.choices[0].message.content ?? '{}');
-      } catch (err) {
-        this.logger.error('OpenAI GPT structuring failed (likely due to quota/credits). Falling back to mock JSON...', err);
-        structuredJson = {
-          symptoms: 'Mild fever, wet cough for 3 days',
-          diagnosis: 'Upper Respiratory Tract Infection (URTI)',
-          advice: 'Rest and drink plenty of fluids.',
-          weight: '72 kg',
-          bloodPressure: '120/80 mmHg',
-          medicines: [
-            {
-              medicine: 'Azithromycin 500',
-              genericName: 'Azithromycin',
-              form: 'Tablet',
-              dosage: '500 mg',
-              frequency: 'Once Daily',
-              frequencyPattern: '1-0-0',
-              timing: 'After food',
-              duration: '3 Days',
-              notes: 'Take in the morning',
-            },
-            {
-              medicine: 'Paracetamol 650',
-              genericName: 'Paracetamol',
-              form: 'Tablet',
-              dosage: '650 mg',
-              frequency: 'SOS',
-              frequencyPattern: '0-0-0',
-              timing: 'After food',
-              duration: 'As needed',
-              notes: 'Take for fever',
-            }
-          ]
-        };
-      }
     }
 
     // 4. Update prescription record with results and move to READY_FOR_REVIEW

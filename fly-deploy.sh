@@ -131,6 +131,8 @@ if [ -f "$REPO_ROOT/.env" ]; then
   echo "  (Syncing credentials from local .env to Fly.io apps...)"
   
   KEYS_TO_SET=(
+    "GEMINI_API_KEY"
+    "GEMINI_MODEL"
     "OPENAI_API_KEY"
     "S3_ACCESS_KEY_ID" "S3_SECRET_ACCESS_KEY" "S3_ENDPOINT" "S3_BUCKET_NAME" "S3_REGION" "S3_PUBLIC_URL"
     "META_WA_ACCESS_TOKEN" "META_WA_PHONE_NUMBER_ID"
