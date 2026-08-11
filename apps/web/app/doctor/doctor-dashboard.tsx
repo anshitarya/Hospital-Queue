@@ -248,7 +248,9 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
       api<any>(`/prescriptions/visit/${current.visitId}`)
         .then((pres) => {
           if (pres) {
-            setActivePrescription(pres);
+            if (pres.status === 'READY_FOR_REVIEW' || pres.status === 'GENERATING_PDF' || pres.status === 'COMPLETED') {
+              setActivePrescription(pres);
+            }
           }
         })
         .catch(() => {
@@ -825,10 +827,16 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                         {activePrescription && (
                           <PrescriptionReview
                             prescription={activePrescription}
-                            onCompleted={() => {
+                            onCompleted={(wasWhatsAppSent) => {
                               setActivePrescription(null);
-                              setToast({ type: 'ok', msg: 'Prescription saved and queued for WhatsApp delivery!' });
+                              setToast({
+                                type: 'ok',
+                                msg: wasWhatsAppSent
+                                  ? 'Prescription saved and queued for WhatsApp delivery!'
+                                  : 'Prescription saved successfully!'
+                              });
                             }}
+                            onCompleteVisit={() => completeEntry(current.id)}
                           />
                         )}
                       </div>

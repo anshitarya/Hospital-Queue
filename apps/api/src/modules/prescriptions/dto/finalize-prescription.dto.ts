@@ -121,4 +121,7 @@ export class FinalizePrescriptionDto {
   @Type(() => MedicineItemDto)
   @IsOptional()
   medicines?: MedicineItemDto[];
+
+  @IsOptional()
+  sendWhatsApp?: boolean;
 }

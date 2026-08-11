@@ -16,10 +16,11 @@ interface MedicineLine {
 
 interface PrescriptionReviewProps {
   prescription: any;
-  onCompleted: () => void;
+  onCompleted: (wasWhatsAppSent?: boolean) => void;
+  onCompleteVisit?: () => void;
 }
 
-export function PrescriptionReview({ prescription, onCompleted }: PrescriptionReviewProps) {
+export function PrescriptionReview({ prescription, onCompleted, onCompleteVisit }: PrescriptionReviewProps) {
   const [symptoms, setSymptoms] = useState(prescription.symptoms || '');
   const [diagnosis, setDiagnosis] = useState(prescription.diagnosis || '');
   const [advice, setAdvice] = useState(prescription.advice || '');
@@ -39,19 +40,42 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const [pdfUrl, setPdfUrl] = useState('');
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState(prescription.pdfUrl || '');
+  const [isCompleted, setIsCompleted] = useState(
+    prescription.status === 'GENERATING_PDF' || prescription.status === 'COMPLETED'
+  );
   const [polling, setPolling] = useState(false);
+  const [pollingPdf, setPollingPdf] = useState(prescription.status === 'GENERATING_PDF');
+  const [sendWhatsAppLocal, setSendWhatsAppLocal] = useState(true);
   
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    if (prescription.status === 'GENERATING_PDF') {
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const res = await api<any>(`/prescriptions/visit/${prescription.visitId}`);
+          if (res && res.status === 'COMPLETED' && res.pdfUrl) {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            setPdfUrl(res.pdfUrl);
+            setPollingPdf(false);
+          } else if (res && res.status === 'FAILED') {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            setPollingPdf(false);
+            setErrorMsg('PDF generation failed. Please check S3 credentials and try again.');
+          }
+        } catch {
+          // ignore
+        }
+      }, 2000);
+    }
+
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, []);
+  }, [prescription.status, prescription.visitId]);
 
   const handlePrint = () => {
     if (!pdfUrl) return;
@@ -90,9 +114,10 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
     setMedicines(updated);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (sendWhatsApp: boolean = true) => {
     setSaving(true);
     setErrorMsg('');
+    setSendWhatsAppLocal(sendWhatsApp);
     try {
       await api('/prescriptions/finalize', {
         method: 'POST',
@@ -108,6 +133,7 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
           temperature: temp,
           pulse,
           spo2,
+          sendWhatsApp,
           medicines: medicines.map((m) => {
             const { id, prescriptionId, ...rest } = m as any;
             return rest;
@@ -115,26 +141,26 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
         },
       });
 
-      setPolling(true);
+      setIsCompleted(true);
+      setSaving(false);
+      setPollingPdf(true);
+
       pollIntervalRef.current = setInterval(async () => {
         try {
           const res = await api<any>(`/prescriptions/visit/${prescription.visitId}`);
           if (res && res.status === 'COMPLETED' && res.pdfUrl) {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
             setPdfUrl(res.pdfUrl);
-            setPolling(false);
-            setIsCompleted(true);
-            setSaving(false);
+            setPollingPdf(false);
           } else if (res && res.status === 'FAILED') {
             if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            setPolling(false);
-            setSaving(false);
+            setPollingPdf(false);
             setErrorMsg('PDF generation failed. Please check S3 credentials and try again.');
           }
         } catch {
           // ignore transient poll failures
         }
-      }, 2500);
+      }, 2000);
 
     } catch (err: any) {
       console.error(err);
@@ -142,18 +168,6 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
       setSaving(false);
     }
   };
-
-  if (polling) {
-    return (
-      <div className="card p-8 flex flex-col items-center justify-center space-y-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl min-h-[250px]">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-500" />
-        <div className="text-center space-y-1">
-          <h4 className="font-bold text-slate-800 dark:text-slate-100">Generating Prescription PDF...</h4>
-          <p className="text-xs text-slate-400">Please wait while the PDF letterhead layout is compiling.</p>
-        </div>
-      </div>
-    );
-  }
 
   if (isCompleted) {
     return (
@@ -163,31 +177,58 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
             ✓
           </div>
           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Prescription Saved Successfully</h3>
-          <p className="text-xs text-slate-400 mt-1">The prescription has been saved and the PDF document is ready.</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {sendWhatsAppLocal
+              ? 'The prescription details have been saved and queued for WhatsApp delivery.'
+              : 'The prescription details have been saved successfully.'
+            }
+          </p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
-          <a
-            href={pdfUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-xl transition"
-          >
-            📥 Download PDF
-          </a>
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold rounded-xl transition shadow-sm"
-          >
-            🖨️ Print Prescription
-          </button>
+          {pollingPdf ? (
+            <div className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-slate-50 dark:bg-slate-800/40 text-slate-400 text-sm font-semibold rounded-xl border border-dashed border-slate-200 dark:border-slate-700/60 min-h-[44px]">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-400" />
+              <span>Compiling PDF...</span>
+            </div>
+          ) : (
+            <>
+              <a
+                href={pdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-semibold rounded-xl transition"
+              >
+                📥 Download PDF
+              </a>
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-semibold rounded-xl transition shadow-sm"
+              >
+                🖨️ Print Prescription
+              </button>
+            </>
+          )}
+
+          {onCompleteVisit && (
+            <button
+              type="button"
+              onClick={() => {
+                onCompleteVisit();
+                onCompleted(sendWhatsAppLocal);
+              }}
+              className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition shadow-sm font-bold"
+            >
+              ✓ Mark Visit Complete
+            </button>
+          )}
         </div>
 
         <div className="flex justify-center pt-2">
           <button
             type="button"
-            onClick={onCompleted}
+            onClick={() => onCompleted(sendWhatsAppLocal)}
             className="px-6 py-2 bg-slate-50 dark:bg-slate-800/40 text-slate-500 dark:text-slate-400 text-xs font-semibold rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
             Close Panel
@@ -323,7 +364,7 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
       {/* Medicines Table */}
       <div className="space-y-3">
         <div className="flex justify-between items-center">
-          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Rx (Medicines)</h4>
+          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Rx</h4>
           <button
             type="button"
             onClick={addMedicine}
@@ -427,10 +468,18 @@ export function PrescriptionReview({ prescription, onCompleted }: PrescriptionRe
       )}
 
       {/* Action Buttons */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => handleSave(false)}
+          disabled={saving}
+          className="px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition disabled:opacity-50"
+        >
+          {saving ? 'Saving...' : '📄 Save Only (Print / Download)'}
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSave(true)}
           disabled={saving}
           className="px-6 py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-medium shadow-sm transition disabled:opacity-50"
         >

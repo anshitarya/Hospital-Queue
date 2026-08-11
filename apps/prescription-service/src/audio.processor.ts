@@ -10,10 +10,28 @@ import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { PrismaService } from './prisma.service';
 import { PrescriptionStatus } from '@prisma/client';
 
+const imageCache = new Map<string, { buffer: Buffer; expiresAt: number }>();
+
 @Processor('audio-processing')
 @Injectable()
 export class AudioProcessor extends WorkerHost {
   private readonly logger = new Logger(AudioProcessor.name);
+
+  private async fetchImage(url: string): Promise<Buffer> {
+    const cached = imageCache.get(url);
+    const now = Date.now();
+    if (cached && cached.expiresAt > now) {
+      return cached.buffer;
+    }
+    const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) throw new Error(`Failed to fetch image: ${res.statusText}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    imageCache.set(url, {
+      buffer,
+      expiresAt: now + 24 * 60 * 60 * 1000, // cache for 24 hours (1 day)
+    });
+    return buffer;
+  }
   private openai: OpenAI;
   private geminiAI: GoogleGenerativeAI;
   private s3Client: S3Client;
@@ -47,7 +65,7 @@ export class AudioProcessor extends WorkerHost {
           await this.handleTranscription(job.data.prescriptionId, job.data.audioUrl);
           break;
         case 'generate-pdf':
-          await this.handlePdfGeneration(job.data.prescriptionId);
+          await this.handlePdfGeneration(job.data.prescriptionId, job.data.sendWhatsApp !== false);
           break;
         default:
           this.logger.warn(`Unhandled job type: ${job.name}`);
@@ -59,20 +77,21 @@ export class AudioProcessor extends WorkerHost {
   }
 
   private async handleTranscription(prescriptionId: string, audioUrl: string) {
-    // 1. Fetch prescription
-    const prescription = await this.prisma.prescription.findUnique({
-      where: { id: prescriptionId },
-    });
-    if (!prescription) {
-      this.logger.error(`Prescription ${prescriptionId} not found in DB`);
-      return;
-    }
+    try {
+      // 1. Fetch prescription
+      const prescription = await this.prisma.prescription.findUnique({
+        where: { id: prescriptionId },
+      });
+      if (!prescription) {
+        this.logger.error(`Prescription ${prescriptionId} not found in DB`);
+        return;
+      }
 
-    // Update status to transcribing
-    await this.prisma.prescription.update({
-      where: { id: prescriptionId },
-      data: { status: PrescriptionStatus.TRANSCRIBING },
-    });
+      // Update status to transcribing
+      await this.prisma.prescription.update({
+        where: { id: prescriptionId },
+        data: { status: PrescriptionStatus.TRANSCRIBING },
+      });
 
     // 2. Perform speech-to-text and structuring
     let rawTranscript = '';
@@ -82,7 +101,7 @@ export class AudioProcessor extends WorkerHost {
     if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'mock-key') {
       this.logger.log('Performing speech-to-text and structuring via Google Gemini 1.5 Flash...');
       try {
-        const res = await fetch(audioUrl);
+        const res = await fetch(audioUrl, { signal: AbortSignal.timeout(6000) });
         if (!res.ok) throw new Error(`Failed to download audio from ${audioUrl}`);
         const buffer = Buffer.from(await res.arrayBuffer());
 
@@ -205,7 +224,7 @@ export class AudioProcessor extends WorkerHost {
         this.logger.log('Performing speech-to-text and structuring via OpenAI...');
         try {
           // Download audio file from storage
-          const res = await fetch(audioUrl);
+          const res = await fetch(audioUrl, { signal: AbortSignal.timeout(6000) });
           if (!res.ok) throw new Error(`Failed to download audio from ${audioUrl}`);
           const buffer = Buffer.from(await res.arrayBuffer());
           const file = await OpenAI.toFile(buffer, 'audio.webm', { type: 'audio/webm' });
@@ -335,10 +354,23 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
     });
 
     this.logger.log(`Prescription ${prescriptionId} successfully transcribed and structured.`);
+    } catch (error) {
+      this.logger.error(`Error in handleTranscription for prescription ${prescriptionId}:`, error);
+      try {
+        await this.prisma.prescription.update({
+          where: { id: prescriptionId },
+          data: { status: PrescriptionStatus.FAILED },
+        });
+      } catch (dbErr) {
+        this.logger.error(`Failed to set prescription status to FAILED in DB:`, dbErr);
+      }
+      throw error;
+    }
   }
 
-  private async handlePdfGeneration(prescriptionId: string) {
-    const prescription = await this.prisma.prescription.findUnique({
+  private async handlePdfGeneration(prescriptionId: string, sendWhatsApp: boolean) {
+    try {
+      const prescription = await this.prisma.prescription.findUnique({
       where: { id: prescriptionId },
       include: {
         medicines: true,
@@ -380,8 +412,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
     // Watermark Background
     if (config.watermarkUrl) {
       try {
-        const res = await fetch(config.watermarkUrl);
-        const watermarkBuffer = Buffer.from(await res.arrayBuffer());
+        const watermarkBuffer = await this.fetchImage(config.watermarkUrl);
         doc.save();
         doc.opacity(0.04);
         doc.image(watermarkBuffer, 197, 321, { width: 200 });
@@ -417,8 +448,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
         const logoUrl = prescription.doctor.clinic?.logoUrl;
         if (logoUrl) {
           try {
-            const res = await fetch(logoUrl);
-            const logoBuffer = Buffer.from(await res.arrayBuffer());
+            const logoBuffer = await this.fetchImage(logoUrl);
             
             if (config.logoPosition === 'LEFT') {
               doc.image(logoBuffer, 50, startY, { width: 45 });
@@ -530,6 +560,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
       doc.y = patientY + 60;
     }
 
+    doc.x = 50;
     doc.moveDown(0.5);
 
     // Render Sections dynamically
@@ -563,7 +594,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
       }
 
       if (section === 'medicines' && prescription.medicines.length > 0) {
-        doc.fontSize(10).font('Helvetica-Bold').fillColor('#b91c1c').text('Rx (Medicines)');
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#b91c1c').text('Rx');
         doc.moveDown(0.4);
 
         if (config.showMedicineTable) {
@@ -597,6 +628,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
             doc.moveTo(50, currentY).lineTo(545, currentY).strokeColor('#e2e8f0').stroke();
           });
           doc.y = currentY + 10;
+          doc.x = 50;
         } else {
           // Standard List Layout
           prescription.medicines.forEach((med, idx) => {
@@ -643,8 +675,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
       const sigY = doc.y;
       if (config.signatureUrl) {
         try {
-          const res = await fetch(config.signatureUrl);
-          const sigBuffer = Buffer.from(await res.arrayBuffer());
+          const sigBuffer = await this.fetchImage(config.signatureUrl);
           doc.image(sigBuffer, 420, sigY, { width: 80 });
         } catch {
           doc.fontSize(8.5).font('Helvetica-Bold').text('Digitally Signed', 420, sigY + 15, { align: 'right' });
@@ -686,8 +717,12 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
 
     const key = `prescriptions/${prescriptionId}.pdf`;
     let pdfUrl = '';
+    const bypassS3 = process.env.NODE_ENV === 'development' || process.env.BYPASS_S3_LOCAL === 'true';
 
     try {
+      if (bypassS3) {
+        throw new Error('S3 bypassed in local development mode');
+      }
       await this.s3Client.send(
         new PutObjectCommand({
           Bucket: this.bucketName,
@@ -700,7 +735,9 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
         ? `${process.env.S3_PUBLIC_URL}/${key}`
         : `${process.env.S3_ENDPOINT ?? 'https://s3.amazonaws.com'}/${this.bucketName}/${key}`;
     } catch (err) {
-      this.logger.error('Failed to upload generated PDF to S3', err);
+      if (!bypassS3) {
+        this.logger.error('Failed to upload generated PDF to S3', err);
+      }
       try {
         const publicDir = path.resolve(process.cwd(), '../web/public/prescriptions');
         if (!fs.existsSync(publicDir)) {
@@ -725,7 +762,7 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
     });
 
     // Enqueue sending WhatsApp notification job to the notifications queue
-    if (prescription.visit.patient.phone) {
+    if (sendWhatsApp && prescription.visit.patient.phone) {
       this.logger.log(`Enqueuing whatsapp delivery job for ${prescription.visit.patient.phone}`);
       // Push job into the `notifications` queue that notification-service listens to
       // We will define a new queue client or inject the queue.
@@ -743,6 +780,18 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
         pdfUrl,
       });
       await notificationsQueue.close();
+    }
+    } catch (error) {
+      this.logger.error(`Error in handlePdfGeneration for prescription ${prescriptionId}:`, error);
+      try {
+        await this.prisma.prescription.update({
+          where: { id: prescriptionId },
+          data: { status: PrescriptionStatus.FAILED },
+        });
+      } catch (dbErr) {
+        this.logger.error(`Failed to set prescription status to FAILED in DB:`, dbErr);
+      }
+      throw error;
     }
   }
 }

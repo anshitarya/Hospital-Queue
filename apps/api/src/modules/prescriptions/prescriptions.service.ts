@@ -171,6 +171,7 @@ export class PrescriptionsService {
     // Enqueue PDF generation job
     await this.audioQueue.add('generate-pdf', {
       prescriptionId: prescription.id,
+      sendWhatsApp: dto.sendWhatsApp !== false,
     });
 
     return updatedPrescription;
