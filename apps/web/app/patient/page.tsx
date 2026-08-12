@@ -23,6 +23,24 @@ import { useWebPush } from '@/lib/useWebPush';
 
 interface HistoryItem extends QueueEntry {
   doctor: Doctor;
+  visit?: {
+    id: string;
+    prescription?: {
+      id: string;
+      pdfUrl: string | null;
+      symptoms: string | null;
+      diagnosis: string | null;
+      generalAdvice: string | null;
+      medicines: {
+        id: string;
+        medicine: string;
+        dosage: string;
+        frequency: string;
+        duration: string;
+        notes: string | null;
+      }[];
+    } | null;
+  } | null;
 }
 
 const REFRESH_INTERVAL_MS = 30_000;
@@ -789,6 +807,65 @@ export default function PatientPage() {
                             </span>
                           </div>
                         </div>
+
+                        {entry.visit?.prescription && (
+                          <div className="border-t border-slate-100 dark:border-slate-800/60 mt-4 pt-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                📄 Prescription Details
+                              </span>
+                              {entry.visit.prescription.pdfUrl && (
+                                <a
+                                  href={entry.visit.prescription.pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-semibold text-indigo-500 hover:text-indigo-600 flex items-center gap-1 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1.5 rounded-lg transition"
+                                >
+                                  📥 Download PDF
+                                </a>
+                              )}
+                            </div>
+                            
+                            {(entry.visit.prescription.diagnosis || entry.visit.prescription.symptoms) && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                {entry.visit.prescription.diagnosis && (
+                                  <div>
+                                    <span className="text-slate-400 block">Diagnosis:</span>
+                                    <span className="font-semibold text-slate-700 dark:text-slate-300">{entry.visit.prescription.diagnosis}</span>
+                                  </div>
+                                )}
+                                {entry.visit.prescription.symptoms && (
+                                  <div>
+                                    <span className="text-slate-400 block">Symptoms:</span>
+                                    <span className="text-slate-600 dark:text-slate-400">{entry.visit.prescription.symptoms}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {entry.visit.prescription.medicines && entry.visit.prescription.medicines.length > 0 && (
+                              <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl p-3 border border-slate-100 dark:border-slate-800/80">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-2">Prescribed Medicines</span>
+                                <ul className="divide-y divide-slate-200/50 dark:divide-slate-800/50 space-y-1.5">
+                                  {entry.visit.prescription.medicines.map((med) => (
+                                    <li key={med.id} className="text-xs pt-1.5 first:pt-0 flex items-start justify-between gap-4">
+                                      <div>
+                                        <span className="font-bold text-slate-700 dark:text-slate-300">{med.medicine}</span>
+                                        {med.notes && (
+                                          <span className="block text-[10px] text-slate-400 italic mt-0.5">{med.notes}</span>
+                                        )}
+                                      </div>
+                                      <div className="text-right shrink-0 text-slate-500 dark:text-slate-400">
+                                        <span className="block font-medium">{med.dosage}</span>
+                                        <span className="block text-[10px] mt-0.5">{med.frequency} · {med.duration}</span>
+                                      </div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {isComp && (
                           <div className="border-t border-slate-100 dark:border-slate-800/60 mt-4 pt-4">

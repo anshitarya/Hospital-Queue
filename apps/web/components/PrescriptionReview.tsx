@@ -77,24 +77,35 @@ export function PrescriptionReview({ prescription, onCompleted, onCompleteVisit 
     };
   }, [prescription.status, prescription.visitId]);
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!pdfUrl) return;
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
-    iframe.style.border = 'none';
-    iframe.src = pdfUrl;
-    iframe.onload = () => {
-      if (iframe.contentWindow) {
-        iframe.contentWindow.focus();
-        iframe.contentWindow.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 1000);
-      }
-    };
-    document.body.appendChild(iframe);
+    try {
+      const res = await fetch(pdfUrl);
+      if (!res.ok) throw new Error('Fetch failed');
+      const blob = await res.blob();
+      const localUrl = URL.createObjectURL(blob);
+      
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.width = '0px';
+      iframe.style.height = '0px';
+      iframe.style.border = 'none';
+      iframe.src = localUrl;
+      iframe.onload = () => {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          setTimeout(() => {
+            document.body.removeChild(iframe);
+            URL.revokeObjectURL(localUrl);
+          }, 1500);
+        }
+      };
+      document.body.appendChild(iframe);
+    } catch (e) {
+      console.warn('Failed to print PDF via blob iframe, falling back to window.open', e);
+      window.open(pdfUrl, '_blank');
+    }
   };
 
   const addMedicine = () => {

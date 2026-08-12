@@ -12,9 +12,13 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
   const [isRecording, setIsRecording] = useState(false);
   const [status, setStatus] = useState<'idle' | 'recording' | 'uploading' | 'processing' | 'ready' | 'error'>('idle');
   const [progressMsg, setProgressMsg] = useState('');
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     // Check if there is an existing prescription draft on mount
@@ -37,8 +41,34 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
 
     return () => {
       stopPolling();
+      if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [visitId]);
+
+  useEffect(() => {
+    if (isRecording) {
+      setRecordingDuration(0);
+      timerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isRecording]);
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const startPolling = () => {
     setStatus('processing');
@@ -74,6 +104,7 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
 
   const startRecording = async () => {
     chunksRef.current = [];
+    setRecordedBlob(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
@@ -87,6 +118,7 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
 
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setRecordedBlob(audioBlob);
         await uploadAudio(audioBlob);
         // Stop all audio tracks to release microphone
         stream.getTracks().forEach((track) => track.stop());
@@ -138,6 +170,42 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
     }
   };
 
+  const handleOpenTemplate = async () => {
+    setStatus('processing');
+    setProgressMsg('Opening prescription template...');
+    try {
+      // First try to check if there is an existing prescription
+      try {
+        const existing = await api<any>(`/prescriptions/visit/${visitId}`);
+        if (existing) {
+          onPrescriptionReady(existing);
+          setStatus('ready');
+          return;
+        }
+      } catch {
+        // Safe to ignore if not found
+      }
+
+      // If not found, create one via the vitals endpoint
+      const initialized = await api<any>('/prescriptions/vitals', {
+        method: 'POST',
+        body: { visitId },
+      });
+      
+      // Ensure medicines array is initialized
+      if (!initialized.medicines) {
+        initialized.medicines = [];
+      }
+      
+      onPrescriptionReady(initialized);
+      setStatus('ready');
+    } catch (err: any) {
+      console.error(err);
+      setStatus('error');
+      setProgressMsg(err.message || 'Failed to open prescription template.');
+    }
+  };
+
   return (
     <div className="p-4 border border-slate-100 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-900/30 space-y-4">
       <div className="flex items-center justify-between">
@@ -147,22 +215,34 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
         </div>
         
         {status === 'recording' && (
-          <span className="flex h-3 w-3 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-          </span>
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-950/20 text-rose-500 font-semibold text-xs animate-pulse">
+            <span className="flex h-2 w-2 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+            </span>
+            <span>{formatDuration(recordingDuration)}</span>
+          </div>
         )}
       </div>
 
       <div className="flex flex-col items-center justify-center py-4">
         {status === 'idle' && (
-          <button
-            type="button"
-            onClick={startRecording}
-            className="flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-medium transition duration-200 shadow-sm"
-          >
-            <span>🎙️</span> Start Recording
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <button
+              type="button"
+              onClick={startRecording}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-medium transition duration-200 shadow-sm"
+            >
+              <span>🎙️</span> Start Recording
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenTemplate}
+              className="flex items-center gap-2 px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium transition duration-200 shadow-sm border border-slate-200/50 dark:border-slate-700/50"
+            >
+              <span>📝</span> Write Prescription Manually
+            </button>
+          </div>
         )}
 
         {status === 'recording' && (
@@ -177,7 +257,7 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
             <button
               type="button"
               onClick={stopRecording}
-              className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-medium transition duration-200 shadow-sm"
+              className="px-5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400 font-medium transition duration-200 shadow-sm border border-rose-200/50 dark:border-rose-900/30"
             >
               🛑 Stop Recording
             </button>
@@ -192,15 +272,36 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
         )}
 
         {status === 'error' && (
-          <div className="text-center space-y-3">
+          <div className="text-center space-y-4">
             <p className="text-sm text-rose-500 font-medium">{progressMsg}</p>
-            <button
-              type="button"
-              onClick={() => setStatus('idle')}
-              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-200"
-            >
-              Try Again
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {recordedBlob && (
+                <button
+                  type="button"
+                  onClick={() => uploadAudio(recordedBlob)}
+                  className="px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 shadow-sm transition"
+                >
+                  🔄 Retry Upload
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setRecordedBlob(null);
+                  setStatus('idle');
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-200 transition"
+              >
+                Record Again
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenTemplate}
+                className="px-4 py-2 rounded-xl bg-teal-50 dark:bg-teal-950/20 text-teal-600 dark:text-teal-400 text-sm font-medium hover:bg-teal-100 dark:hover:bg-teal-950/40 border border-teal-200/50 dark:border-teal-950/50 transition"
+              >
+                📝 Write Prescription Manually
+              </button>
+            </div>
           </div>
         )}
 

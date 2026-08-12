@@ -54,6 +54,66 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const [linkError, setLinkError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [activePrescription, setActivePrescription] = useState<any>(null);
+  const [pastPrescriptions, setPastPrescriptions] = useState<any[]>([]);
+
+  const handleImportPreviousPrescription = async (past: any) => {
+    setToast({ type: 'ok', msg: 'Importing previous prescription...' });
+    try {
+      let currentPres = activePrescription;
+      
+      // If no active prescription exists yet, initialize one in the DB first
+      if (!currentPres && current?.visitId) {
+        try {
+          currentPres = await api<any>(`/prescriptions/visit/${current.visitId}`);
+        } catch {
+          // If not found, initialize it via the vitals upsert endpoint
+          currentPres = await api<any>('/prescriptions/vitals', {
+            method: 'POST',
+            body: { visitId: current.visitId },
+          });
+        }
+      }
+
+      if (!currentPres) {
+        setToast({ type: 'err', msg: 'No active visit found to associate the prescription.' });
+        return;
+      }
+
+      // Populate current draft with the previous prescription data
+      const updated = {
+        ...currentPres,
+        symptoms: past.symptoms || '',
+        diagnosis: past.diagnosis || '',
+        advice: past.generalAdvice || '',
+        allergies: past.allergies || '',
+        weight: past.weight || currentPres.weight || '',
+        height: past.height || currentPres.height || '',
+        bloodPressure: past.bloodPressure || currentPres.bloodPressure || '',
+        temperature: past.temperature || currentPres.temperature || '',
+        pulse: past.pulse || currentPres.pulse || '',
+        spo2: past.spo2 || currentPres.spo2 || '',
+        medicines: past.medicines ? past.medicines.map((m: any) => ({
+          medicine: m.medicine || '',
+          genericName: m.genericName || '',
+          form: m.form || 'Tablet',
+          dosage: m.dosage || '',
+          frequency: m.frequency || 'Once Daily',
+          duration: m.duration || '3 Days',
+          notes: m.notes || '',
+        })) : [],
+        updatedAt: new Date().toISOString(),
+      };
+
+      setActivePrescription(updated);
+      setToast({
+        type: 'ok',
+        msg: 'Previous prescription imported successfully! Feel free to edit or append details.',
+      });
+    } catch (err: any) {
+      console.error(err);
+      setToast({ type: 'err', msg: err.message || 'Failed to import previous prescription.' });
+    }
+  };
 
   const [tab, setTab] = useTabState<'queue' | 'staff' | 'history' | 'leaves' | 'prescription-config'>('queue', ['queue', 'staff', 'history', 'leaves', 'prescription-config']);
 
@@ -248,6 +308,8 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
 
   useEffect(() => {
     setActivePrescription(null);
+    setPastPrescriptions([]);
+    
     if (current?.visitId) {
       api<any>(`/prescriptions/visit/${current.visitId}`)
         .then((pres) => {
@@ -257,11 +319,23 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
             }
           }
         })
-        .catch(() => {
-          // No prescription found yet or other API error
-        });
+        .catch(() => {});
+
+      if (current.patientId) {
+        api<any[]>(`/patients/${current.patientId}/history`)
+          .then((historyList) => {
+            if (Array.isArray(historyList)) {
+              // Find completed prescriptions from past visits (excluding current visit)
+              const past = historyList
+                .map((entry) => entry.visit?.prescription)
+                .filter((p) => p && p.status === 'COMPLETED' && p.visitId !== current.visitId);
+              setPastPrescriptions(past);
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [current?.id, current?.visitId]);
+  }, [current?.id, current?.visitId, current?.patientId]);
   const orderMap = useMemo(() => {
     const map = new Map<string, number>();
     const countsPerDay = new Map<string, number>();
@@ -831,8 +905,38 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                           visitId={current.visitId}
                           onPrescriptionReady={(pres) => setActivePrescription(pres)}
                         />
+                        
+                        {/* Re-visiting Patient past prescriptions alert banner */}
+                        {pastPrescriptions.length > 0 && (
+                          <div className="bg-indigo-50/50 dark:bg-indigo-950/10 border border-indigo-100/80 dark:border-indigo-950/40 rounded-2xl p-4 space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div>
+                                <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1 rounded-full border border-indigo-100/50 dark:border-indigo-900/30">
+                                  🔁 Re-visiting Patient
+                                </span>
+                                <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                                  This patient has visited before. You can copy their last prescription to manually edit or append to it.
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap gap-2 shrink-0">
+                                {pastPrescriptions.map((past, idx) => (
+                                  <button
+                                    key={past.id}
+                                    type="button"
+                                    onClick={() => handleImportPreviousPrescription(past)}
+                                    className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-950/80 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition shadow-sm"
+                                  >
+                                    📋 Copy ({new Date(past.createdAt).toLocaleDateString()})
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {activePrescription && (
                           <PrescriptionReview
+                            key={`${activePrescription.id}-${activePrescription.updatedAt || ''}`}
                             prescription={activePrescription}
                             onCompleted={(wasWhatsAppSent) => {
                               setActivePrescription(null);

@@ -37,6 +37,15 @@ export class PatientsService {
       include: {
         doctor: { include: { user: true, department: true, clinic: true } },
         location: true,
+        visit: {
+          include: {
+            prescription: {
+              include: {
+                medicines: true,
+              },
+            },
+          },
+        },
       },
       take: 50,
     });
