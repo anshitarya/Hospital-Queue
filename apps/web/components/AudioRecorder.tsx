@@ -26,10 +26,15 @@ export function AudioRecorder({ visitId, onPrescriptionReady }: AudioRecorderPro
       try {
         const pres = await api<any>(`/prescriptions/visit/${visitId}`);
         if (pres) {
-          if (pres.status === 'READY_FOR_REVIEW' || pres.status === 'COMPLETED' || pres.status === 'GENERATING_PDF') {
+          if (
+            pres.status === 'READY_FOR_REVIEW' || 
+            pres.status === 'COMPLETED' || 
+            pres.status === 'GENERATING_PDF' ||
+            (pres.status === 'PENDING' && !pres.audioUrl)
+          ) {
             onPrescriptionReady(pres);
             setStatus('ready');
-          } else if (pres.status === 'PENDING' || pres.status === 'TRANSCRIBING') {
+          } else if (pres.status === 'TRANSCRIBING' || (pres.status === 'PENDING' && pres.audioUrl)) {
             startPolling();
           }
         }

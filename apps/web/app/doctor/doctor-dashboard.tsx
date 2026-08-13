@@ -338,7 +338,12 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
       api<any>(`/prescriptions/visit/${current.visitId}`)
         .then((pres) => {
           if (pres) {
-            if (pres.status === 'READY_FOR_REVIEW' || pres.status === 'GENERATING_PDF' || pres.status === 'COMPLETED') {
+            if (
+              pres.status === 'READY_FOR_REVIEW' || 
+              pres.status === 'GENERATING_PDF' || 
+              pres.status === 'COMPLETED' ||
+              (pres.status === 'PENDING' && !pres.audioUrl)
+            ) {
               setActivePrescription(pres);
             }
           }
