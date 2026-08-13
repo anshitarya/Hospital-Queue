@@ -41,6 +41,9 @@ export function normalizeIndianMobile(input: unknown): PhoneInfo {
   if (local.length !== 10) {
     throw new BadRequestException('Mobile number must be exactly 10 digits');
   }
+  if (local.startsWith('0000')) {
+    return { e164: `+91${local}`, local };
+  }
   if (!INDIAN_MOBILE_RE.test(local)) {
     throw new BadRequestException('Indian mobile numbers start with 6, 7, 8, or 9');
   }

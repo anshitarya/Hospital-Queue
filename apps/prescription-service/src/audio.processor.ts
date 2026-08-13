@@ -123,103 +123,154 @@ export class AudioProcessor extends WorkerHost {
               type: SchemaType.OBJECT,
               description: 'The structured medical prescription details.',
               properties: {
-                symptoms: {
-                  type: SchemaType.STRING,
-                  description: 'Chief complaints and symptoms reported, comma separated (e.g., "Mild fever, wet cough")',
-                },
-                diagnosis: {
-                  type: SchemaType.STRING,
-                  description: 'Diagnosed condition (e.g., "Upper Respiratory Tract Infection")',
-                },
-                advice: {
-                  type: SchemaType.STRING,
-                  description: 'Non-pharmacological instructions (e.g., "Rest and drink plenty of fluids")',
-                },
-                weight: {
-                  type: SchemaType.STRING,
-                  description: 'Patient weight if mentioned (e.g., "72 kg")',
-                },
-                bloodPressure: {
-                  type: SchemaType.STRING,
-                  description: 'Blood pressure if mentioned (e.g., "120/80 mmHg")',
-                },
-                medicines: {
+                chiefComplaints: {
                   type: SchemaType.ARRAY,
-                  description: 'List of medicines prescribed.',
+                  description: 'Chief complaints reported by the patient.',
                   items: {
                     type: SchemaType.OBJECT,
                     properties: {
-                      medicine: {
+                      complaint: { type: SchemaType.STRING },
+                      duration: { type: SchemaType.STRING },
+                      severity: { type: SchemaType.STRING },
+                      notes: { type: SchemaType.STRING },
+                    },
+                    required: ['complaint'],
+                  },
+                },
+                symptoms: {
+                  type: SchemaType.ARRAY,
+                  description: 'List of individual symptoms reported.',
+                  items: { type: SchemaType.STRING },
+                },
+                history: {
+                  type: SchemaType.OBJECT,
+                  description: 'Patient medical history.',
+                  properties: {
+                    presentIllness: { type: SchemaType.STRING },
+                    pastMedicalHistory: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING },
+                    },
+                    pastSurgicalHistory: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING },
+                    },
+                    familyHistory: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING },
+                    },
+                    socialHistory: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING },
+                    },
+                    allergies: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING },
+                    },
+                    currentMedicines: {
+                      type: SchemaType.ARRAY,
+                      items: { type: SchemaType.STRING },
+                    },
+                  },
+                },
+                vitals: {
+                  type: SchemaType.OBJECT,
+                  description: 'Patient vitals captured or mentioned.',
+                  properties: {
+                    weight: { type: SchemaType.STRING },
+                    height: { type: SchemaType.STRING },
+                    bloodPressure: { type: SchemaType.STRING },
+                    temperature: { type: SchemaType.STRING },
+                    pulse: { type: SchemaType.STRING },
+                    spo2: { type: SchemaType.STRING },
+                    respiratoryRate: { type: SchemaType.STRING },
+                  },
+                },
+                examinationFindings: {
+                  type: SchemaType.ARRAY,
+                  items: { type: SchemaType.STRING },
+                },
+                diagnosis: {
+                  type: SchemaType.ARRAY,
+                  description: 'Diagnosed conditions.',
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      name: { type: SchemaType.STRING },
+                      status: {
                         type: SchemaType.STRING,
-                        description: 'Brand name or name of drug (e.g., "Azithromycin 500")',
+                        enum: ['confirmed', 'suspected', 'ruled_out'],
                       },
-                      genericName: {
-                        type: SchemaType.STRING,
-                        description: 'Chemical or generic name (e.g., "Azithromycin")',
-                      },
+                      notes: { type: SchemaType.STRING },
+                    },
+                    required: ['name', 'status'],
+                  },
+                },
+                advice: {
+                  type: SchemaType.ARRAY,
+                  description: 'Non-pharmacological advice.',
+                  items: { type: SchemaType.STRING },
+                },
+                medicines: {
+                  type: SchemaType.ARRAY,
+                  description: 'List of medicines prescribed, continued, changed, or stopped.',
+                  items: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                      medicine: { type: SchemaType.STRING },
+                      genericName: { type: SchemaType.STRING },
                       form: {
                         type: SchemaType.STRING,
-                        description: 'Form of medicine',
-                        enum: ['Tablet', 'Syrup', 'Capsule', 'Ointment', 'Drops', 'Inhaler', 'Injection'],
+                        enum: ['Tablet', 'Syrup', 'Capsule', 'Ointment', 'Drops', 'Inhaler', 'Injection', 'Cream', 'Gel', 'Powder', 'Other'],
                       },
-                      dosage: {
+                      dosage: { type: SchemaType.STRING },
+                      route: { type: SchemaType.STRING },
+                      frequency: { type: SchemaType.STRING },
+                      frequencyPattern: { type: SchemaType.STRING },
+                      timing: { type: SchemaType.STRING },
+                      duration: { type: SchemaType.STRING },
+                      quantity: { type: SchemaType.STRING },
+                      notes: { type: SchemaType.STRING },
+                      action: {
                         type: SchemaType.STRING,
-                        description: 'Strength or quantity (e.g., "500 mg")',
-                      },
-                      frequency: {
-                        type: SchemaType.STRING,
-                        description: 'Frequency of intake (e.g., "Once Daily", "Twice Daily", "SOS")',
-                      },
-                      frequencyPattern: {
-                        type: SchemaType.STRING,
-                        description: 'Pattern of intake (e.g., "1-0-0", "1-0-1")',
-                      },
-                      timing: {
-                        type: SchemaType.STRING,
-                        description: 'Timing relative to meals (e.g., "After food", "Before food")',
-                      },
-                      duration: {
-                        type: SchemaType.STRING,
-                        description: 'Duration of treatment (e.g., "3 Days", "1 Week")',
-                      },
-                      notes: {
-                        type: SchemaType.STRING,
-                        description: 'Specific warnings or instructions',
+                        enum: ['start', 'continue', 'stop', 'change'],
                       },
                     },
-                    required: ['medicine', 'dosage', 'duration'],
+                    required: ['medicine', 'action'],
                   },
                 },
                 investigations: {
                   type: SchemaType.ARRAY,
-                  description: 'List of diagnostic investigations/tests ordered by the doctor (blood tests, imaging, cultures, etc.).',
+                  description: 'List of diagnostic investigations/tests ordered by the doctor.',
                   items: {
                     type: SchemaType.OBJECT,
                     properties: {
-                      testName: {
-                        type: SchemaType.STRING,
-                        description: 'Name of the test or investigation (e.g., "Complete Blood Count", "Chest X-Ray", "Urine Culture")',
-                      },
+                      testName: { type: SchemaType.STRING },
                       testType: {
                         type: SchemaType.STRING,
-                        description: 'Category of the test',
                         enum: ['Blood Test', 'Urine Test', 'Stool Test', 'X-Ray', 'CT Scan', 'MRI', 'Ultrasound', 'ECG', 'Culture', 'Biopsy', 'Other'],
                       },
                       urgency: {
                         type: SchemaType.STRING,
-                        description: 'Urgency of the test',
                         enum: ['Routine', 'Urgent', 'STAT'],
                       },
-                      notes: {
-                        type: SchemaType.STRING,
-                        description: 'Any special instructions for the test (e.g., "Fasting required", "Early morning sample")',
-                      },
+                      notes: { type: SchemaType.STRING },
                     },
                     required: ['testName', 'testType'],
                   },
                 },
+                followUp: {
+                  type: SchemaType.OBJECT,
+                  properties: {
+                    required: { type: SchemaType.BOOLEAN },
+                    after: { type: SchemaType.STRING },
+                    instructions: { type: SchemaType.STRING },
+                  },
+                },
+                doctorAssessment: { type: SchemaType.STRING },
+                additionalNotes: { type: SchemaType.STRING },
               },
-              required: ['symptoms', 'diagnosis', 'advice', 'medicines'],
+              required: ['diagnosis', 'medicines'],
             },
           },
           required: ['transcript', 'prescription'],
@@ -234,13 +285,25 @@ export class AudioProcessor extends WorkerHost {
           },
         });
 
-        const prompt = 'You are an expert medical scribe. Analyze the attached doctor\'s audio recording. First, transcribe the exact words spoken by the doctor in the recording. Second, extract and structure the details into a JSON object matching the schema.';
+        const prompt = `You are an expert medical scribe assisting a licensed doctor.
+
+Analyze the complete doctor-patient consultation transcript and convert it into a structured prescription/clinical summary.
+
+CORE RULES:
+1. Distinguish between PATIENT-REPORTED information and DOCTOR-CONFIRMED information.
+2. A patient's statement must NOT automatically become the diagnosis. If the doctor explicitly disagrees, follow the doctor's assessment.
+3. If the doctor corrects a medicine, dosage, frequency, duration, diagnosis, or investigation, use the doctor's FINAL instruction.
+4. Pay attention to temporal context: current symptoms, previous symptoms, existing medicines, medicines being stopped, new medicines being prescribed.
+5. Do NOT invent medical information. If something is not stated, return null or empty array.
+6. Ignore greetings, small talk, and administrative conversation. Give priority to the doctor's clinical assessment and final treatment decisions.
+
+You must fill the JSON matching the schema.`;
         const result = await model.generateContent([prompt, audioPart]);
         const responseJson = JSON.parse(result.response.text());
         
         rawTranscript = responseJson.transcript;
         structuredJson = responseJson.prescription;
-        this.logger.log('Successfully processed audio with Gemini 1.5 Flash.');
+        this.logger.log('Successfully processed audio with Gemini 1.5/3.5 Flash.');
       } catch (err) {
         this.logger.error('Google Gemini processing failed. Will fall back to OpenAI...', err);
       }
@@ -268,28 +331,90 @@ export class AudioProcessor extends WorkerHost {
             messages: [
               {
                 role: 'system',
-                content: `You are an expert medical scribe. Analyze the doctor's audio transcript of a patient consultation and structure it into a clean, valid JSON object containing:
-- symptoms: chief complaints reported (comma separated)
-- diagnosis: diagnosed condition (e.g., "Acute Bronchitis")
-- advice: non-pharmacological instructions
-- weight: patient weight if mentioned (e.g. "72 kg")
-- bloodPressure: BP if mentioned (e.g. "120/80 mmHg")
-- medicines: array of objects containing:
-  - medicine: brand name or name of drug (e.g., "Azithromycin 500")
-  - genericName: chemical name (e.g. "Azithromycin")
-  - form: "Tablet" | "Syrup" | "Capsule" | "Ointment" | "Drops" | "Inhaler" | "Injection"
-  - dosage: strength/quantity (e.g., "500 mg")
-  - frequency: e.g., "Once Daily", "Twice Daily", "SOS"
-  - frequencyPattern: e.g., "1-0-0", "1-0-1"
-  - timing: e.g., "After food", "Before food"
-  - duration: e.g., "3 Days", "1 Week"
-  - notes: specific warnings or instructions
-- investigations: array of diagnostic tests/investigations ordered, each containing:
-  - testName: name of the test (e.g., "Complete Blood Count", "Chest X-Ray")
-  - testType: "Blood Test" | "Urine Test" | "Stool Test" | "X-Ray" | "CT Scan" | "MRI" | "Ultrasound" | "ECG" | "Culture" | "Biopsy" | "Other"
-  - urgency: "Routine" | "Urgent" | "STAT"
-  - notes: any special instructions (e.g., "Fasting required")
-Lowcase keys or missing info should be handled gracefully. Output must be strictly JSON matching the schema, with no markdown wrappers or additional text.`
+                content: `You are an expert medical scribe assisting a licensed doctor.
+
+Analyze the complete doctor-patient consultation transcript and convert it into a structured prescription/clinical summary.
+
+CORE RULES:
+1. Distinguish between PATIENT-REPORTED information and DOCTOR-CONFIRMED information.
+2. A patient's statement must NOT automatically become the diagnosis. If the doctor explicitly disagrees, follow the doctor's assessment.
+3. If the doctor corrects a medicine, dosage, frequency, duration, diagnosis, or investigation, use the doctor's FINAL instruction.
+4. Pay attention to temporal context: current symptoms, previous symptoms, existing medicines, medicines being stopped, new medicines being prescribed.
+5. Do NOT invent medical information. If something is not stated, return null or empty array.
+6. Ignore greetings, small talk, and administrative conversation. Give priority to the doctor's clinical assessment and final treatment decisions.
+
+Output must be strictly a valid JSON object matching this schema:
+{
+  "chiefComplaints": [
+    {
+      "complaint": "",
+      "duration": "",
+      "severity": "",
+      "notes": ""
+    }
+  ],
+  "symptoms": [],
+  "history": {
+    "presentIllness": "",
+    "pastMedicalHistory": [],
+    "pastSurgicalHistory": [],
+    "familyHistory": [],
+    "socialHistory": [],
+    "allergies": [],
+    "currentMedicines": []
+  },
+  "vitals": {
+    "weight": "",
+    "height": "",
+    "bloodPressure": "",
+    "temperature": "",
+    "pulse": "",
+    "spo2": "",
+    "respiratoryRate": ""
+  },
+  "examinationFindings": [],
+  "diagnosis": [
+    {
+      "name": "",
+      "status": "suspected | confirmed | ruled_out",
+      "notes": ""
+    }
+  ],
+  "advice": [],
+  "medicines": [
+    {
+      "medicine": "",
+      "genericName": "",
+      "form": "Tablet | Syrup | Capsule | Ointment | Drops | Inhaler | Injection | Cream | Gel | Powder | Other",
+      "dosage": "",
+      "route": "",
+      "frequency": "",
+      "frequencyPattern": "",
+      "timing": "",
+      "duration": "",
+      "quantity": "",
+      "notes": "",
+      "action": "start | continue | stop | change"
+    }
+  ],
+  "investigations": [
+    {
+      "testName": "",
+      "testType": "Blood Test | Urine Test | Stool Test | X-Ray | CT Scan | MRI | Ultrasound | ECG | Culture | Biopsy | Other",
+      "urgency": "Routine | Urgent | STAT",
+      "notes": ""
+    }
+  ],
+  "followUp": {
+    "required": true,
+    "after": "",
+    "instructions": ""
+  },
+  "doctorAssessment": "",
+  "additionalNotes": ""
+}
+
+No markdown. No explanation. Return valid JSON only.`
               },
               {
                 role: 'user',
@@ -347,23 +472,85 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
     }
 
     // 4. Update prescription record with results and move to READY_FOR_REVIEW
+    // Adapt the LLM output JSON values to match database schema requirements
+    let symptomsStr: string | null = null;
+    if (structuredJson.symptoms) {
+      symptomsStr = Array.isArray(structuredJson.symptoms)
+        ? structuredJson.symptoms.join(', ')
+        : String(structuredJson.symptoms);
+    } else if (structuredJson.chiefComplaints) {
+      // Support chiefComplaints as fallback symptom source
+      symptomsStr = Array.isArray(structuredJson.chiefComplaints)
+        ? structuredJson.chiefComplaints.map((c: any) => c.complaint || '').filter(Boolean).join(', ')
+        : String(structuredJson.chiefComplaints);
+    }
+
+    let diagnosisStr: string | null = null;
+    if (structuredJson.diagnosis) {
+      diagnosisStr = Array.isArray(structuredJson.diagnosis)
+        ? structuredJson.diagnosis
+            .map((d: any) => {
+              if (typeof d === 'object' && d !== null) {
+                return `${d.name || ''}${d.status ? ` (${d.status})` : ''}`;
+              }
+              return String(d);
+            })
+            .filter(Boolean)
+            .join(', ')
+        : String(structuredJson.diagnosis);
+    }
+
+    let adviceStr: string | null = null;
+    if (structuredJson.advice) {
+      adviceStr = Array.isArray(structuredJson.advice)
+        ? structuredJson.advice.join('\n')
+        : String(structuredJson.advice);
+    }
+
+    // Support nested vitals or root vitals
+    const weightVal = structuredJson.vitals?.weight || structuredJson.weight || null;
+    const heightVal = structuredJson.vitals?.height || structuredJson.height || null;
+    const bpVal = structuredJson.vitals?.bloodPressure || structuredJson.bloodPressure || null;
+    const tempVal = structuredJson.vitals?.temperature || structuredJson.temperature || null;
+    const pulseVal = structuredJson.vitals?.pulse || structuredJson.pulse || null;
+    const spo2Val = structuredJson.vitals?.spo2 || structuredJson.spo2 || null;
+
+    let followUpNoteVal: string | null = null;
+    if (structuredJson.followUp) {
+      if (typeof structuredJson.followUp === 'object' && structuredJson.followUp !== null) {
+        if (structuredJson.followUp.after) {
+          followUpNoteVal = `Follow up after ${structuredJson.followUp.after}.${structuredJson.followUp.instructions ? ` ${structuredJson.followUp.instructions}` : ''}`;
+        } else if (structuredJson.followUp.instructions) {
+          followUpNoteVal = structuredJson.followUp.instructions;
+        }
+      } else {
+        followUpNoteVal = String(structuredJson.followUp);
+      }
+    }
+
     await this.prisma.$transaction(async (tx: any) => {
       // Save parsed medicines
       if (structuredJson.medicines && Array.isArray(structuredJson.medicines)) {
         await tx.prescriptionMedicine.deleteMany({ where: { prescriptionId } });
         await tx.prescriptionMedicine.createMany({
-          data: structuredJson.medicines.map((m: any) => ({
-            prescriptionId,
-            medicine: m.medicine || '',
-            genericName: m.genericName || null,
-            form: m.form || null,
-            dosage: m.dosage || '',
-            frequency: m.frequency || '',
-            frequencyPattern: m.frequencyPattern || null,
-            timing: m.timing || null,
-            duration: m.duration || '',
-            notes: m.notes || null,
-          })),
+          data: structuredJson.medicines.map((m: any) => {
+            let noteText = m.notes || null;
+            if (m.action && m.action !== 'start') {
+              noteText = `${m.action.toUpperCase()}${noteText ? `: ${noteText}` : ''}`;
+            }
+            return {
+              prescriptionId,
+              medicine: m.medicine || '',
+              genericName: m.genericName || null,
+              form: m.form || null,
+              dosage: m.dosage || '',
+              frequency: m.frequency || '',
+              frequencyPattern: m.frequencyPattern || null,
+              timing: m.timing || null,
+              duration: m.duration || '',
+              notes: noteText,
+            };
+          }),
         });
       }
 
@@ -376,15 +563,16 @@ Lowcase keys or missing info should be handled gracefully. Output must be strict
         data: {
           rawTranscript,
           structuredJson: structuredJson as any,
-          symptoms: structuredJson.symptoms || existing?.symptoms || null,
-          diagnosis: structuredJson.diagnosis || existing?.diagnosis || null,
-          generalAdvice: structuredJson.advice || existing?.generalAdvice || null,
-          weight: structuredJson.weight || existing?.weight || null,
-          bloodPressure: structuredJson.bloodPressure || existing?.bloodPressure || null,
-          height: existing?.height || null,
-          temperature: existing?.temperature || null,
-          pulse: existing?.pulse || null,
-          spo2: existing?.spo2 || null,
+          symptoms: symptomsStr || existing?.symptoms || null,
+          diagnosis: diagnosisStr || existing?.diagnosis || null,
+          generalAdvice: adviceStr || existing?.generalAdvice || null,
+          weight: weightVal || existing?.weight || null,
+          bloodPressure: bpVal || existing?.bloodPressure || null,
+          height: heightVal || existing?.height || null,
+          temperature: tempVal || existing?.temperature || null,
+          pulse: pulseVal || existing?.pulse || null,
+          spo2: spo2Val || existing?.spo2 || null,
+          followUpNote: followUpNoteVal || existing?.followUpNote || null,
           // Store investigations as JSON string in the investigationsOrdered field
           investigationsOrdered: structuredJson.investigations && structuredJson.investigations.length > 0
             ? JSON.stringify(structuredJson.investigations)

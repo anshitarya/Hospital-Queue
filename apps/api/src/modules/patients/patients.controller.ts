@@ -29,4 +29,14 @@ export class PatientsController {
     }
     return this.patients.history(id);
   }
+
+  @Roles(Role.RECEPTIONIST, Role.CLINIC_ADMIN, Role.ADMIN, Role.DOCTOR)
+  @Post(':id/phone')
+  async updatePhone(
+    @Param('id') id: string,
+    @Body('phone') phone: string,
+    @Body('queueEntryId') queueEntryId?: string,
+  ) {
+    return this.patients.updatePatientPhone(id, phone, queueEntryId);
+  }
 }

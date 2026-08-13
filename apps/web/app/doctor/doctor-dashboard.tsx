@@ -56,6 +56,28 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   const [activePrescription, setActivePrescription] = useState<any>(null);
   const [pastPrescriptions, setPastPrescriptions] = useState<any[]>([]);
 
+  // Phone editing states for active patient
+  const [editingCurrentPhone, setEditingCurrentPhone] = useState(false);
+  const [newCurrentPhoneVal, setNewCurrentPhoneVal] = useState('');
+  const [updatingCurrentPhone, setUpdatingCurrentPhone] = useState(false);
+
+  const handleSaveCurrentPhone = async () => {
+    if (!newCurrentPhoneVal.trim() || !current) return;
+    setUpdatingCurrentPhone(true);
+    try {
+      await api(`/patients/${current.patientId}/phone`, {
+        method: 'POST',
+        body: { phone: newCurrentPhoneVal, queueEntryId: current.id },
+      });
+      setEditingCurrentPhone(false);
+      window.location.reload();
+    } catch (e: any) {
+      setToast({ type: 'err', msg: e.message || 'Failed to update phone number' });
+    } finally {
+      setUpdatingCurrentPhone(false);
+    }
+  };
+
   const handleImportPreviousPrescription = async (past: any) => {
     setToast({ type: 'ok', msg: 'Importing previous prescription...' });
     try {
@@ -309,6 +331,8 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
   useEffect(() => {
     setActivePrescription(null);
     setPastPrescriptions([]);
+    setEditingCurrentPhone(false);
+    setNewCurrentPhoneVal(current?.patient?.phone || '');
     
     if (current?.visitId) {
       api<any>(`/prescriptions/visit/${current.visitId}`)
@@ -734,7 +758,48 @@ export function DoctorDashboard({ locationIdFromParams }: { locationIdFromParams
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xl font-bold text-slate-900 dark:text-white leading-tight truncate">{current.patient?.name}</div>
-                        <div className="text-sm text-slate-500 mt-0.5">{current.patient?.phone}</div>
+                        {editingCurrentPhone ? (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <input
+                              type="tel"
+                              className="input !py-0.5 !px-2 !text-xs w-32 border border-brand-300 focus:ring-brand-500"
+                              value={newCurrentPhoneVal}
+                              onChange={(e) => setNewCurrentPhoneVal(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                              placeholder="10-digit number"
+                              autoFocus
+                              disabled={updatingCurrentPhone}
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSaveCurrentPhone}
+                              disabled={updatingCurrentPhone || newCurrentPhoneVal.length !== 10}
+                              className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-lg border border-emerald-100/50"
+                            >
+                              Save
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingCurrentPhone(false); setNewCurrentPhoneVal(current?.patient?.phone || ''); }}
+                              disabled={updatingCurrentPhone}
+                              className="text-[10px] font-semibold text-slate-500 hover:text-slate-600 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-slate-500 mt-0.5">
+                            <span>{current.patient?.phone}</span>
+                            {current.patientId && (
+                              <button
+                                type="button"
+                                onClick={() => { setEditingCurrentPhone(true); setNewCurrentPhoneVal(current.patient?.phone || ''); }}
+                                className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-0.5 px-1 py-0.5"
+                              >
+                                ✏️ Edit Number
+                              </button>
+                            )}
+                          </div>
+                        )}
                         {current.startedAt && (
                           <div className="text-xs text-slate-400 mt-1">
                             Consulting for{' '}

@@ -1098,7 +1098,19 @@ export function QueueManager({ locationId }: { locationId?: string | null }) {
                 className="input"
                 placeholder={`${L.customer} name`}
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '1') {
+                    const dummySuffix = Math.floor(100000 + Math.random() * 900000);
+                    const dummyPhone = `0000${dummySuffix}`;
+                    setName('Emergency Casualty');
+                    setPhone(dummyPhone);
+                    setPhoneResult({ ok: true, local: dummyPhone, e164: `+91${dummyPhone}` });
+                    setPriority(100);
+                  } else {
+                    setName(val);
+                  }
+                }}
                 required
               />
               <select className="input" value={priority} onChange={(e) => setPriority(Number(e.target.value))}>
@@ -1548,6 +1560,28 @@ const QueueRow = memo(function QueueRow({
   const [transferWalkin, setTransferWalkin] = useState(false);
   const [transferSlotType, setTransferSlotType] = useState<'NEW' | 'FOLLOWUP'>('NEW');
 
+  // Phone editing states
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [newPhoneVal, setNewPhoneVal] = useState(entry.patient?.phone || '');
+  const [updatingPhone, setUpdatingPhone] = useState(false);
+
+  const handleSavePhone = async () => {
+    if (!newPhoneVal.trim()) return;
+    setUpdatingPhone(true);
+    try {
+      await api(`/patients/${entry.patientId}/phone`, {
+        method: 'POST',
+        body: { phone: newPhoneVal, queueEntryId: entry.id },
+      });
+      setEditingPhone(false);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || 'Failed to update phone number');
+    } finally {
+      setUpdatingPhone(false);
+    }
+  };
+
   // Vitals states
   const [showVitalsForm, setShowVitalsForm] = useState(false);
   const [vitalsWeight, setVitalsWeight] = useState('');
@@ -1673,8 +1707,49 @@ const QueueRow = memo(function QueueRow({
             {entry.walkin && <span className="pill-sm bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-400 ring-brand-200 dark:ring-brand-800/60">Walk-in</span>}
             {entry.slotType === 'FOLLOWUP' && <span className="pill-sm bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 ring-purple-200 dark:ring-purple-800/60">Follow-up</span>}
           </div>
-          <div className="text-xs text-slate-400 dark:text-slate-500 flex flex-wrap gap-x-2 mt-0.5">
-            <span>{entry.patient?.phone ?? '—'}</span>
+          <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 flex-wrap mt-0.5">
+            {editingPhone ? (
+              <div className="flex items-center gap-1.5 py-0.5">
+                <input
+                  type="tel"
+                  className="input !py-0.5 !px-2 !text-xs w-32 border border-brand-300 focus:ring-brand-500"
+                  value={newPhoneVal}
+                  onChange={(e) => setNewPhoneVal(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  placeholder="10-digit number"
+                  autoFocus
+                  disabled={updatingPhone}
+                />
+                <button
+                  type="button"
+                  onClick={handleSavePhone}
+                  disabled={updatingPhone || newPhoneVal.length !== 10}
+                  className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-lg border border-emerald-100/50"
+                >
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditingPhone(false); setNewPhoneVal(entry.patient?.phone || ''); }}
+                  disabled={updatingPhone}
+                  className="text-[10px] font-semibold text-slate-500 hover:text-slate-600 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <>
+                <span>{entry.patient?.phone ?? '—'}</span>
+                {!isPending && entry.patientId && (
+                  <button
+                    type="button"
+                    onClick={() => { setEditingPhone(true); setNewPhoneVal(entry.patient?.phone || ''); }}
+                    className="text-[10px] font-semibold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-0.5 px-1 py-0.5"
+                  >
+                    ✏️ Edit Number
+                  </button>
+                )}
+              </>
+            )}
             {entry.notes && <span className="text-slate-300 dark:text-slate-600 truncate">· {entry.notes}</span>}
           </div>
         </div>
