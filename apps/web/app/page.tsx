@@ -56,8 +56,6 @@ export default function HomePage() {
               <div className="flex flex-wrap items-center gap-3">
                 <Link
                   href="/get-started"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="btn-primary !px-6 !py-3.5 text-base shadow-glow hover:shadow-xl !rounded-2xl"
                 >
                   Business owners — get started
@@ -65,8 +63,6 @@ export default function HomePage() {
                 </Link>
                 <Link
                   href="/login/choose"
-                  target="_blank"
-                  rel="noopener noreferrer"
                   className="btn-secondary !px-6 !py-3.5 text-base !rounded-2xl"
                 >
                   Sign in
@@ -259,8 +255,6 @@ export default function HomePage() {
                 <div className="flex flex-wrap items-center gap-3 pt-2">
                   <Link
                     href="/login/choose"
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg bg-white text-brand-700 px-5 py-3 text-sm font-semibold shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all"
                   >
                     Sign in
@@ -268,8 +262,6 @@ export default function HomePage() {
                   </Link>
                   <Link
                     href="/get-started"
-                    target="_blank"
-                    rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 rounded-lg bg-white/10 hover:bg-white/20 text-white ring-1 ring-white/30 px-5 py-3 text-sm font-semibold transition-colors"
                   >
                     Business owners — get started
