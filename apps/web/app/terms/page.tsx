@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { BRAND } from '@/lib/config';
 
-export const metadata = { title: 'Terms & Conditions · Turnos' };
+export const metadata = {
+  title: 'Terms & Conditions · Turnos',
+  alternates: {
+    canonical: '/terms',
+  },
+};
 
 const EFFECTIVE_DATE = '7 July 2026';
 
