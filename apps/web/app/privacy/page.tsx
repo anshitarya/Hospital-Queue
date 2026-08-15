@@ -1,7 +1,12 @@
 import Link from 'next/link';
 import { BRAND } from '@/lib/config';
 
-export const metadata = { title: 'Privacy Policy · Turnos' };
+export const metadata = {
+  title: 'Privacy Policy · Turnos',
+  alternates: {
+    canonical: '/privacy',
+  },
+};
 
 const EFFECTIVE_DATE = '7 July 2026';
 
