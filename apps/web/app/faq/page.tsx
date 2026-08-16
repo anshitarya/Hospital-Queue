@@ -162,8 +162,123 @@ export default function FAQPage() {
   const filteredStaff = getFilteredItems('staff');
   const filteredSettings = getFilteredItems('settings');
 
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    'mainEntity': [
+      {
+        '@type': 'Question',
+        'name': 'How do I join the queue?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'You can join the queue in two ways: 1. Self-Booking (scan clinic QR code or visit booking page, verify via mobile OTP and select Join Queue) or 2. Reception Walk-in (ask the receptionist to add you).'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'What is the 3-letter token code (e.g. #PVM, #FOF)?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Sequential numbers feel clinical and cause anxiety. Turnos shuffles your ticket into a friendly 3-letter code (like #PVM) which is shown on the live display and sent via SMS.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I track my position and ETA live?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Once you join, you receive an SMS with a live tracking link. You can view your exact queue position, patients ahead of you, and dynamic Estimated Time of Arrival (ETA) on the patient dashboard.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I enable Push Notifications?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Click the "Enable Live Notifications" bell icon on the patient portal and accept browser permissions. Turnos will notify you in real-time when it is almost your turn, even if your phone screen is locked.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'What if I miss my turn or get delayed?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'If you miss your call, staff mark you as "Missed". Turnos holds your booking and re-inserts you automatically after a short gap (e.g. 3-4 patients) once you notify the front desk of your arrival.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I start a consultation with the next patient?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'On the Reception or Doctor Dashboard, select your doctor, locate the top patient in the live queue list, and click green "Call Patient" or "Start Consultation" button.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'What is the difference between Walk-in, Follow-up, and Appointment priorities?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Turnos supports three patient flows: Walk-in (added dynamically based on insertion gap configurations), Follow-up (returning patients checking quick reports, prioritized to get served faster), and Appointment (scheduled time slots placed near the front).'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I manage missed patients who have returned?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'When a missed patient returns, click "Rejoin Queue" on the dashboard Missed Patients tab to place them back into the active queue with a fair gap.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I take a break or go offline?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Click your status next to your name at the top left of the dashboard and select "On Break". You can enter a break duration and note, adjusting waiting patient ETAs instantly.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'What is the "Walk-in Insertion Gap" setting?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'This defines how self-booked walk-ins mix with pre-booked appointments. A gap of 4 means a walk-in is placed at least 4 spots behind the current serving patient, ensuring appointments are prioritized.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I configure weekly working hours and schedules?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Go to the Schedule tab on the Clinic settings page, select a doctor, and add shift blocks (e.g. 09:00 - 13:00). You can also set daily capacity limits.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I add a new Doctor or Receptionist?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'As Clinic Admin, go to Staff Management, click Add Staff, choose role, input details, and Turnos will generate a unique Login ID (e.g., DOC-5012) and passcode.'
+        }
+      },
+      {
+        '@type': 'Question',
+        'name': 'How do I configure multiple branches/locations?',
+        'acceptedAnswer': {
+          '@type': 'Answer',
+          'text': 'Go to Clinic Settings -> Locations, click Add Location, and assign receptionists, doctors, and shifts to that branch.'
+        }
+      }
+    ]
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-gradient-to-br dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100 py-12 px-4 sm:px-6 lg:px-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Header */}
