@@ -68,9 +68,35 @@ export const viewport: Viewport = {
 
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const orgSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    '@id': 'https://turnos.in/#organization',
+    'name': 'Turnos',
+    'url': 'https://turnos.in',
+    'logo': 'https://turnos.in/logo-icon.png',
+    'image': 'https://turnos.in/logo-icon.png',
+    'description': 'Live queue management and virtual token system that gives every customer a live token with a minute-accurate ETA on their phone.',
+    'email': 'hello@turnos.in',
+    'telephone': '+91 94147 71828',
+    'contactPoint': {
+      '@type': 'ContactPoint',
+      'telephone': '+91 94147 71828',
+      'contactType': 'customer support',
+      'email': 'hello@turnos.in',
+      'areaServed': 'IN',
+      'availableLanguage': 'English'
+    }
+  };
+
   return (
     <html lang="en" className={inter.variable} suppressHydrationWarning>
-      <head />
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }}
+        />
+      </head>
       <body className="relative min-h-screen antialiased overflow-x-hidden w-full max-w-[100vw]">
         <PwaRegister />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>

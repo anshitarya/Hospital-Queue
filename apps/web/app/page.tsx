@@ -16,8 +16,40 @@ const FEATURE_CARDS = FEATURES.map((f) => ({
 }));
 
 export default function HomePage() {
+  const appSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    '@id': 'https://turnos.in/#software',
+    'name': 'Turnos',
+    'applicationCategory': 'BusinessApplication',
+    'operatingSystem': 'All',
+    'browserRequirements': 'Requires HTML5 compatible browser',
+    'offers': {
+      '@type': 'Offer',
+      'price': '0',
+      'priceCurrency': 'INR'
+    },
+    'description': 'Give every customer a live token with a minute-accurate ETA on their phone. Staff get focused dashboards. Zero app download required.',
+    'featureList': [
+      'Live token tracking',
+      'No app download required',
+      'Accurate wait time estimations',
+      'Push notifications for queue status',
+      'Urgent case prioritization',
+      'Multi-provider dashboards'
+    ],
+    'author': {
+      '@type': 'Organization',
+      '@id': 'https://turnos.in/#organization'
+    }
+  };
+
   return (
     <div className="relative w-full overflow-x-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(appSchema) }}
+      />
       {/* Background mesh */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[480px] w-[480px] rounded-full bg-brand-200/40 blur-3xl" />
@@ -98,6 +130,29 @@ export default function HomePage() {
                 <div className="text-xs text-slate-600 dark:text-slate-400 mt-1.5 font-semibold">{s.l}</div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      {/* EXPLICIT DEFINITION (AEO / GEO / LLMO Optimization)                  */}
+      {/* ═══════════════════════════════════════════════════════════════════ */}
+      <section className="py-12 bg-slate-50/50 dark:bg-slate-900/10 border-b border-slate-200/50 dark:border-white/5">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+            <div className="md:col-span-1">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white leading-tight">
+                What is the Turnos Virtual Token Queue System?
+              </h2>
+            </div>
+            <div className="md:col-span-2 space-y-3 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-relaxed">
+              <p>
+                <strong>Turnos is a live virtual token queue management platform</strong> built to eliminate waiting room crowding and customer anxiety in clinics, hospitals, and busy diagnostics offices in India.
+              </p>
+              <p>
+                It works by giving each customer or patient a live virtual token with a minute-accurate Estimated Time of Arrival (ETA) directly on their phone screen. Because the entire queue system operates through the mobile web browser, **customers do not need to download or install any app** to track their position.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -348,6 +403,16 @@ export default function HomePage() {
                   </Link>
                 </li>
                 <li>
+                  <Link href="/about" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    About Us
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/contact" className="hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Contact Us
+                  </Link>
+                </li>
+                <li>
                   <Link href="/faq" className="hover:text-slate-900 dark:hover:text-white font-semibold text-brand-600 dark:text-emerald-400 transition-colors">
                     FAQ
                   </Link>
@@ -396,6 +461,8 @@ export default function HomePage() {
           <div className="pt-6 border-t border-slate-200 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-500">
             <div>© {new Date().getFullYear()} Turnos. All rights reserved.</div>
             <div className="flex items-center gap-4">
+              <Link href="/about" className="hover:underline">About</Link>
+              <Link href="/contact" className="hover:underline">Contact</Link>
               <Link href="/terms" className="hover:underline">Terms</Link>
               <Link href="/privacy" className="hover:underline">Privacy</Link>
               <Link href="/faq" className="hover:underline">FAQ</Link>

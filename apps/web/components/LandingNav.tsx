@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Icon, TurnosIcon } from './Icons';
 import { DarkModeToggle } from './DarkModeToggle';
+import { usePathname } from 'next/navigation';
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: 'features', label: 'Features' },
@@ -18,6 +19,7 @@ const SECTIONS: { id: string; label: string }[] = [
  * "Sign in" / "Get started" CTAs that open the auth flow in a new tab.
  */
 export function LandingNav() {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -45,17 +47,21 @@ export function LandingNav() {
 
         {/* Desktop nav links */}
         <nav className="hidden md:flex items-center gap-1 p-1 rounded-2xl bg-slate-100 dark:bg-white/5 backdrop-blur-xl border border-slate-200 dark:border-white/10">
-          {SECTIONS.map((s) => (
-            <a
-              key={s.id}
-              href={`#${s.id}`}
-              className="px-4 py-1.5 text-sm text-slate-600 dark:text-slate-300 rounded-xl
-                         hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10
-                         transition-all duration-200 ease-apple font-medium"
-            >
-              {s.label}
-            </a>
-          ))}
+          {SECTIONS.map((s) => {
+            const isHome = pathname === '/';
+            const linkHref = isHome ? `#${s.id}` : `/#${s.id}`;
+            return (
+              <a
+                key={s.id}
+                href={linkHref}
+                className="px-4 py-1.5 text-sm text-slate-600 dark:text-slate-300 rounded-xl
+                           hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-white/10
+                           transition-all duration-200 ease-apple font-medium"
+              >
+                {s.label}
+              </a>
+            );
+          })}
         </nav>
 
         {/* Desktop CTA buttons */}
@@ -92,17 +98,21 @@ export function LandingNav() {
       {mobileOpen && (
         <div className="md:hidden border-b border-slate-200 dark:border-white/10 bg-white/95 dark:bg-slate-950/90 backdrop-blur-2xl animate-slide-up shadow-lg dark:shadow-modal">
           <nav className="px-4 py-4 space-y-1">
-            {SECTIONS.map((s) => (
-              <a
-                key={s.id}
-                href={`#${s.id}`}
-                onClick={() => setMobileOpen(false)}
-                className="block px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200
-                           rounded-2xl hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
-              >
-                {s.label}
-              </a>
-            ))}
+            {SECTIONS.map((s) => {
+              const isHome = pathname === '/';
+              const linkHref = isHome ? `#${s.id}` : `/#${s.id}`;
+              return (
+                <a
+                  key={s.id}
+                  href={linkHref}
+                  onClick={() => setMobileOpen(false)}
+                  className="block px-4 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-200
+                             rounded-2xl hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                >
+                  {s.label}
+                </a>
+              );
+            })}
             <div className="pt-3 mt-2 border-t border-slate-200 dark:border-white/10 flex flex-col gap-2">
               <Link
                 href="/login/choose"

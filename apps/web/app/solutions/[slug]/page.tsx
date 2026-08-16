@@ -85,8 +85,47 @@ export default function SolutionPage({ params }: PageProps) {
 
   const DemoComponent = DEMO_COMPONENTS[solution.demoType];
 
+  const productSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    'name': solution.title,
+    'image': 'https://turnos.in/logo-icon.png',
+    'description': solution.metaDescription,
+    'brand': {
+      '@type': 'Brand',
+      'name': 'Turnos'
+    },
+    'offers': {
+      '@type': 'Offer',
+      'price': '0',
+      'priceCurrency': 'INR',
+      'availability': 'https://schema.org/InStock'
+    }
+  };
+
+  const faqSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    'mainEntity': solution.faqs.map(faq => ({
+      '@type': 'Question',
+      'name': faq.q,
+      'acceptedAnswer': {
+        '@type': 'Answer',
+        'text': faq.a
+      }
+    }))
+  };
+
   return (
     <div className="relative">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
       {/* Background mesh */}
       <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-[480px] w-[480px] rounded-full bg-brand-200/40 blur-3xl" />
@@ -192,6 +231,8 @@ export default function SolutionPage({ params }: PageProps) {
           <div className="flex items-center gap-4 text-sm text-slate-400">
             <Link href="/login/choose" className="hover:text-white transition-colors">Sign in</Link>
             <span className="text-slate-700">|</span>
+            <Link href="/about" className="hover:text-white transition-colors">About</Link>
+            <Link href="/contact" className="hover:text-white transition-colors">Contact</Link>
             <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
             <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
             <Link href="/faq" className="hover:text-white font-semibold text-emerald-400 transition-colors">FAQ</Link>
