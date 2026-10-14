@@ -1,0 +1,7 @@
+{
+  "name": "Hospital Queue",
+  "user": "ubuntu",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "ports": [3000, 4000, 4002, 4003]
+}
